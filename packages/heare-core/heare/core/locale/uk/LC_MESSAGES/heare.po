@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-05 13:35+0200\n"
+"POT-Creation-Date: 2026-11-05 14:51+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -261,6 +261,12 @@ msgstr "Відʼєднати"
 
 msgid "To hear you, allow the recogniser's key for the phone on the pult."
 msgstr "Щоб чути тебе, дозволь на пульті ключ розпізнавання для телефона."
+
+msgid "So the brain can use the phone, turn on heare in Accessibility."
+msgstr "Щоб мозок міг користуватися телефоном, увімкніть heare у «Спеціальних можливостях»."
+
+msgid "Turn on"
+msgstr "Увімкнути"
 
 msgid "Listen hands-free"
 msgstr "Слухати без рук"

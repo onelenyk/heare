@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android's settings show this before the app runs, so it cannot come from
+     the catalog (tr). The one line kept here; the same words are in heare.po. -->
+<resources>
+    <string name="hands_about">Lets heare\'s brain read this screen and act on it when you ask: open apps, tap, type, go back. Nothing is read unless the brain is asked to.</string>
+</resources>

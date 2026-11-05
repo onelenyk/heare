@@ -8,6 +8,14 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- open_app: the apps the person can open, by the launcher's list. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <application
         android:name=".App"
         android:label="heare"
@@ -31,5 +39,20 @@
             android:name=".Ears"
             android:exported="false"
             android:foregroundServiceType="microphone" />
+
+        <!-- The phone's hands for the brain (phone-hands): bringalive's
+             accessibility service. Only the person turns it on. -->
+        <service
+            android:name=".Hands"
+            android:exported="false"
+            android:label="heare"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/hands" />
+        </service>
     </application>
 </manifest>

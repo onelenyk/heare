@@ -1,6 +1,8 @@
 package dev.onelenyk.heare.phone
 
 import android.Manifest
+import android.content.Intent
+import android.provider.Settings
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -39,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import dev.onelenyk.heare.Hearing
@@ -149,6 +152,16 @@ private fun Conversation(talk: Talk?, forget: () -> Unit) {
         if (talk?.keyWaiting == true) {
             Text(tr("To hear you, allow the recogniser's key for the phone on the pult."),
                 color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.padding(vertical = 8.dp))
+        }
+        val handsOn by Phone.handsOn.collectAsState()
+        if (!handsOn) {
+            val context = LocalContext.current
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(tr("So the brain can use the phone, turn on heare in Accessibility."), Modifier.weight(1f))
+                TextButton(onClick = {
+                    context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                }) { Text(tr("Turn on")) }
+            }
         }
         val hearing = talk?.hearing ?: Hearing.Idle
         val handsFree by Phone.handsFree.collectAsState()

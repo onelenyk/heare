@@ -6,6 +6,7 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -64,5 +65,34 @@ class PartTest {
         assertEquals("RIFF", wav.decodeToString(0, 4))
         assertEquals(44 + 32_000, wav.size)
         assertEquals(16_000, (wav[24].toInt() and 0xff) or ((wav[25].toInt() and 0xff) shl 8))
+    }
+
+    @Test
+    fun a_call_from_the_hands_is_done_and_answered_to_its_id() = runTest {
+        val answered = kotlinx.coroutines.CompletableDeferred<String>()
+        val http = HttpClient(MockEngine { request ->
+            val json = headersOf("Content-Type", "application/json")
+            when (request.url.encodedPath) {
+                "/api/bodies" -> respond("""{"approved": true, "token": "mine"}""", HttpStatusCode.OK, json)
+                "/api/events" -> respond(
+                    "data: {\"kind\": \"call\", \"part\": \"hands@pixel\", \"id\": 7, " +
+                        "\"name\": \"back\", \"args\": {}}\n\n", HttpStatusCode.OK)
+                "/api/skills/7" -> {
+                    answered.complete((request.body as io.ktor.http.content.TextContent).text)
+                    respond("{}", HttpStatusCode.OK, json)
+                }
+                else -> respond("{}", HttpStatusCode.NotFound)
+            }
+        }) { install(HttpTimeout) }
+        val hands = Knock("hands", emptyList(), "hands", "hands@pixel", "pixel", "0.0.0", 0.0,
+            skills = listOf(Skill("back", "Go back", "harmless", kotlinx.serialization.json.JsonObject(emptyMap()))))
+        val part = Part(Brain("http://brain", http), "machine", hands, does = { name, _ ->
+            Done(true, kotlinx.serialization.json.JsonPrimitive("did $name"))
+        })
+        val living = backgroundScope.launch { part.live() }
+        val body = Json.parseToJsonElement(answered.await()).jsonObject
+        assertEquals("true", body["ok"].toString())
+        assertEquals("\"did back\"", body["result"].toString())
+        living.cancel()
     }
 }

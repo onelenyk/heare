@@ -1,7 +1,10 @@
 package dev.onelenyk.heare
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -47,6 +50,8 @@ class Part(
     private val whisper: Whisper? = null,
     /** Whose code this is: a new build asks for the key again. */
     private val fingerprint: String = about.version,
+    /** Does one of [Knock.skills]: the name and its arguments. */
+    private val does: (suspend (String, JsonObject) -> Done)? = null,
 ) {
     private val talk = MutableStateFlow(Talk())
     val state: StateFlow<Talk> = talk
@@ -54,6 +59,8 @@ class Part(
     private var ear: String? = null
     /** When the brain last finished saying something: a reply invites an answer without the name. */
     private var lastSaid: Long = 0L
+    /** Where calls are answered: [live]'s own, so they end with it. */
+    private var calls: CoroutineScope? = null
 
     /**
      * Keep the recogniser's key: asked every few seconds while the person
@@ -111,7 +118,8 @@ class Part(
         }
     }
 
-    suspend fun live() {
+    suspend fun live(): Unit = coroutineScope {
+        calls = this
         var wait = 1_000L
         while (true) {
             try {
@@ -129,7 +137,7 @@ class Part(
             } catch (e: Refused) {
                 if (e.status == 401 && token == null) {
                     talk.update { it.copy(link = Link.Unpaired, why = e.message) }
-                    return
+                    return@coroutineScope
                 }
                 // Our own key was forgotten: the machine's key asks for a new one.
                 if (e.status == 401 || e.status == 403) token = null
@@ -173,6 +181,10 @@ class Part(
     fun replied(at: Long) { lastSaid = at }
 
     internal fun heard(event: JsonObject) {
+        if (event.text("kind") == "call" && event.text("part") == about.key) {
+            called(event)
+            return
+        }
         if (event.text("channel") != about.channel) return
         when (event.text("kind")) {
             "reply" -> talk.update { now ->
@@ -198,6 +210,29 @@ class Part(
                 }
                 if (text.isNotBlank()) onSaid(text)
             }
+        }
+    }
+
+    /**
+     * A call from the brain's hands. Answered on its own, so a slow skill
+     * does not hold the stream; whatever fails is still an answer, else the
+     * hands wait the whole five seconds for nothing.
+     */
+    private fun called(event: JsonObject) {
+        val id = event.text("id")?.toLongOrNull() ?: return
+        val name = event.text("name").orEmpty()
+        val args = event["args"] as? JsonObject ?: JsonObject(emptyMap())
+        val mine = token ?: return
+        val here = calls ?: return
+        here.launch {
+            val done = try {
+                does?.invoke(name, args) ?: Done(false, JsonPrimitive("no skills here"))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Done(false, JsonPrimitive(e.message ?: e::class.simpleName ?: "failed"))
+            }
+            runCatching { brain.answer(mine, id, done) }
         }
     }
 }

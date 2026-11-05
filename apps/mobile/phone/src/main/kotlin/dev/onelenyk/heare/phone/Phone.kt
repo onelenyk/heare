@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.os.Build
 import dev.onelenyk.heare.Brain
+import dev.onelenyk.heare.Done
 import dev.onelenyk.heare.Knock
 import dev.onelenyk.heare.Part
 import dev.onelenyk.heare.Refused
@@ -22,6 +23,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonPrimitive
 import kotlin.random.Random
 
 class App : Application() {
@@ -38,6 +41,7 @@ class App : Application() {
  */
 object Phone {
     const val CHANNEL = "phone"
+    const val HANDS = "phone-hands"
     const val DEFAULT_BRAIN = "https://brain.onelenyk.dev"
 
     private lateinit var prefs: SharedPreferences
@@ -85,6 +89,7 @@ object Phone {
     fun forget() {
         prefs.edit().remove("machine_token").apply()
         part = null
+        hands = null
         talk.value = null
     }
 
@@ -114,6 +119,33 @@ object Phone {
                 }
             }
         }
+    }
+
+    /** The hands part: only skills, its own knock and stream (mobile.md, step B). */
+    var hands: Part? = null
+        private set
+
+    /** The person turned the accessibility service on (Hands). */
+    val handsOn = MutableStateFlow(false)
+
+    fun handsFor(): Part? {
+        val token = prefs.getString("machine_token", null) ?: return null
+        hands?.let { return it }
+        val about = Knock(
+            channel = HANDS,
+            forms = emptyList(),
+            about = "the phone's screen: reads it, opens apps, taps, types, goes back",
+            key = "$HANDS@$name",
+            host = name,
+            version = BuildConfig.VERSION_NAME,
+            started = System.currentTimeMillis() / 1000.0,
+            skills = Hands.SKILLS,
+        )
+        return Part(Brain(base, http), token, about, does = { skill, args ->
+            val hands = Hands.now ?: return@Part Done(false,
+                JsonPrimitive("the person has not turned on heare's accessibility service on the phone"))
+            withContext(Dispatchers.Main) { hands.does(skill, args) }
+        }).also { hands = it }
     }
 
     private val mic = Mic()

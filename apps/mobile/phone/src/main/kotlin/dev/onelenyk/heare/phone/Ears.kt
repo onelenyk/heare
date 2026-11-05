@@ -54,6 +54,7 @@ class Ears : Service() {
             val part = Phone.partFor(::speak) ?: run { stopSelf(); return START_NOT_STICKY }
             living = scope.launch { part.live() }
             scope.launch { part.keepKey() }
+            Phone.handsFor()?.let { hands -> scope.launch { hands.live() } }
             Phone.hush = { mouth?.stop(); Phone.speaking = false }
             scope.launch {
                 var ear: Job? = null

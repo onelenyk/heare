@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 
@@ -37,8 +38,24 @@ data class Knock(
     val host: String,
     val version: String,
     val started: Double,
+    /** What the brain's hands may ask of this part (protocol.md §6); none for a voice. */
+    val skills: List<Skill>? = null,
     val v: Int = PROTOCOL,
 )
+
+/**
+ * One thing a part can do (protocol.md §6). [about] is read by the brain's
+ * model, so it is English; [effect] is `read`, `harmless` or `change`, and
+ * only a change goes past the judge.
+ */
+@Serializable
+data class Skill(val name: String, val about: String, val effect: String, val params: JsonObject)
+
+/** What a part made of a call: [result] goes back to the hands as it is. */
+data class Done(val ok: Boolean, val result: JsonElement)
+
+@Serializable
+private data class Answer(val ok: Boolean, val result: JsonElement)
 
 @Serializable
 data class Knocked(
@@ -76,7 +93,7 @@ class Refused(val status: Int, why: String) : Exception(why)
  * Nothing here keeps state; [Part] does.
  */
 class Brain(val base: String, private val http: HttpClient) {
-    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; explicitNulls = false }
 
     /** A one-time code from the pult becomes this machine's key. */
     suspend fun pair(code: String, name: String): Paired {
@@ -126,6 +143,16 @@ class Brain(val base: String, private val http: HttpClient) {
         val text = answer.bodyAsText()
         if (answer.status != HttpStatusCode.OK) throw Refused(answer.status.value, text)
         return json.decodeFromString(Lent.serializer(), text)
+    }
+
+    /** The answer to call [id]; the brain takes it only from the part it was for. */
+    suspend fun answer(token: String, id: Long, done: Done) {
+        val answer = http.post("$base/api/skills/$id") {
+            header(TOKEN, token)
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(Answer.serializer(), Answer(done.ok, done.result)))
+        }
+        if (answer.status != HttpStatusCode.OK) throw Refused(answer.status.value, answer.bodyAsText())
     }
 
     suspend fun alive(): Boolean =
