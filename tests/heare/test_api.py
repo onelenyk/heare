@@ -879,6 +879,37 @@ async def test_a_pairing_code_gives_a_machine_a_key_that_only_knocks(tmp_path):
     await _close(room, client)
 
 
+async def test_a_phone_that_speaks_hears_its_own_replies(tmp_path):
+    """5 November: only "screen" and "voice" had a mouth on the brain, so a
+    phone's question was answered on the page. A part that says it outputs
+    gets its own channel; the Mac's voice keeps its own."""
+    room, client, auth, settings = await _open(tmp_path)
+    room.core.add_output(VoiceOut(room.core))
+    code = pair.make(Path(settings.pair_codes_file))
+    machine = await (await client.post(
+        "/api/pair", json={"code": code, "kind": "machine", "name": "pixel"})).json()
+    knocked = await (await client.post("/api/bodies", json={
+        "v": 1, "channel": "phone", "forms": ["input", "output"], "about": "a phone",
+        "key": "phone@pixel", "host": "pixel"},
+        headers={"X-Heare-Token": machine["token"]})).json()
+    assert knocked["approved"] and knocked["token"]
+    events = room.core.state.subscribe()
+    room.model.will_say("Привіт.")
+    said = await client.post("/api/input", json={
+        "kind": "heard", "channel": "phone", "text": "привіт"},
+        headers={"X-Heare-Token": knocked["token"]})
+    assert said.status == 200
+    await room.settled()
+    replies = set()
+    while not events.empty():
+        event = events.get_nowait()
+        if event.kind == "reply":
+            replies.add(event.data["channel"])
+    assert replies == {"phone"}
+    assert isinstance(room.core.outputs["voice"], VoiceOut)
+    await _close(room, client)
+
+
 async def test_a_pairing_code_gives_a_window_the_person_s_powers(tmp_path):
     room, client, auth, settings = await _open(tmp_path)
     code = pair.make(Path(settings.pair_codes_file))

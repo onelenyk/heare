@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-03 22:32+0200\n"
+"POT-Creation-Date: 2026-11-05 12:29+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -233,6 +233,52 @@ msgid "starting with the Mac did not turn off"
 msgstr ""
 
 msgid "heare is still running — first «Quit» in its menu"
+msgstr ""
+
+msgid "heare is here"
+msgstr ""
+
+msgid "Connected to the brain"
+msgstr ""
+
+msgid "On the pult, take a pairing code and type it here."
+msgstr ""
+
+msgid "Brain address"
+msgstr ""
+
+msgid "Code"
+msgstr ""
+
+msgid "Pair"
+msgstr ""
+
+msgid "Unpair"
+msgstr ""
+
+msgid "Say something…"
+msgstr ""
+
+msgid "Send"
+msgstr ""
+
+msgid "connected"
+msgstr ""
+
+msgid "connecting…"
+msgstr ""
+
+msgid "no connection"
+msgstr ""
+
+msgid "the brain forgot this phone"
+msgstr ""
+
+msgid "The code did not fit. Take a new one on the pult."
+msgstr ""
+
+#, python-brace-format
+msgid "The brain does not answer at {url}"
 msgstr ""
 
 #, python-brace-format
@@ -579,9 +625,6 @@ msgstr ""
 msgid "Answer…"
 msgstr ""
 
-msgid "Send"
-msgstr ""
-
 #, python-brace-format
 msgid "{who} wants to: {what}"
 msgstr ""
@@ -645,9 +688,6 @@ msgid "a page in the browser"
 msgstr ""
 
 msgid "a conversation in the terminal"
-msgstr ""
-
-msgid "connected"
 msgstr ""
 
 msgid "not connected"
@@ -1839,9 +1879,6 @@ msgid "The brain's address"
 msgstr ""
 
 msgid "The connection code — on the brain's page: ⚙ → Devices"
-msgstr ""
-
-msgid "connecting…"
 msgstr ""
 
 msgid "What heare hears, sees and acts with on this computer. They turn on and off at once — any time later too."

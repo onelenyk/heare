@@ -288,13 +288,16 @@ class Tally:
 
 
 class VoiceOut:
-    """The voice body's side of the door: the reply, piece by piece, and the
-    mouth's controls — pause, resume, stop — the body obeys from afar."""
+    """A speaking body's side of the door: the reply, piece by piece, and the
+    mouth's controls — pause, resume, stop — the body obeys from afar.
 
-    name = "voice"
+    One per channel: the Mac's voice, a phone, a watch. Each hears its own
+    replies; one channel shared by two bodies would speak in two rooms."""
+
     abilities: frozenset[str] = frozenset({"pause"})
 
-    def __init__(self, core: Core) -> None:
+    def __init__(self, core: Core, name: str = "voice") -> None:
+        self.name = name
         self._core = core
         self._speaking = False
         self._sounding = False
@@ -755,6 +758,14 @@ def build(core: Core, settings: Any, vitals: Any = None,
                 return False
         return True
 
+    def gives_voice(channel: str, forms: list, window: bool) -> None:
+        """A part that speaks gets a mouth of its own on the brain: without
+        one its replies fell to the first output there was (the page). A
+        window is the page itself and has one."""
+        if (not window and "output" in forms and channel not in core.outputs
+                and channel not in core.executors):
+            core.add_output(VoiceOut(core, channel))
+
     async def register(request: web.Request) -> web.Response:
         """A part knocks; the person decides whether to trust it.
 
@@ -816,12 +827,14 @@ def build(core: Core, settings: Any, vitals: Any = None,
                 # the sources stood pending after every brain restart).
                 registry.remember(pid)
                 trust.keep(pid, offered, shape)
+            gives_voice(channel, forms, window)
             registry.attach(pid, channel, forms, about, host, "approved", ui, hears,
                             version=part_version, started=started,
                             approves=approves, skills=offered, name=named_as,
                             machine=machine)
             return web.json_response({"approved": True, "pid": pid, **named(),
                                       **granted(request, pid)})
+        gives_voice(channel, forms, window)
         registry.attach(pid, channel, forms, about, host, "pending", ui, hears,
                         version=part_version, started=started,
                             approves=approves, skills=offered, name=named_as,
@@ -934,8 +947,8 @@ def build(core: Core, settings: Any, vitals: Any = None,
             if entry is None:
                 raise web.HTTPNotFound(text="no such part")
             entry["values"].update(values)
-            if channel == "voice" and "speaking" in values:
-                out = core.outputs.get("voice")
+            if "speaking" in values:
+                out = core.outputs.get(channel)
                 if isinstance(out, VoiceOut):
                     out.sounding(bool(values["speaking"]))
                     if not values["speaking"]:
