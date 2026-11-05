@@ -1024,6 +1024,13 @@ function machinesBehind(u) {
 }
 function drawUpdate(u) {
   const box = $("update");
+  // The brain may be on the newest while a machine is not: its row still shows.
+  const behind = u && u.state === "current" ? machinesBehind(u) : [];
+  if (behind.length) {
+    box.hidden = false; box.classList.remove("bad");
+    box.replaceChildren(el("b", "", tr("heare {v} is out", {v: u.latest})), ...behind);
+    return;
+  }
   if (!u || !["available", "downloading", "backing_up", "installing", "updated", "failed"].includes(u.state)) {
     box.hidden = true; return;
   }
