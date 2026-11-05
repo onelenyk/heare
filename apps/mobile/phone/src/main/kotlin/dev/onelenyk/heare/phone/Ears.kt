@@ -12,6 +12,7 @@ import android.os.IBinder
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import androidx.core.app.ServiceCompat
+import dev.onelenyk.heare.Wake
 import dev.onelenyk.heare.tr
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,6 +20,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -52,18 +55,30 @@ class Ears : Service() {
             living = scope.launch { part.live() }
             scope.launch { part.keepKey() }
             Phone.hush = { mouth?.stop(); Phone.speaking = false }
-            val room = Room(deaf = { Phone.speaking }) { pcm ->
-                part.spoken(pcm, handsFree = true, now = System::currentTimeMillis)
-            }
             scope.launch {
                 var ear: Job? = null
                 Phone.handsFree.collect { on ->
                     ear?.cancel()
-                    ear = if (on) launch { room.listen() } else null
+                    ear = if (on) launch { room(part).listen() } else null
                 }
             }
         }
         return START_STICKY
+    }
+
+    /** The open ear, with the name it listens for — the brain's, once it is known. */
+    private suspend fun room(part: dev.onelenyk.heare.Part): Room {
+        // The name comes with the knock's answer; wait a little for it.
+        val name = withTimeoutOrNull(15_000) { part.state.first { it.name != null }.name }
+        val spotter = runCatching { Spotter.open(this, Wake(name).sounds) }
+            .onFailure { android.util.Log.w("heare", "no wake word spotter", it) }.getOrNull()
+        return Room(
+            deaf = { Phone.speaking },
+            spotter = spotter,
+            answering = { part.answering(System.currentTimeMillis()) },
+        ) { pcm, called ->
+            part.spoken(pcm, handsFree = true, now = System::currentTimeMillis, called = called)
+        }
     }
 
     /** Spoken out: the room is heard again a moment later, past the echo. */

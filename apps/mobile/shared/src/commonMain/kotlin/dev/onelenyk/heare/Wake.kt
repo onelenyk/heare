@@ -17,11 +17,19 @@ class Wake(name: String?) {
                 add(spelling)
                 // The vocative: you call «Доко», not «Дока».
                 if (spelling.length > 2 && spelling.endsWith("а")) add(spelling.dropLast(1) + "о")
+                if (spelling.length > 2 && spelling.endsWith("a")) add(spelling.dropLast(1) + "o")
             }
             addAll(MISHEARD[key].orEmpty())
         }
         add("heare")
     }.distinct()
+
+    /**
+     * How the name sounds, in Latin letters: what an English keyword model
+     * on the phone can listen for («Дока» → DOKA, DOKO; and HEY HEARE).
+     */
+    val sounds: List<String> = words.filter { w -> w.all { it.code < 128 } }
+        .filter { it != "heare" } + "hey heare"
 
     fun addressed(text: String): Boolean {
         val said = text.lowercase().split(Regex("[^\\p{L}\\p{N}']+")).filter { it.isNotEmpty() }

@@ -86,7 +86,13 @@ class Part(
      * Heard by an ear that is always open, it is said to the brain only with
      * its name, or right after a reply; else the brain keeps it as overheard.
      */
-    suspend fun spoken(pcm: ShortArray, handsFree: Boolean = false, now: () -> Long = { 0L }) {
+    suspend fun spoken(
+        pcm: ShortArray,
+        handsFree: Boolean = false,
+        now: () -> Long = { 0L },
+        /** The phone heard the name itself (the spotter): no need to look again. */
+        called: Boolean = false,
+    ) {
         val key = ear
         val ears = whisper
         if (key == null || ears == null || pcm.size < Whisper.RATE / 3) {
@@ -97,7 +103,7 @@ class Part(
         try {
             val words = ears.words(pcm, key, talk.value.language)
             if (words.isBlank()) return
-            val toMe = !handsFree || Wake(talk.value.name).addressed(words) ||
+            val toMe = called || !handsFree || Wake(talk.value.name).addressed(words) ||
                 now() - lastSaid < FOLLOW_UP_MS
             if (toMe) say(words) else overhear(words)
         } finally {
@@ -159,6 +165,9 @@ class Part(
         val mine = token ?: return
         brain.say(mine, about.channel, text, overheard = true)
     }
+
+    /** Right after a reply: the person may answer without the name. */
+    fun answering(now: Long): Boolean = now - lastSaid < FOLLOW_UP_MS
 
     /** The brain's reply ended at [at] (ms): the next phrase may skip the name. */
     fun replied(at: Long) { lastSaid = at }

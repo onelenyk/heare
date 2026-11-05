@@ -16,22 +16,28 @@ import kotlinx.coroutines.launch
 import kotlin.coroutines.coroutineContext
 
 /**
- * The room, heard with no button: the microphone stays open, the WebRTC
- * voice detector life-as-a-service used tells speech from the room, and
- * each phrase goes to [heard] — one at a time, while the next one is
- * already being listened for.
+ * The room, heard with no button: the microphone stays open, and nothing
+ * leaves the phone until [spotter] hears the assistant's name — or the
+ * person answers right after a reply ([answering]). Then the WebRTC voice
+ * detector life-as-a-service used cuts the phrase out, and it goes to
+ * [heard] — one at a time, while the next one is already listened for.
+ *
+ * With no spotter (the model would not load) every phrase goes, and the
+ * words decide afterwards (Wake), as before.
  *
  * Deaf while [deaf] says so (the phone is speaking): it must not answer
  * itself.
  */
 class Room(
     private val deaf: () -> Boolean,
-    private val heard: suspend (ShortArray) -> Unit,
+    private val spotter: Spotter?,
+    private val answering: () -> Boolean,
+    private val heard: suspend (ShortArray, Boolean) -> Unit,
 ) {
     @SuppressLint("MissingPermission") // Ears starts only with the microphone allowed
     suspend fun listen() = coroutineScope {
         val phrases = Channel<ShortArray>(capacity = 4)
-        launch { for (pcm in phrases) runCatching { heard(pcm) } }
+        launch { for (pcm in phrases) runCatching { heard(pcm, spotter != null) } }
 
         val frame = 320 // 20 ms at 16 kHz
         val size = maxOf(AudioRecord.getMinBufferSize(
@@ -48,6 +54,7 @@ class Room(
         val before = ArrayDeque<ShortArray>()
         val kept = ArrayList<ShortArray>()
         var speaking = false
+        var openUntil = 0L
         try {
             record.startRecording()
             val buffer = ShortArray(frame)
@@ -59,6 +66,15 @@ class Room(
                     continue
                 }
                 val piece = buffer.copyOf()
+                val now = System.currentTimeMillis()
+                if (spotter != null && !speaking && now > openUntil && !answering()) {
+                    // The gate: only the name opens it, heard here, not in the cloud.
+                    if (spotter.heard(piece)) {
+                        openUntil = now + OPEN_MS
+                        before.clear()
+                    }
+                    continue
+                }
                 val speech = vad.isSpeech(piece)
                 if (!speaking) {
                     before.addLast(piece)
@@ -73,7 +89,7 @@ class Room(
                 if (!speech || kept.size >= LONGEST_FRAMES) {
                     // Shorter than a word is a knock on the table.
                     if (kept.size >= SHORTEST_FRAMES) phrases.trySend(kept.joined())
-                    kept.clear(); speaking = false
+                    kept.clear(); speaking = false; openUntil = 0L
                 }
             }
         } finally {
@@ -81,6 +97,7 @@ class Room(
             runCatching { record.stop() }
             record.release()
             vad.close()
+            spotter?.release()
         }
     }
 
@@ -93,6 +110,7 @@ class Room(
 
     private companion object {
         const val QUIET_MS = 800
+        const val OPEN_MS = 8_000L // after the name, this long to start the phrase
         const val BEFORE_FRAMES = 15 // 300 ms: the start of the first word
         const val SHORTEST_FRAMES = 30 // 600 ms
         const val LONGEST_FRAMES = 1_500 // 30 s
