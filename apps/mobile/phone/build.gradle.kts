@@ -69,12 +69,28 @@ android {
         applicationId = "dev.onelenyk.heare"
         minSdk = 30
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.9.4"
+        versionCode = 906
+        versionName = "0.9.6"
         // Pixel phones and watches are arm64; the other three cost 100 MB.
         ndk { abiFilters += "arm64-v8a" }
     }
     buildFeatures { compose = true; buildConfig = true }
+    // Signed only where the person's key is: CI unpacks it from a secret, and
+    // a build without one stays unsigned rather than pretending to be a release.
+    val keystore = System.getenv("HEARE_KEYSTORE")?.takeIf { it.isNotBlank() }?.let(::file)
+    signingConfigs {
+        if (keystore != null) {
+            create("heare") {
+                storeFile = keystore
+                storePassword = System.getenv("HEARE_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("HEARE_KEY_ALIAS")
+                keyPassword = System.getenv("HEARE_KEY_PASSWORD")
+            }
+        }
+    }
+    buildTypes {
+        getByName("release") { signingConfig = signingConfigs.findByName("heare") }
+    }
     sourceSets["main"].assets.srcDir(words)
     sourceSets["main"].assets.srcDir(kws)
     // The model is read as it is, not unpacked from a compressed APK.

@@ -24,6 +24,15 @@ SITE = (re.compile(r'const VERSION = "([^"]+)";'),
         re.compile(r"<span data-version>v([^<]+)</span>"))
 # The server guide's Linux one-liner names the release in three places.
 SERVER = re.compile(r"(releases/download/v|heare/v|--version )\d+\.\d+\.\d+")
+# The phone says it in Gradle, and Android wants a versionCode that only grows:
+# the same semver flattened, so 0.9.6 is 906 and 0.10.0 is 1000.
+PHONE = re.compile(r'versionName = "([^"]+)"')
+PHONE_CODE = re.compile(r"versionCode = (\d+)")
+
+
+def flatten(version: str) -> int:
+    major, minor, patch = parse(version)
+    return major * 10_000 + minor * 100 + patch
 
 
 def stop(text: str) -> None:
@@ -48,9 +57,10 @@ def parse(version: str) -> tuple[int, int, int]:
 
 
 def carriers(repo: Path = REPO) -> list[Path]:
-    """Every file that says the version: each package, the install page, the server guide."""
+    """Every file that says the version: each package, the install page, the server guide, the phone."""
     files = sorted(repo.glob("packages/*/pyproject.toml"))
-    for extra in (repo / "site" / "install.html", repo / "docs" / "server.md"):
+    for extra in (repo / "site" / "install.html", repo / "docs" / "server.md",
+                  repo / "apps" / "mobile" / "phone" / "build.gradle.kts"):
         if extra.exists():
             files.append(extra)
     return files
@@ -74,6 +84,9 @@ def rewrite(path: Path, version: str) -> bool:
     text = path.read_text(encoding="utf-8")
     if path.name == "pyproject.toml":
         new = PYPROJECT.sub(f'version = "{version}"', text, count=1)
+    elif path.name == "build.gradle.kts":
+        new = PHONE.sub(f'versionName = "{version}"', text, count=1)
+        new = PHONE_CODE.sub(f"versionCode = {flatten(version)}", new, count=1)
     elif path.name == "server.md":
         new = SERVER.sub(lambda m: m.group(1) + version, text)
     else:

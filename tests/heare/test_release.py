@@ -31,6 +31,8 @@ def test_one_version_is_written_everywhere_it_is_carried(tmp_path):
     assert 'const VERSION = "7.8.9";' in site and "v7.8.9</span>" in site
     server = (repo / "docs/server.md").read_text(encoding="utf-8")
     assert "heare/v7.8.9/install.sh" in server and "download/v7.8.9 --version 7.8.9" in server
+    phone = (repo / "apps/mobile/phone/build.gradle.kts").read_text(encoding="utf-8")
+    assert 'versionName = "7.8.9"' in phone and "versionCode = 70809" in phone
     # A dependency's lower bound is not the package's version.
     voice = (repo / "packages/heare-voice/pyproject.toml").read_text(encoding="utf-8")
     assert "pywebrtc-audio>=0.1.0" in voice
@@ -44,3 +46,8 @@ def test_a_version_must_be_x_y_z():
     assert release.parse("1.10.0") > release.parse("1.9.9")
     with pytest.raises(SystemExit):
         release.parse("1.2")
+
+
+def test_the_phones_version_code_only_grows():
+    assert release.flatten("0.10.0") > release.flatten("0.9.6")
+    assert release.flatten("1.0.0") > release.flatten("0.99.99")
