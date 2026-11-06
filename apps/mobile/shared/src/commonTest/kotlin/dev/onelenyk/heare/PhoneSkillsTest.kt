@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -35,8 +36,31 @@ class PhoneSkillsTest {
     @Test
     fun what_changes_the_phone_goes_past_the_judge() {
         val changes = PHONE_SKILLS.filter { it.effect == "change" }.map { it.name }.toSet()
-        assertEquals(setOf("open_app", "tap", "type"), changes)
-        assertEquals(setOf("screen", "active_app", "apps"), PHONE_SKILLS.filter { it.effect == "read" }.map { it.name }.toSet())
+        assertEquals(setOf("open_app", "tap", "type", "long_press", "tap_and_wait",
+            "notification_reply", "notification_dismiss", "set_clipboard", "share"), changes)
+        assertEquals(setOf("screen", "active_app", "apps", "notifications", "clipboard", "device"),
+            PHONE_SKILLS.filter { it.effect == "read" }.map { it.name }.toSet())
+        assertTrue(PHONE_SKILLS.single { it.name == "scroll_to_find" }.effect == "harmless")
+    }
+
+    @Test
+    fun time_asked_for_is_a_time_the_brain_waits() {
+        for (skill in PHONE_SKILLS) {
+            val within = skill.within ?: continue
+            assertTrue(within in 1..30, "${skill.name}: $within")
+        }
+        for (slow in listOf("wait", "tap_and_wait", "scroll_to_find")) {
+            assertTrue(PHONE_SKILLS.single { it.name == slow }.within != null, "$slow says its time")
+        }
+    }
+
+    @Test
+    fun the_time_travels_in_the_knock_only_when_asked_for() {
+        val wire = Json { encodeDefaults = true; explicitNulls = false }
+        val slow = wire.encodeToString(Skill.serializer(), PHONE_SKILLS.single { it.name == "wait" })
+        assertTrue("\"within\":25" in slow, slow)
+        val quick = wire.encodeToString(Skill.serializer(), PHONE_SKILLS.single { it.name == "screen" })
+        assertFalse("within" in quick, quick)
     }
 
     private val apps = listOf("Telegram" to "org.telegram.messenger", "Telegram X" to "org.thunderdog.challegram",

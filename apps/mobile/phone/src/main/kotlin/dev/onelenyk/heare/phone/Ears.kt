@@ -55,6 +55,7 @@ class Ears : Service() {
             living = scope.launch { part.live() }
             scope.launch { part.keepKey() }
             Phone.handsFor()?.let { hands -> scope.launch { hands.live() } }
+            Phone.eyesFor()?.let { eyes -> scope.launch { eyes.live() } }
             Phone.hush = { mouth?.stop(); Phone.speaking = false }
             scope.launch {
                 var ear: Job? = null

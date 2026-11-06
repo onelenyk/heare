@@ -7,6 +7,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- open_app: the apps the person can open, by the launcher's list. -->
     <queries>
@@ -54,5 +55,26 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/hands" />
         </service>
+
+        <!-- The phone's notifications, told to the brain as notes (phone-eyes).
+             Only the person turns it on, in «Notification access». -->
+        <service
+            android:name=".Notices"
+            android:exported="false"
+            android:label="heare"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+        <!-- After a restart: one notification, because the microphone cannot
+             start itself in the background (Boot). -->
+        <receiver
+            android:name=".Boot"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

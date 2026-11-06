@@ -2,24 +2,36 @@ package dev.onelenyk.heare.phone
 
 import android.Manifest
 import android.content.Intent
-import android.provider.Settings
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -28,7 +40,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -40,8 +51,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import dev.onelenyk.heare.Hearing
@@ -60,8 +74,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme(colorScheme = darkColorScheme()) {
-                Surface(Modifier.fillMaxSize()) {
+            HeareTheme {
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     val talk by Phone.talk.collectAsState()
                     var paired by remember { mutableStateOf(Phone.paired) }
                     if (!paired) {
@@ -106,15 +120,23 @@ private fun Pairing(done: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     Column(
-        Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp),
+        Modifier.fillMaxSize().safeDrawingPadding().imePadding()
+            .verticalScroll(rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text("heare", style = MaterialTheme.typography.headlineLarge)
-        Text(tr("On the pult, take a pairing code and type it here."))
+        Spacer(Modifier.height(24.dp))
+        Text(tr("heare"), style = MaterialTheme.typography.headlineLarge,
+            color = MaterialTheme.colorScheme.primary)
+        Text(tr("Pair this phone with its brain."), style = MaterialTheme.typography.headlineSmall)
+        Text(tr("On the pult, take a pairing code and type it here."),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
         OutlinedTextField(address, { address = it }, Modifier.fillMaxWidth(),
-            label = { Text(tr("Brain address")) }, singleLine = true)
+            label = { Text(tr("Brain address")) }, singleLine = true,
+            shape = MaterialTheme.shapes.medium)
         OutlinedTextField(code, { code = it }, Modifier.fillMaxWidth(),
-            label = { Text(tr("Code")) }, singleLine = true)
+            label = { Text(tr("Code")) }, singleLine = true,
+            shape = MaterialTheme.shapes.medium)
         trouble?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Button(
             enabled = !busy && code.isNotBlank(),
@@ -126,80 +148,311 @@ private fun Pairing(done: () -> Unit) {
                     if (trouble == null) done()
                 }
             },
-        ) { Text(tr("Pair")) }
+            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+        ) { Text(if (busy) tr("Pairing…") else tr("Pair")) }
     }
 }
 
 @Composable
 private fun Conversation(talk: Talk?, forget: () -> Unit) {
     var typed by remember { mutableStateOf("") }
+    var typing by remember { mutableStateOf(false) }
     val list = rememberLazyListState()
     val lines = talk?.lines.orEmpty()
+    val handsOn by Phone.handsOn.collectAsState()
+    val eyesOn by Phone.eyesOn.collectAsState()
+    val handsFree by Phone.handsFree.collectAsState()
+    val speaking by Phone.speakingNow.collectAsState()
+    val hearing = talk?.hearing ?: Hearing.Idle
+    val ready = talk?.link == Link.Here && talk.keyWaiting.not()
     LaunchedEffect(lines.size, lines.lastOrNull()?.text) {
         if (lines.isNotEmpty()) list.animateScrollToItem(lines.size - 1)
     }
-    Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(16.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(talk?.name ?: "heare", style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.weight(1f))
-            Text(linkWords(talk), color = linkColor(talk?.link))
-            TextButton(onClick = forget) { Text(tr("Unpair")) }
-        }
-        LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = list,
-            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(horizontal = 16.dp)) {
+        Header(talk?.name, forget)
+        StateCard(talk, handsOn, eyesOn, speaking)
+        LazyColumn(
+            Modifier.weight(1f).fillMaxWidth(),
+            state = list,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(vertical = 12.dp),
+        ) {
+            if (lines.isEmpty()) item { EmptyConversation() }
             items(lines) { Said(it) }
         }
-        if (talk?.keyWaiting == true) {
-            Text(tr("To hear you, allow the recogniser's key for the phone on the pult."),
-                color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.padding(vertical = 8.dp))
+        if (!typing) {
+            Permissions(handsOn = handsOn, eyesOn = eyesOn, keyWaiting = talk?.keyWaiting == true)
+            Spacer(Modifier.height(10.dp))
         }
-        val handsOn by Phone.handsOn.collectAsState()
-        if (!handsOn) {
-            val context = LocalContext.current
-            Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(tr("So the brain can use the phone, turn on heare in Accessibility."), Modifier.weight(1f))
-                TextButton(onClick = {
-                    context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                }) { Text(tr("Turn on")) }
+        VoiceControl(
+            handsFree = handsFree,
+            hearing = hearing,
+            ready = ready,
+            speaking = speaking,
+            onHandsFree = { Phone.handsFree(it) },
+            onListen = { Phone.listen() },
+        )
+        Spacer(Modifier.height(6.dp))
+        SayRow(
+            typed = typed,
+            onTyped = { typed = it },
+            canSend = typed.isNotBlank() && talk?.link == Link.Here,
+            onSend = { Phone.say(typed); typed = "" },
+            onFocus = { typing = it },
+        )
+    }
+}
+
+@Composable
+private fun Header(name: String?, forget: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 56.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            name ?: tr("heare"),
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = forget, modifier = Modifier.heightIn(min = 48.dp)) {
+            Text(tr("Unpair"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun StateCard(talk: Talk?, handsOn: Boolean, eyesOn: Boolean, speaking: Boolean) {
+    val hearing = talk?.hearing ?: Hearing.Idle
+    Surface(
+        Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StateChip(linkWords(talk), linkColor(talk?.link))
+                if (speaking) {
+                    StateChip(tr("Speaking…"), heareAccent)
+                } else {
+                    StateChip(hearingWords(hearing), hearingColor(hearing))
+                }
+            }
+            if (talk?.keyWaiting == true) {
+                Spacer(Modifier.height(8.dp))
+                StateChip(tr("Voice is waiting for its key"), heareWarn, Modifier.fillMaxWidth())
+            }
+            Spacer(Modifier.height(10.dp))
+            PartRow(tr("Voice"), tr("hears and answers"), true)
+            PartRow(tr("Hands"), tr("uses the screen"), handsOn)
+            PartRow(tr("Eyes"), tr("sees notifications"), eyesOn)
+        }
+    }
+}
+
+@Composable
+private fun StateChip(words: String, color: Color, modifier: Modifier = Modifier) {
+    Surface(modifier, shape = MaterialTheme.shapes.small, color = color.copy(alpha = 0.14f)) {
+        Row(
+            Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Dot(color)
+            Text(words, style = MaterialTheme.typography.labelMedium, color = color)
+        }
+    }
+}
+
+@Composable
+private fun Dot(color: Color, size: Dp = 8.dp) {
+    Box(Modifier.size(size).background(color, CircleShape))
+}
+
+@Composable
+private fun PartRow(name: String, what: String, on: Boolean) {
+    val color = if (on) heareGood else MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Dot(color)
+        Spacer(Modifier.width(8.dp))
+        Text(name, style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurface)
+        Spacer(Modifier.width(6.dp))
+        Text(what, style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+        Text(if (on) tr("On") else tr("Off"),
+            style = MaterialTheme.typography.labelSmall, color = color)
+    }
+}
+
+@Composable
+private fun Permissions(handsOn: Boolean, eyesOn: Boolean, keyWaiting: Boolean) {
+    val context = LocalContext.current
+    val allGood = handsOn && eyesOn && !keyWaiting
+    Surface(
+        Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        border = if (allGood) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        if (allGood) {
+            Row(
+                Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Dot(heareGood)
+                Text(tr("The brain can see and do everything here."),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        } else {
+            Column(
+                Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(tr("So the brain can see and do"),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface)
+                if (!handsOn) {
+                    PermissionRow(
+                        tr("Hands need Accessibility to use the screen."),
+                        tr("Open"),
+                    ) { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+                }
+                if (!eyesOn) {
+                    PermissionRow(
+                        tr("Eyes need Notification access to see what arrives."),
+                        tr("Open"),
+                    ) { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
+                }
+                if (keyWaiting) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Dot(heareWarn, 6.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text(tr("Voice waits for the recogniser's key on the pult."),
+                            style = MaterialTheme.typography.bodySmall, color = heareWarn)
+                    }
+                }
             }
         }
-        val hearing = talk?.hearing ?: Hearing.Idle
-        val handsFree by Phone.handsFree.collectAsState()
-        val ready = talk?.link == Link.Here && talk.keyWaiting.not()
-        Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(tr("Listen hands-free"), Modifier.weight(1f))
-            Switch(checked = handsFree, onCheckedChange = { Phone.handsFree(it) })
+    }
+}
+
+@Composable
+private fun PermissionRow(words: String, action: String, onAction: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(words, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        TextButton(onClick = onAction, modifier = Modifier.heightIn(min = 48.dp)) {
+            Text(action)
         }
-        if (handsFree) {
-            // The open microphone holds the mic: no button, only what it does.
-            Text(when (hearing) {
-                Hearing.Recognizing -> tr("Recognising…")
-                else -> if (ready) tr("Listening to the room. Call me by name.") else tr("connecting…")
-            }, Modifier.fillMaxWidth().padding(vertical = 24.dp),
-                style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-        } else {
+    }
+}
+
+@Composable
+private fun VoiceControl(
+    handsFree: Boolean,
+    hearing: Hearing,
+    ready: Boolean,
+    speaking: Boolean,
+    onHandsFree: (Boolean) -> Unit,
+    onListen: () -> Unit,
+) {
+    if (handsFree) {
+        HandsFreeControl(hearing, ready, speaking, onHandsFree)
+    } else {
+        Column {
             Button(
-                onClick = { Phone.listen() },
-                enabled = ready && hearing != Hearing.Recognizing,
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).height(72.dp),
+                onClick = onListen,
+                enabled = ready && hearing != Hearing.Recognizing && !speaking,
+                modifier = Modifier.fillMaxWidth().height(64.dp),
                 colors = if (hearing == Hearing.Listening) ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.error) else ButtonDefaults.buttonColors(),
             ) {
-                Text(when (hearing) {
-                    Hearing.Idle -> tr("Speak")
-                    Hearing.Listening -> tr("Listening… tap to finish")
-                    Hearing.Recognizing -> tr("Recognising…")
-                }, style = MaterialTheme.typography.titleMedium)
+                Text(speakWords(hearing), style = MaterialTheme.typography.titleMedium)
+            }
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(tr("Listen hands-free"), Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Switch(checked = false, onCheckedChange = { onHandsFree(true) })
             }
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(typed, { typed = it }, Modifier.weight(1f),
-                placeholder = { Text(tr("Say something…")) })
-            TextButton(
-                enabled = typed.isNotBlank() && talk?.link == Link.Here,
-                onClick = { Phone.say(typed); typed = "" },
-            ) { Text(tr("Send")) }
+    }
+}
+
+@Composable
+private fun HandsFreeControl(
+    hearing: Hearing,
+    ready: Boolean,
+    speaking: Boolean,
+    onHandsFree: (Boolean) -> Unit,
+) {
+    val color = if (speaking || (ready && hearing != Hearing.Recognizing)) heareAccent else heareWarn
+    val words = when {
+        speaking -> tr("Speaking…")
+        hearing == Hearing.Recognizing -> tr("Recognising…")
+        ready -> tr("Listening to the room. Call me by name.")
+        else -> tr("Waiting for the brain…")
+    }
+    Surface(
+        Modifier.fillMaxWidth().heightIn(min = 112.dp),
+        shape = MaterialTheme.shapes.large,
+        color = heareAccent.copy(alpha = 0.10f),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.5f)),
+    ) {
+        Column(
+            Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Dot(color, 10.dp)
+                Text(words, style = MaterialTheme.typography.titleMedium,
+                    color = color, textAlign = TextAlign.Center)
+            }
+            Spacer(Modifier.height(2.dp))
+            Text(tr("Hands-free is on"), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            TextButton(onClick = { onHandsFree(false) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text(tr("Turn off hands-free"))
+            }
         }
+    }
+}
+
+@Composable
+private fun SayRow(
+    typed: String,
+    onTyped: (String) -> Unit,
+    canSend: Boolean,
+    onSend: () -> Unit,
+    onFocus: (Boolean) -> Unit,
+) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+        OutlinedTextField(
+            typed, onTyped,
+            Modifier.weight(1f).onFocusChanged { onFocus(it.isFocused) },
+            placeholder = { Text(tr("Say something…")) },
+            maxLines = 4,
+            shape = MaterialTheme.shapes.large,
+        )
+        Spacer(Modifier.width(4.dp))
+        TextButton(
+            enabled = canSend,
+            onClick = onSend,
+            modifier = Modifier.heightIn(min = 48.dp),
+        ) { Text(tr("Send")) }
     }
 }
 
@@ -207,26 +460,78 @@ private fun Conversation(talk: Talk?, forget: () -> Unit) {
 private fun Said(line: Line) {
     val mine = line.who == Who.Person
     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
-        Surface(
-            color = if (mine) MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.surfaceVariant,
-            shape = MaterialTheme.shapes.medium,
+        Column(
+            Modifier.widthIn(max = 320.dp),
+            horizontalAlignment = if (mine) Alignment.End else Alignment.Start,
         ) {
-            Text(line.text, Modifier.padding(12.dp),
-                color = if (line.failed) MaterialTheme.colorScheme.error else Color.Unspecified)
+            Text(
+                if (mine) tr("You") else tr("heare"),
+                style = MaterialTheme.typography.labelSmall,
+                color = if (line.failed) MaterialTheme.colorScheme.error
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp),
+            )
+            Spacer(Modifier.height(2.dp))
+            val bubble = when {
+                line.failed -> MaterialTheme.colorScheme.errorContainer
+                mine -> MaterialTheme.colorScheme.primaryContainer
+                else -> MaterialTheme.colorScheme.surfaceVariant
+            }
+            val ink = when {
+                line.failed -> MaterialTheme.colorScheme.onErrorContainer
+                mine -> MaterialTheme.colorScheme.onPrimaryContainer
+                else -> MaterialTheme.colorScheme.onSurface
+            }
+            Surface(color = bubble, shape = MaterialTheme.shapes.medium) {
+                Text(line.text, Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    color = ink, style = MaterialTheme.typography.bodyLarge)
+            }
         }
     }
 }
 
+@Composable
+private fun EmptyConversation() {
+    Column(
+        Modifier.fillMaxWidth().padding(vertical = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(tr("Nothing said yet."), style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(tr("Speak, type, or turn on hands-free."),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
 private fun linkWords(talk: Talk?): String = when (talk?.link) {
-    Link.Here -> tr("connected")
-    Link.Knocking, null -> tr("connecting…")
-    Link.Away -> tr("no connection")
-    Link.Unpaired -> tr("the brain forgot this phone")
+    Link.Here -> tr("Connected")
+    Link.Knocking, null -> tr("Connecting…")
+    Link.Away -> tr("No connection")
+    Link.Unpaired -> tr("Unpaired")
 }
 
 private fun linkColor(link: Link?): Color = when (link) {
-    Link.Here -> Color(0xFF7BD88F)
-    Link.Away, Link.Unpaired -> Color(0xFFFF8A80)
-    else -> Color(0xFFB0B0B0)
+    Link.Here -> heareGood
+    Link.Knocking, null -> heareWarn
+    Link.Away, Link.Unpaired -> heareBad
+}
+
+private fun hearingWords(hearing: Hearing): String = when (hearing) {
+    Hearing.Idle -> tr("Quiet")
+    Hearing.Listening -> tr("Hearing you")
+    Hearing.Recognizing -> tr("Recognising…")
+}
+
+private fun hearingColor(hearing: Hearing): Color = when (hearing) {
+    Hearing.Idle -> heareMuted
+    Hearing.Listening -> heareAccent
+    Hearing.Recognizing -> heareWarn
+}
+
+private fun speakWords(hearing: Hearing): String = when (hearing) {
+    Hearing.Idle -> tr("Speak")
+    Hearing.Listening -> tr("Listening… tap to finish")
+    Hearing.Recognizing -> tr("Recognising…")
 }

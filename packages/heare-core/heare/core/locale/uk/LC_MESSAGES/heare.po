@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-05 17:44+0200\n"
+"POT-Creation-Date: 2026-11-05 23:43+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -235,6 +235,12 @@ msgstr "старт із маком не вимкнувся"
 msgid "heare is still running — first «Quit» in its menu"
 msgstr "heare ще працює — спершу «Вийти» в його меню"
 
+msgid "heare"
+msgstr "heare"
+
+msgid "Tap to listen"
+msgstr "Торкнись, щоб слухати"
+
 msgid "What heare says"
 msgstr "Що каже heare"
 
@@ -243,6 +249,9 @@ msgstr "heare поруч"
 
 msgid "Connected to the brain"
 msgstr "На зв'язку з мозком"
+
+msgid "Pair this phone with its brain."
+msgstr "Сполучи цей телефон із його мозком."
 
 msgid "On the pult, take a pairing code and type it here."
 msgstr "Візьми код парування на пульті й введи його тут."
@@ -253,20 +262,62 @@ msgstr "Адреса мозку"
 msgid "Code"
 msgstr "Код"
 
+msgid "Pairing…"
+msgstr "Сполучаю…"
+
 msgid "Pair"
 msgstr "Спарувати"
 
 msgid "Unpair"
 msgstr "Відʼєднати"
 
-msgid "To hear you, allow the recogniser's key for the phone on the pult."
-msgstr "Щоб чути тебе, дозволь на пульті ключ розпізнавання для телефона."
+msgid "Speaking…"
+msgstr "Говорю…"
 
-msgid "So the brain can use the phone, turn on heare in Accessibility."
-msgstr "Щоб мозок міг користуватися телефоном, увімкніть heare у «Спеціальних можливостях»."
+msgid "Voice is waiting for its key"
+msgstr "Голос чекає на свій ключ"
 
-msgid "Turn on"
-msgstr "Увімкнути"
+msgid "Voice"
+msgstr "Голос"
+
+msgid "hears and answers"
+msgstr "чує й відповідає"
+
+msgid "Hands"
+msgstr "Руки"
+
+msgid "uses the screen"
+msgstr "користується екраном"
+
+msgid "Eyes"
+msgstr "Очі"
+
+msgid "sees notifications"
+msgstr "бачить сповіщення"
+
+msgid "On"
+msgstr "Увімкнено"
+
+msgid "Off"
+msgstr "Вимкнено"
+
+msgid "The brain can see and do everything here."
+msgstr "Мозок бачить і робить тут усе."
+
+msgid "So the brain can see and do"
+msgstr "Щоб мозок бачив і робив"
+
+msgid "Hands need Accessibility to use the screen."
+msgstr "Рукам потрібні «Спеціальні можливості», щоб користуватися екраном."
+
+msgid "Open"
+msgstr "Відкрити"
+
+msgid "Eyes need Notification access to see what arrives."
+msgstr "Очам потрібен «Доступ до сповіщень», щоб бачити, що надходить."
+
+msgid "Voice waits for the recogniser's key on the pult."
+msgstr "Голос чекає на ключ розпізнавача на пульті."
 
 msgid "Listen hands-free"
 msgstr "Слухати без рук"
@@ -277,14 +328,14 @@ msgstr "Розпізнаю…"
 msgid "Listening to the room. Call me by name."
 msgstr "Слухаю кімнату. Клич мене на ім'я."
 
-msgid "connecting…"
-msgstr "підключаюсь…"
+msgid "Waiting for the brain…"
+msgstr "Чекаю на мозок…"
 
-msgid "Speak"
-msgstr "Говори"
+msgid "Hands-free is on"
+msgstr "Без рук увімкнено"
 
-msgid "Listening… tap to finish"
-msgstr "Слухаю… торкнись, щоб завершити"
+msgid "Turn off hands-free"
+msgstr "Вимкнути «без рук»"
 
 msgid "Say something…"
 msgstr "Скажи щось…"
@@ -292,14 +343,38 @@ msgstr "Скажи щось…"
 msgid "Send"
 msgstr "Надіслати"
 
-msgid "connected"
-msgstr "під'єднано"
+msgid "You"
+msgstr "Ти"
 
-msgid "no connection"
-msgstr "немає зв'язку"
+msgid "Nothing said yet."
+msgstr "Ще нічого не сказано."
 
-msgid "the brain forgot this phone"
-msgstr "мозок забув цей телефон"
+msgid "Speak, type, or turn on hands-free."
+msgstr "Говори, пиши або увімкни «без рук»."
+
+msgid "Connected"
+msgstr "На зв'язку"
+
+msgid "Connecting…"
+msgstr "З'єднуюсь…"
+
+msgid "No connection"
+msgstr "Немає зв'язку"
+
+msgid "Unpaired"
+msgstr "Не сполучено"
+
+msgid "Quiet"
+msgstr "Тихо"
+
+msgid "Hearing you"
+msgstr "Чую тебе"
+
+msgid "Speak"
+msgstr "Говори"
+
+msgid "Listening… tap to finish"
+msgstr "Слухаю… торкнись, щоб завершити"
 
 msgid "The code did not fit. Take a new one on the pult."
 msgstr "Код не підійшов. Візьми новий на пульті."
@@ -678,14 +753,8 @@ msgstr "виконавець"
 msgid "page"
 msgstr "сторінка"
 
-msgid "Eyes"
-msgstr "Очі"
-
 msgid "chat"
 msgstr "чат"
-
-msgid "Voice"
-msgstr "Голос"
 
 msgid "CLI hands"
 msgstr "Руки CLI"
@@ -716,6 +785,9 @@ msgstr "сторінка в браузері"
 
 msgid "a conversation in the terminal"
 msgstr "розмова в терміналі"
+
+msgid "connected"
+msgstr "під'єднано"
 
 msgid "not connected"
 msgstr "не на зв'язку"
@@ -868,9 +940,6 @@ msgstr "дієслова"
 
 msgid "No turn yet."
 msgstr "Ще не було ходу."
-
-msgid "Hands"
-msgstr "Руки"
 
 msgid "What heare handed over; the agent's own prompt stays inside the agent."
 msgstr "Те, що heare передав; власний промпт агента лишається в агенті."
@@ -1916,6 +1985,9 @@ msgstr "Адреса мозку"
 msgid "The connection code — on the brain's page: ⚙ → Devices"
 msgstr "Код підключення — на сторінці мозку: ⚙ → Пристрої"
 
+msgid "connecting…"
+msgstr "підключаюсь…"
+
 msgid "What heare hears, sees and acts with on this computer. They turn on and off at once — any time later too."
 msgstr "Те, чим heare чує, бачить і діє на цьому комп'ютері. Вмикаються й вимикаються одразу — будь-коли потім теж."
 
@@ -2350,4 +2422,22 @@ msgstr "я перестав чути {s} секунд тому — схоже, �
 
 #~ msgid "I cannot hear — macOS gives me only silence from the microphone. Check heare in Privacy & Security → Microphone."
 #~ msgstr "Я не чую — macOS дає мені з мікрофона саму тишу. Перевір heare у «Приватність і безпека → Мікрофон»."
+
+#~ msgid "To hear you, allow the recogniser's key for the phone on the pult."
+#~ msgstr "Щоб чути тебе, дозволь на пульті ключ розпізнавання для телефона."
+
+#~ msgid "So the brain can use the phone, turn on heare in Accessibility."
+#~ msgstr "Щоб мозок міг користуватися телефоном, увімкніть heare у «Спеціальних можливостях»."
+
+#~ msgid "Turn on"
+#~ msgstr "Увімкнути"
+
+#~ msgid "So the brain can see your notifications, allow heare in Notification access."
+#~ msgstr "Щоб мозок бачив ваші сповіщення, дозвольте heare у «Доступі до сповіщень»."
+
+#~ msgid "no connection"
+#~ msgstr "немає зв'язку"
+
+#~ msgid "the brain forgot this phone"
+#~ msgstr "мозок забув цей телефон"
 

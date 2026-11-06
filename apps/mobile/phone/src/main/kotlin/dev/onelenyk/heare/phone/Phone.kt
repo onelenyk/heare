@@ -24,7 +24,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlin.random.Random
 
 class App : Application() {
@@ -42,6 +45,7 @@ class App : Application() {
 object Phone {
     const val CHANNEL = "phone"
     const val HANDS = "phone-hands"
+    const val EYES = "phone-eyes"
     const val DEFAULT_BRAIN = "https://brain.onelenyk.dev"
 
     private lateinit var prefs: SharedPreferences
@@ -150,11 +154,54 @@ object Phone {
 
     private val mic = Mic()
 
+    /** The eyes part: what the phone notices, sent as notes (mobile.md, step D). */
+    var eyes: Part? = null
+        private set
+
+    val eyesOn = MutableStateFlow(false)
+
+    fun eyesFor(): Part? {
+        val token = prefs.getString("machine_token", null) ?: return null
+        eyes?.let { return it }
+        val about = Knock(
+            channel = EYES,
+            forms = listOf("input"),
+            about = "the phone around the person: which app is in front, what notifications arrive",
+            key = "$EYES@$name",
+            host = name,
+            version = BuildConfig.VERSION_NAME,
+            started = System.currentTimeMillis() / 1000.0,
+        )
+        return Part(Brain(base, http), token, about).also { eyes = it }
+    }
+
+    /** A fact the phone noticed: told, never answered, never awaited. */
+    fun noticed(key: String, value: JsonElement) {
+        val live = eyes ?: return
+        scope.launch { runCatching { live.note(key, value) } }
+    }
+
+    /** A notification is news for a while, not a state that stays. */
+    fun notification(app: String, title: String, text: String) {
+        val words = listOf(title, text).filter { it.isNotBlank() }.joinToString(" — ").trim()
+        if (words.isBlank()) return
+        noticed("notification", buildJsonObject {
+            put("text", "$app: $words".take(200))
+            put("label", "on the phone")
+            put("until", System.currentTimeMillis() / 1000.0 + NOTIFICATION_S)
+        })
+    }
+
     /** The conversation is on the screen: a reply needs no notification then. */
     @Volatile var visible = false
 
-    /** The phone is speaking: the open microphone must not hear it. */
-    @Volatile var speaking = false
+    /** The phone is speaking: the open microphone must not hear it, and the screen says so. */
+    private val talking = MutableStateFlow(false)
+    val speakingNow: StateFlow<Boolean> = talking
+
+    var speaking: Boolean
+        get() = talking.value
+        set(value) { talking.value = value }
 
     /** The microphone always open (Room), kept across launches. */
     val handsFree = MutableStateFlow(false)
@@ -192,3 +239,6 @@ object Phone {
     private fun wordsFor(language: String): String? =
         runCatching { app.assets.open("words/$language.json").bufferedReader().readText() }.getOrNull()
 }
+
+/** How long a notification stays «now» for the model: minutes, not a state. */
+private const val NOTIFICATION_S = 900.0

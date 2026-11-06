@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-05 17:44+0200\n"
+"POT-Creation-Date: 2026-11-05 23:43+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -235,6 +235,12 @@ msgstr ""
 msgid "heare is still running — first «Quit» in its menu"
 msgstr ""
 
+msgid "heare"
+msgstr ""
+
+msgid "Tap to listen"
+msgstr ""
+
 msgid "What heare says"
 msgstr ""
 
@@ -242,6 +248,9 @@ msgid "heare is here"
 msgstr ""
 
 msgid "Connected to the brain"
+msgstr ""
+
+msgid "Pair this phone with its brain."
 msgstr ""
 
 msgid "On the pult, take a pairing code and type it here."
@@ -253,19 +262,61 @@ msgstr ""
 msgid "Code"
 msgstr ""
 
+msgid "Pairing…"
+msgstr ""
+
 msgid "Pair"
 msgstr ""
 
 msgid "Unpair"
 msgstr ""
 
-msgid "To hear you, allow the recogniser's key for the phone on the pult."
+msgid "Speaking…"
 msgstr ""
 
-msgid "So the brain can use the phone, turn on heare in Accessibility."
+msgid "Voice is waiting for its key"
 msgstr ""
 
-msgid "Turn on"
+msgid "Voice"
+msgstr ""
+
+msgid "hears and answers"
+msgstr ""
+
+msgid "Hands"
+msgstr ""
+
+msgid "uses the screen"
+msgstr ""
+
+msgid "Eyes"
+msgstr ""
+
+msgid "sees notifications"
+msgstr ""
+
+msgid "On"
+msgstr ""
+
+msgid "Off"
+msgstr ""
+
+msgid "The brain can see and do everything here."
+msgstr ""
+
+msgid "So the brain can see and do"
+msgstr ""
+
+msgid "Hands need Accessibility to use the screen."
+msgstr ""
+
+msgid "Open"
+msgstr ""
+
+msgid "Eyes need Notification access to see what arrives."
+msgstr ""
+
+msgid "Voice waits for the recogniser's key on the pult."
 msgstr ""
 
 msgid "Listen hands-free"
@@ -277,13 +328,13 @@ msgstr ""
 msgid "Listening to the room. Call me by name."
 msgstr ""
 
-msgid "connecting…"
+msgid "Waiting for the brain…"
 msgstr ""
 
-msgid "Speak"
+msgid "Hands-free is on"
 msgstr ""
 
-msgid "Listening… tap to finish"
+msgid "Turn off hands-free"
 msgstr ""
 
 msgid "Say something…"
@@ -292,13 +343,37 @@ msgstr ""
 msgid "Send"
 msgstr ""
 
-msgid "connected"
+msgid "You"
 msgstr ""
 
-msgid "no connection"
+msgid "Nothing said yet."
 msgstr ""
 
-msgid "the brain forgot this phone"
+msgid "Speak, type, or turn on hands-free."
+msgstr ""
+
+msgid "Connected"
+msgstr ""
+
+msgid "Connecting…"
+msgstr ""
+
+msgid "No connection"
+msgstr ""
+
+msgid "Unpaired"
+msgstr ""
+
+msgid "Quiet"
+msgstr ""
+
+msgid "Hearing you"
+msgstr ""
+
+msgid "Speak"
+msgstr ""
+
+msgid "Listening… tap to finish"
 msgstr ""
 
 msgid "The code did not fit. Take a new one on the pult."
@@ -678,13 +753,7 @@ msgstr ""
 msgid "page"
 msgstr ""
 
-msgid "Eyes"
-msgstr ""
-
 msgid "chat"
-msgstr ""
-
-msgid "Voice"
 msgstr ""
 
 msgid "CLI hands"
@@ -715,6 +784,9 @@ msgid "a page in the browser"
 msgstr ""
 
 msgid "a conversation in the terminal"
+msgstr ""
+
+msgid "connected"
 msgstr ""
 
 msgid "not connected"
@@ -867,9 +939,6 @@ msgid "verbs"
 msgstr ""
 
 msgid "No turn yet."
-msgstr ""
-
-msgid "Hands"
 msgstr ""
 
 msgid "What heare handed over; the agent's own prompt stays inside the agent."
@@ -1908,6 +1977,9 @@ msgstr ""
 msgid "The connection code — on the brain's page: ⚙ → Devices"
 msgstr ""
 
+msgid "connecting…"
+msgstr ""
+
 msgid "What heare hears, sees and acts with on this computer. They turn on and off at once — any time later too."
 msgstr ""
 
@@ -2344,5 +2416,23 @@ msgstr ""
 #~ msgstr ""
 
 #~ msgid "I cannot hear — macOS gives me only silence from the microphone. Check heare in Privacy & Security → Microphone."
+#~ msgstr ""
+
+#~ msgid "To hear you, allow the recogniser's key for the phone on the pult."
+#~ msgstr ""
+
+#~ msgid "So the brain can use the phone, turn on heare in Accessibility."
+#~ msgstr ""
+
+#~ msgid "Turn on"
+#~ msgstr ""
+
+#~ msgid "So the brain can see your notifications, allow heare in Notification access."
+#~ msgstr ""
+
+#~ msgid "no connection"
+#~ msgstr ""
+
+#~ msgid "the brain forgot this phone"
 #~ msgstr ""
 

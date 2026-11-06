@@ -8,6 +8,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -167,6 +168,12 @@ class Part(
         talk.update { it.copy(lines = it.lines + Line(Who.Person, said)) }
         val mine = token ?: throw Refused(0, "not connected")
         brain.say(mine, about.channel, said)
+    }
+
+    /** A fact about the surroundings: told once, answered never. */
+    suspend fun note(key: String, value: JsonElement) {
+        val mine = token ?: return
+        brain.note(mine, about.channel, key, value)
     }
 
     private suspend fun overhear(text: String) {

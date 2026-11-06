@@ -1,8 +1,15 @@
 package dev.onelenyk.heare.phone
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.GestureDescription
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Path
+import android.graphics.Rect
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
@@ -162,7 +169,7 @@ class Hands : AccessibilityService() {
     private fun front(): String? = rootInActiveWindow?.packageName?.toString() ?: app
 
     suspend fun does(name: String, args: JsonObject): Done {
-        val read = name in setOf("screen", "active_app", "apps")
+        val read = name in setOf("screen", "active_app", "apps", "scroll_to_find")
         if (read) settled()
         val done = act(name, args)
         if (!read && done.ok) settled()
@@ -178,14 +185,130 @@ class Hands : AccessibilityService() {
         "scroll" -> said(scrolled(args.text("direction") != "up"), "scrolled")
         "open_app" -> opened(args.text("name").orEmpty())
         "tap" -> {
-            val index = (args["index"] as? JsonPrimitive)?.intOrNull
-            val node = index?.let { seen[it] } ?: args.text("text")?.let(::find)
+            val node = node(args)
             if (node == null) Done(false, JsonPrimitive("no such element; read the screen again"))
             else said(tap(node), "tapped")
         }
         "type" -> said(typedSurely(args.text("text").orEmpty(), args.text("field")), "typed")
+        "wait" -> {
+            delay((args.int("seconds") ?: 1).coerceIn(1, 20) * 1_000L)
+            Done(true, JsonPrimitive("waited"))
+        }
+        "long_press" -> {
+            val node = node(args)
+            if (node == null) Done(false, JsonPrimitive("no such element; read the screen again"))
+            else said(held(node), "held")
+        }
+        "swipe" -> said(swiped(args.text("direction") ?: "down", args.int("percent") ?: 50), "swiped")
+        "tap_and_wait" -> tappedAndWaited(args)
+        "scroll_to_find" -> scrolledTo(args)
+        "notifications" -> Done(true, JsonPrimitive(Notices.listing()))
+        "notification_reply" -> said(Notices.reply(args.text("app").orEmpty(), args.text("text").orEmpty()), "replied")
+        "notification_dismiss" -> said(Notices.dismiss(args.text("app").orEmpty()), "dismissed")
+        "clipboard" -> Done(true, JsonPrimitive(clip()))
+        "set_clipboard" -> said(copied(args.text("text").orEmpty()), "copied")
+        "share" -> said(shared(args.text("text").orEmpty()), "shared")
+        "open_url" -> said(openedUrl(args.text("url").orEmpty()), "opened")
+        "device" -> Done(true, JsonPrimitive(device()))
         else -> Done(false, JsonPrimitive("no such skill"))
     }
+
+    /** The element the model meant: its number from the last screen, or its words. */
+    private fun node(args: JsonObject): AccessibilityNodeInfo? =
+        args.int("index")?.let { seen[it] } ?: args.text("text")?.let(::find)
+
+    private suspend fun held(node: AccessibilityNodeInfo): Boolean {
+        val box = Rect()
+        node.getBoundsInScreen(box)
+        if (box.isEmpty) return false
+        val path = Path().apply { moveTo(box.exactCenterX(), box.exactCenterY()) }
+        val stroke = GestureDescription.StrokeDescription(path, 0, HOLD_MS)
+        val went = dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
+        delay(HOLD_MS + 150)
+        return went
+    }
+
+    private suspend fun swiped(direction: String, percent: Int): Boolean {
+        val screen = resources.displayMetrics
+        val width = screen.widthPixels.toFloat()
+        val height = screen.heightPixels.toFloat()
+        val far = percent.coerceIn(10, 90) / 100f
+        val (fromX, fromY, toX, toY) = when (direction) {
+            "up" -> floatArrayOf(width / 2, height * (0.5f + far / 2), width / 2, height * (0.5f - far / 2))
+            "left" -> floatArrayOf(width * (0.5f + far / 2), height / 2, width * (0.5f - far / 2), height / 2)
+            "right" -> floatArrayOf(width * (0.5f - far / 2), height / 2, width * (0.5f + far / 2), height / 2)
+            else -> floatArrayOf(width / 2, height * (0.5f - far / 2), width / 2, height * (0.5f + far / 2))
+        }
+        val path = Path().apply { moveTo(fromX, fromY); lineTo(toX, toY) }
+        val stroke = GestureDescription.StrokeDescription(path, 0, SWIPE_MS)
+        val went = dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
+        delay(SWIPE_MS + 150)
+        return went
+    }
+
+    private suspend fun tappedAndWaited(args: JsonObject): Done {
+        val node = node(args) ?: return Done(false, JsonPrimitive("no such element; read the screen again"))
+        val before = screen().toString()
+        if (!tap(node)) return Done(false, JsonPrimitive("could not: the screen did not allow it"))
+        val seconds = (args.int("seconds") ?: 5).coerceIn(1, 20)
+        val changed = withTimeoutOrNull(seconds * 1_000L) {
+            while (screen().toString() == before) delay(150)
+            true
+        } == true
+        return if (changed) Done(true, screen())
+        else Done(true, JsonPrimitive("tapped, but the screen did not change: $before"))
+    }
+
+    private suspend fun scrolledTo(args: JsonObject): Done {        val text = args.text("text").orEmpty().trim()
+        if (text.isEmpty()) return Done(false, JsonPrimitive("say what to find"))
+        val forward = args.text("direction") != "up"
+        val most = (args.int("max") ?: 6).coerceIn(1, 12)
+        repeat(most) {
+            if (find(text) != null) return Done(true, screen())
+            if (!scrolled(forward)) return Done(false, JsonPrimitive("no \"$text\", and nothing left to scroll"))
+            settled()
+        }
+        return Done(false, JsonPrimitive("no \"$text\" after $most scrolls; read the screen"))
+    }
+
+    private fun clip(): String {
+        val board = getSystemService(ClipboardManager::class.java)
+        val copied = board?.primaryClip?.takeIf { it.itemCount > 0 }
+            ?.getItemAt(0)?.coerceToText(this)?.toString()
+        return copied?.takeIf { it.isNotBlank() }
+            ?: "the clipboard is empty, or Android does not let a background app read it"
+    }
+
+    private fun copied(text: String): Boolean {
+        if (text.isBlank()) return false
+        val board = getSystemService(ClipboardManager::class.java) ?: return false
+        board.setPrimaryClip(ClipData.newPlainText("heare", text))
+        return true
+    }
+
+    private fun shared(text: String): Boolean {
+        if (text.isBlank()) return false
+        val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
+        return runCatching {
+            startActivity(Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            true
+        }.getOrDefault(false)
+    }
+
+    private fun openedUrl(url: String): Boolean {
+        val address = Uri.parse(url.trim())
+        if (address.scheme?.lowercase() !in setOf("http", "https")) return false
+        return runCatching {
+            startActivity(Intent(Intent.ACTION_VIEW, address).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            true
+        }.getOrDefault(false)
+    }
+
+    private fun device(): String = listOfNotNull(
+        listOfNotNull(Build.MANUFACTURER, Build.MODEL).joinToString(" ").trim().ifEmpty { null },
+        "Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})",
+        "heare ${BuildConfig.VERSION_NAME}",
+    ).joinToString("; ")
 
     private suspend fun opened(name: String): Done {
         val wanted = name.trim()
@@ -218,6 +341,8 @@ class Hands : AccessibilityService() {
         private const val SETTLE_MS = 2_000L
         private const val QUIET_MS = 300L
         private const val OPEN_MS = 2_500L
+        private const val HOLD_MS = 600L
+        private const val SWIPE_MS = 300L
 
         /** What the person can open: (label, package), by label. */
         fun launchable(context: Context): List<Pair<String, String>> {
@@ -234,3 +359,5 @@ class Hands : AccessibilityService() {
 }
 
 private fun JsonObject.text(key: String): String? = (this[key] as? JsonPrimitive)?.contentOrNull
+
+private fun JsonObject.int(key: String): Int? = (this[key] as? JsonPrimitive)?.intOrNull

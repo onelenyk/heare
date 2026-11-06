@@ -46,10 +46,17 @@ data class Knock(
 /**
  * One thing a part can do (protocol.md §6). [about] is read by the brain's
  * model, so it is English; [effect] is `read`, `harmless` or `change`, and
- * only a change goes past the judge.
+ * only a change goes past the judge. [within] is how long the skill needs,
+ * in seconds, when a call's five are not enough.
  */
 @Serializable
-data class Skill(val name: String, val about: String, val effect: String, val params: JsonObject)
+data class Skill(
+    val name: String,
+    val about: String,
+    val effect: String,
+    val params: JsonObject,
+    val within: Int? = null,
+)
 
 /** What a part made of a call: [result] goes back to the hands as it is. */
 data class Done(val ok: Boolean, val result: JsonElement)
@@ -76,6 +83,16 @@ private data class Heard(
     val text: String,
     val kind: String = "heard",
     val addressed: Boolean = true,
+    val v: Int = PROTOCOL,
+)
+
+/** A fact about the surroundings (protocol.md §1): nothing is answered. */
+@Serializable
+private data class Noted(
+    val channel: String,
+    val kind: String = "note",
+    val key: String,
+    val value: JsonElement,
     val v: Int = PROTOCOL,
 )
 
@@ -126,6 +143,16 @@ class Brain(val base: String, private val http: HttpClient) {
             contentType(ContentType.Application.Json)
             setBody(json.encodeToString(Heard.serializer(),
                 Heard(channel, text, kind = if (overheard) "overheard" else "heard")))
+        }
+        if (answer.status != HttpStatusCode.OK) throw Refused(answer.status.value, answer.bodyAsText())
+    }
+
+    /** A fact about the surroundings: no answer comes back, the brain just knows. */
+    suspend fun note(token: String, channel: String, key: String, value: JsonElement) {
+        val answer = http.post("$base/api/input") {
+            header(TOKEN, token)
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(Noted.serializer(), Noted(channel, key = key, value = value)))
         }
         if (answer.status != HttpStatusCode.OK) throw Refused(answer.status.value, answer.bodyAsText())
     }
