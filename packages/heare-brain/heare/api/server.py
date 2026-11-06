@@ -352,11 +352,11 @@ class Seen:
         found = self._registry.skill(pid, name)
         if found is None:
             return {"ok": False, "result": "no such skill"}
-        channel, _skill = found
+        channel, skill = found
         call_id, waiting = self._calls.open(pid)
         self._registry.emit("call", channel=channel, part=pid, id=call_id,
                             name=name, args=args)
-        return await self._calls.wait(call_id, waiting)
+        return await self._calls.wait(call_id, waiting, skill.get("within"))
 
 
 

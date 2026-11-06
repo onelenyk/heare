@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 
 from heare.api import skills
 from heare.native_hands import SAME_CALL, NativeHand, catalog
@@ -69,6 +71,61 @@ def test_any_new_or_changed_skill_is_a_new_trust(tmp_path):
     assert trust.same("oled@desk", [SHOW, PIN, pin4]) is False
     trust.keep("oled@desk", [SHOW, PIN, pin4])
     assert trust.same("oled@desk", [SHOW, PIN, pin4]) is True
+
+
+def test_a_skill_may_ask_for_more_time_than_a_call():
+    slow = {**PIN, "within": 20}
+    assert skills.checked([slow])[0]["within"] == 20
+    assert "within" not in skills.checked([PIN])[0]
+    assert skills.checked([{**PIN, "within": None}])[0] == PIN
+    for bad in (0, 0.5, 31, "20", True, [20]):
+        assert skills.checked([{**PIN, "within": bad}]) == [], bad
+
+
+def test_trust_given_before_time_was_a_field_still_stands():
+    plain = skills.checked([SHOW, PIN])
+    before = sorted((s["name"], s["effect"], json.dumps(s["params"], sort_keys=True))
+                    for s in plain)
+    assert skills.fingerprint(plain) == hashlib.sha256(
+        json.dumps(before).encode()).hexdigest()[:16]
+
+
+def test_asking_for_time_is_a_new_trust(tmp_path):
+    trust = skills.Trust(tmp_path / "part_skills.json")
+    assert trust.same("oled@desk", skills.checked([SHOW, PIN])) is True
+    slow = skills.checked([SHOW, {**PIN, "within": 20}])
+    assert trust.same("oled@desk", slow) is False
+    trust.keep("oled@desk", slow)
+    assert trust.same("oled@desk", slow) is True
+
+
+async def test_a_skill_that_asked_for_time_is_waited_for_that_long():
+    from heare.api.server import Seen
+
+    class Registry:
+        def skill(self, pid, name):
+            within = {} if name == "quick" else {"within": 20}
+            return ("oled", {"name": name, **within})
+
+        def emit(self, *args, **data):
+            pass
+
+    class Calls:
+        def __init__(self):
+            self.seconds = []
+
+        def open(self, pid):
+            return 1, None
+
+        async def wait(self, call_id, waiting, seconds=None):
+            self.seconds.append(seconds)
+            return {"ok": True, "result": 1}
+
+    calls = Calls()
+    seen = Seen(Registry(), calls)
+    await seen.call("oled@desk", "slow", {})
+    await seen.call("oled@desk", "quick", {})
+    assert calls.seconds == [20, None]
 
 
 def test_a_changed_harmless_skill_is_asked_about_again(tmp_path):

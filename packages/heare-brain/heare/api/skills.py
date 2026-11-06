@@ -12,7 +12,8 @@ about it when they let the part in; a part whose ``change`` skills are not
 what was let in is asked about again (``Trust``).
 
 A call is delivered as a ``call`` event to the part and waits for the part's
-answer (``Calls``).
+answer (``Calls``). A skill that knows it takes longer than a call says so in
+its knock (``within``) and is waited for that long.
 """
 
 from __future__ import annotations
@@ -30,6 +31,10 @@ MAX_ABOUT = 300
 MAX_PARAMS = 4096
 NAME = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 CALL_S = 5.0
+# A skill that takes longer than a call says so in its knock and gets that
+# long instead of CALL_S; the line is where a stuck part stops being paid for.
+MIN_WITHIN = 1.0
+MAX_WITHIN = 30.0
 # What the hands may be asked to turn a parameter into before a call.
 RENDER_FORMS = ("mono",)
 MAX_SIDE = 256
@@ -60,6 +65,11 @@ def checked(raw: object) -> list[dict]:
             continue
         kept = {"name": name, "about": about.strip()[:MAX_ABOUT],
                 "params": params, "effect": skill["effect"]}
+        within = _within(skill.get("within"))
+        if within is False:
+            continue
+        if within is not None:
+            kept["within"] = within
         render = _render(skill.get("render"), params)
         if render is False:
             continue
@@ -67,6 +77,18 @@ def checked(raw: object) -> list[dict]:
             kept["render"] = render
         found.append(kept)
     return found
+
+
+def _within(raw: object) -> float | None | bool:
+    """How long a skill needs, in seconds; None when it says nothing, False
+    when what it says is not a number of seconds a call may wait."""
+    if raw is None:
+        return None
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        return False
+    if not MIN_WITHIN <= raw <= MAX_WITHIN:
+        return False
+    return float(raw)
 
 
 def _render(raw: object, params: dict) -> dict | bool | None:
@@ -126,6 +148,9 @@ def fingerprint(skills: list[dict]) -> str:
     """
     offers = sorted(
         (s["name"], s["effect"], json.dumps(s["params"], sort_keys=True))
+        # Only when asked for: a part that never wanted more time keeps the
+        # trust the person already gave it.
+        + (("within", s["within"]) if "within" in s else ())
         for s in skills
     )
     return hashlib.sha256(json.dumps(offers).encode()).hexdigest()[:16]
