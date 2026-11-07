@@ -9,7 +9,7 @@ already answers to (``~/.heare/identity.json``).
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from pathlib import Path
 
@@ -101,9 +101,10 @@ def now_block(around: Mapping[str, object], now: float) -> str:
     )
 
 
-async def prompt(around: Mapping[str, object] | None = None,
+async def prompt(around: Mapping[str | tuple[str, str], object] | None = None,
                  parts: Mapping[str, dict] | None = None, *,
-                 identity: Path | None = None) -> str:
+                 identity: Path | None = None,
+                 mood: Callable[[], str] | None = None) -> str:
     """Read again on every turn: a saved rule counts from the next reply."""
     try:
         rules = RULES.read_text(encoding="utf-8").strip()
@@ -142,6 +143,12 @@ async def prompt(around: Mapping[str, object] | None = None,
     # A model does not know the hour unless it is told.
     now = datetime.now()
     said.append(f"It is {_DAYS[now.weekday()]}, {now:%d.%m.%Y}, {now:%H:%M}.")
+    # What presses inside comes from the body, in words it already chose.
+    # Read on every turn: it changes by itself, without a new event.
+    if mood is not None:
+        inside = mood()
+        if inside:
+            said.append("Right now, inside you: " + inside)
     block = now_block(around, now.timestamp()) if around is not None else ""
     if parts is not None:
         said.append(body(parts, block))

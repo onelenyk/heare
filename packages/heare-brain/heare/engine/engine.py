@@ -12,11 +12,13 @@ import asyncio
 import logging
 import time
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from heare.core import Message
 from heare.core.conversation import RESULT_PREFIX
 from heare.engine.intent import Intent
+from heare.engine.soma import Body
 from heare.engine.store import Intents
 from heare.core.i18n import _
 
@@ -26,12 +28,25 @@ logger = logging.getLogger("heare.engine")
 # due while idle should not wait for the next event to be told.
 TICK_S = 30.0
 
+# How often the body is written down. Losing a minute of pressure costs
+# nothing; writing on every event would cost a file write per event.
+BODY_SAVE_S = 60.0
+
 # A finished piece of work is worth telling for this long, then it is stale.
 WORK_NEWS_S = 2 * 3600
 
 # What a task's end means: done is news, failed is news, stopped is your own
 # doing and is not.
 _WORTH_TELLING = {"done": "task_done", "failed": "task_failed"}
+# What a task's state does to the body. ``running`` is not an event the core
+# sends — it is read from the snapshot, because a thing that started and has
+# not ended is exactly what a body is for.
+_FEELING = {
+    "running": "task_opened",
+    "done": "task_done",
+    "failed": "task_failed",
+    "stopped": "task_done",
+}
 # The result of work the person asked for is the answer to them, not news
 # they did not ask for: no daily budget, no quiet hours, no gap since the
 # last remark holds it back. With a budget of one a day, every result after
@@ -70,7 +85,9 @@ class Engine:
                  speak: Any = None, gap: float = BASE_GAP_S,
                  tick: float = TICK_S, now=time.time,
                  quiet: tuple[str, str] = ("22:00", "08:00"),
-                 daily_limit: int = 1) -> None:
+                 daily_limit: int = 1,
+                 body: Body | None = None,
+                 body_path: Path | None = None) -> None:
         self._intents = intents
         self._state = state
         self._speak = speak
@@ -87,6 +104,16 @@ class Engine:
             # Equal ends are not a window, not a day-long silence.
             self._quiet_from = self._quiet_to = None
         self._daily_limit = max(0, int(daily_limit))
+        # Without a body the engine reacts to events on the spot. With one it
+        # lets a need grow first, so the intent survives the event that made it.
+        self._body_path = Path(body_path) if body_path is not None else None
+        if body is None and self._body_path is not None:
+            # A restart wakes the same body up instead of growing a new one.
+            body = Body.load(self._body_path)
+        self._body = body
+        self._body_at = self._now() if body is not None else None
+        self._body_saved_at: float | None = None
+        self._seen_running: set[int] = set()
 
     def note(self, event: Any) -> None:
         """One event from the core: hold what it means, then deliver what is due."""
@@ -97,17 +124,95 @@ class Engine:
         elif kind == "task":
             self._hold(event)
         self._deliver_due()
+        # What ripens now is told at the next moment, not in the same breath.
+        self._advance()
 
     def _hold(self, event: Any) -> None:
         data = event.data
-        why = _WORTH_TELLING.get(data.get("status", ""))
+        status = str(data.get("status") or "")
         news = str(data.get("news") or "").strip()
+        # The body hears every ending, including one that carries no news.
+        if self._body is not None:
+            feeling = _FEELING.get(status)
+            if feeling:
+                label = str(data.get("request") or news)[:200]
+                self._body.feed(feeling, about=f"task:{data.get('id')}", label=label)
+                if status in ("done", "stopped"):
+                    self._retire(label)
+        why = _WORTH_TELLING.get(status)
         if why is None or not news:
             return
         self._intents.hold(
             what=news[:1000], why=why, weight=2,
             about=f"task:{data.get('id')}", until=self._fresh_until(self._now()),
         )
+
+    def _advance(self) -> None:
+        """Let the body feel time pass, and write down what has ripened."""
+        if self._body is None:
+            return
+        now = self._now()
+        if self._body_at is not None and now > self._body_at:
+            self._body.tick(now - self._body_at)
+        self._body_at = now
+        self._watch_tasks()
+        self._hold_from_body(now)
+        self._save_body(now)
+
+    def _retire(self, label: str) -> None:
+        """A closed task takes its waiting remark with it."""
+        now = self._now()
+        about = "soma:" + label
+        for intent in self._intents.alive(now):
+            if intent.about == about:
+                self._intents.done(intent, at=now)
+
+    def _watch_tasks(self) -> None:
+        """A task that is running is a thing left open; the body keeps it."""
+        if self._body is None or self._state is None:
+            return
+        tasks = getattr(self._state, "tasks", None)
+        if not isinstance(tasks, dict):
+            return
+        for task in tasks.values():
+            if getattr(task, "status", "") != "running":
+                continue
+            if task.id in self._seen_running:
+                continue
+            self._seen_running.add(task.id)
+            self._body.feed(
+                "task_opened", about=f"task:{task.id}", label=str(task.request)[:200],
+            )
+
+    def _hold_from_body(self, now: float) -> None:
+        """Turn what has ripened into an intent, if it is not held already."""
+        held = self._body.propose() if self._body is not None else None
+        if held is None:
+            return
+        about = "soma:" + held.about
+        if any(intent.about == about for intent in self._intents.alive(now)):
+            return
+        weight = 3 if held.commitment >= 0.75 else 2 if held.commitment >= 0.4 else 1
+        # The body counts its own seconds; the store counts wall time.
+        left = held.until - self._body.t if held.until is not None else None
+        self._intents.hold(
+            what=held.about, why="soma", weight=weight,
+            about=about, until=(now + left) if left is not None else None,
+            not_before=now,
+        )
+
+    def mood(self) -> str:
+        """What presses, in the body's own words; empty when there is no body."""
+        return self._body.state() if self._body is not None else ""
+
+    def _save_body(self, now: float) -> None:
+        """Write the body down now and then, not on every event."""
+        if self._body is None or self._body_path is None:
+            return
+        if self._body_saved_at is not None and now - self._body_saved_at < BODY_SAVE_S:
+            return
+        self._body.save(self._body_path)
+        self._body_saved_at = now
 
     def _the_person_spoke(self) -> None:
         """Spoke right after a remark of mine: that remark was answered."""
@@ -185,8 +290,10 @@ class Engine:
         if self._state is None:
             return True
         spoke = self._heard_at is not None and self._now() - self._heard_at <= SPOKE_S
-        if not spoke and not getattr(self._state, "around", {}).get("present", True):
-            return False
+        if not spoke:
+            present = self._state.around_any("present")
+            if present is not None and not present:
+                return False
         return getattr(self._state, "phase", "idle") == "idle"
 
     def _deliver(self, intents: list[Intent]) -> None:
@@ -230,6 +337,7 @@ class Engine:
                     event = await asyncio.wait_for(reader.get(), timeout=self._tick)
                 except TimeoutError:
                     self._deliver_due()
+                    self._advance()
                     continue
                 self.note(event)
             except Exception:

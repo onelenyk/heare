@@ -164,7 +164,8 @@ class Brain:
             gate=Judge(self.settings),
             prompt=lambda: persona.prompt(
                 self.core.state.around, self.bodies.parts() if self.bodies else None,
-                identity=self.settings.identity_file),
+                identity=self.settings.identity_file,
+                mood=lambda: self.engine.mood()),
             names=names, judge=lambda: persona.JUDGE,
             words=lambda: for_language(self.settings.language),
             fit=partial(budget.fit, limit=int(self.settings.context_tokens)),
@@ -184,6 +185,7 @@ class Brain:
             self.intents, state=self.core.state, speak=self.core.hear,
             quiet=(self.settings.quiet_from, self.settings.quiet_to),
             daily_limit=int(self.settings.unsolicited_per_day),
+            body_path=self.settings.intents_path.with_name("body.json"),
         )
         self._review_lock = asyncio.Lock()
         self._consolidate_lock = asyncio.Lock()
