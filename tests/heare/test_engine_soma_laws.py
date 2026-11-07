@@ -1,4 +1,4 @@
-"""The body under the laws: it may ask, never insist, and never speak itself."""
+"""The soma under the laws: it may ask, never insist, and never speak itself."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from heare.engine import Engine, Intents
-from heare.engine.soma import Body
+from heare.engine.soma import Soma
 
 
 @dataclass
@@ -43,38 +43,38 @@ class State:
         return self.present
 
 
-def engine(tmp_path, *, now: float = 1000.0, body=None, state=None,
+def engine(tmp_path, *, now: float = 1000.0, soma=None, state=None,
            quiet=("00:00", "00:00"), daily_limit=99):
     store = Intents(tmp_path / "intents.json")
     said: list = []
     clock = Clock(now)
     motor = Engine(
         store, speak=said.append, now=clock, quiet=quiet,
-        daily_limit=daily_limit, body=body, state=state,
+        daily_limit=daily_limit, soma=soma, state=state,
     )
     return store, said, motor, clock
 
 
 def ripened(tmp_path, **over):
-    """A body with one failure that has already grown enough to be held."""
-    body = over.pop("body", Body())
-    store, said, motor, clock = engine(tmp_path, body=body, **over)
+    """A soma with one failure that has already grown enough to be held."""
+    soma = over.pop("soma", Soma())
+    store, said, motor, clock = engine(tmp_path, soma=soma, **over)
     motor.note(event())
     clock.go(3600)
     motor.note(tick())
-    return store, said, motor, clock, body
+    return store, said, motor, clock, soma
 
 
 def test_the_body_never_speaks_itself():
-    body = Body()
-    body.feed("task_failed", "task:7", "Сайт готовий.")
-    body.tick(3600)
-    assert body.propose() is not None
-    assert not hasattr(body, "speak")
+    soma = Soma()
+    soma.feed("task_failed", "task:7", "Сайт готовий.")
+    soma.tick(3600)
+    assert soma.propose() is not None
+    assert not hasattr(soma, "speak")
 
 
 def test_holding_and_ticking_says_nothing_on_its_own(tmp_path):
-    store, said, motor, clock = engine(tmp_path, body=Body())
+    store, said, motor, clock = engine(tmp_path, soma=Soma())
     motor.note(event())
     before = len(said)
     clock.go(3600)
@@ -101,7 +101,7 @@ def test_quiet_hours_hold_a_ripened_need(tmp_path):
 
 
 def test_the_daily_budget_holds_a_ripened_need(tmp_path):
-    store, said, motor, clock = engine(tmp_path, body=Body(), daily_limit=1)
+    store, said, motor, clock = engine(tmp_path, soma=Soma(), daily_limit=1)
     motor.note(event("done"))
     motor.note(event())
     clock.go(3600)
@@ -112,7 +112,7 @@ def test_the_daily_budget_holds_a_ripened_need(tmp_path):
 
 
 def test_a_need_fades_instead_of_nagging_forever(tmp_path):
-    store, _, motor, clock = engine(tmp_path, body=Body(), daily_limit=0)
+    store, _, motor, clock = engine(tmp_path, soma=Soma(), daily_limit=0)
     motor.note(event())
     clock.go(3600)
     motor.note(tick())
@@ -124,16 +124,16 @@ def test_a_need_fades_instead_of_nagging_forever(tmp_path):
 
 
 def test_the_body_does_not_name_the_person(tmp_path):
-    _, _, motor, clock, body = ripened(tmp_path)
-    text = body.state()
+    _, _, motor, clock, soma = ripened(tmp_path)
+    text = soma.state()
     assert "owner" not in text.lower()
-    self_needs = [n for n in body.needs if n.about == "self"]
+    self_needs = [n for n in soma.needs if n.about == "self"]
     assert self_needs
     assert all(n.about == "self" for n in self_needs)
 
 
 def test_the_body_cannot_reach_the_store_or_the_speaker():
-    body = Body()
-    assert not hasattr(body, "_intents")
-    assert not hasattr(body, "store")
-    assert not hasattr(body, "speak")
+    soma = Soma()
+    assert not hasattr(soma, "_intents")
+    assert not hasattr(soma, "store")
+    assert not hasattr(soma, "speak")

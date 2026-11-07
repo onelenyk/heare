@@ -1,10 +1,10 @@
-"""Work that is still running is what the body keeps."""
+"""Work that is still running is what the soma keeps."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from heare.engine import Body, Engine, Intents
+from heare.engine import Soma, Engine, Intents
 
 
 @dataclass
@@ -48,12 +48,12 @@ class Clock:
         self.moment += seconds
 
 
-def engine(tmp_path, *, state=None, body=None):
+def engine(tmp_path, *, state=None, soma=None):
     store = Intents(tmp_path / "intents.json")
     said: list = []
     clock = Clock()
     motor = Engine(store, speak=said.append, now=clock, quiet=("00:00", "00:00"),
-                   daily_limit=0, body=body if body is not None else Body(), state=state)
+                   daily_limit=0, soma=soma if soma is not None else Soma(), state=state)
     return store, said, motor, clock
 
 
@@ -61,19 +61,19 @@ def test_a_running_task_becomes_a_thing_left_open(tmp_path):
     state = State({1: Task(1, "зроби сайт")})
     store, _, motor, clock = engine(tmp_path, state=state)
     motor.note(Ev("tick", {}))
-    body = motor._body
-    assert [n for n in body.needs if n.drive == "closure" and n.about == "task:1"]
+    soma = motor._soma
+    assert [n for n in soma.needs if n.drive == "closure" and n.about == "task:1"]
 
 
 def test_the_same_running_task_is_not_opened_twice(tmp_path):
     state = State({1: Task(1, "зроби сайт")})
     _, _, motor, clock = engine(tmp_path, state=state)
     motor.note(Ev("tick", {}))
-    before = next(n for n in motor._body.needs if n.about == "task:1").level
+    before = next(n for n in motor._soma.needs if n.about == "task:1").level
     clock.go(600)
     motor.note(Ev("tick", {}))
     motor.note(Ev("tick", {}))
-    after = next(n for n in motor._body.needs if n.about == "task:1").level
+    after = next(n for n in motor._soma.needs if n.about == "task:1").level
     assert after < before + 0.05
 
 
@@ -139,5 +139,5 @@ def test_nothing_is_watched_without_a_body(tmp_path):
 def test_no_state_no_watching(tmp_path):
     store, _, motor, clock = engine(tmp_path, state=None)
     motor.note(Ev("tick", {}))
-    assert motor._body is not None
-    assert not [n for n in motor._body.needs if n.drive == "closure"]
+    assert motor._soma is not None
+    assert not [n for n in motor._soma.needs if n.drive == "closure"]

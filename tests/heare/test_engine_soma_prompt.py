@@ -1,10 +1,10 @@
-"""What presses inside reaches the prompt, and only when there is a body."""
+"""What presses inside reaches the prompt, and only when there is a soma."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from heare.engine import Body, Engine, Intents
+from heare.engine import Soma, Engine, Intents
 from heare.prompt import persona
 
 
@@ -29,10 +29,10 @@ class Clock:
         self.moment += seconds
 
 
-def engine(tmp_path, *, body=None):
+def engine(tmp_path, *, soma=None):
     clock = Clock()
     motor = Engine(Intents(tmp_path / "intents.json"), speak=lambda m: None, now=clock,
-                   quiet=("00:00", "00:00"), daily_limit=0, body=body)
+                   quiet=("00:00", "00:00"), daily_limit=0, soma=soma)
     return motor, clock
 
 
@@ -42,7 +42,7 @@ def test_without_a_body_there_is_nothing_to_say_about_inside(tmp_path):
 
 
 async def test_with_a_body_the_prompt_says_what_presses(tmp_path):
-    motor, clock = engine(tmp_path, body=Body())
+    motor, clock = engine(tmp_path, soma=Soma())
     motor.note(event())
     clock.go(3600)
     text = await persona.prompt(mood=motor.mood)
@@ -61,7 +61,7 @@ async def test_an_empty_mood_adds_nothing():
 
 
 async def test_the_inside_line_carries_no_numbers(tmp_path):
-    motor, clock = engine(tmp_path, body=Body())
+    motor, clock = engine(tmp_path, soma=Soma())
     motor.note(event())
     clock.go(3600)
     inside = motor.mood()

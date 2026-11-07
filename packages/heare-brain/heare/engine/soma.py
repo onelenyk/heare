@@ -1,4 +1,4 @@
-"""The body behind the intents: seven needs that grow with time.
+"""What presses, behind the intents: seven needs that grow with time.
 
 The engine decides *when* something may be said. This decides *what* and
 *how much*: a need that rises by itself, is bound to a thing, and keeps
@@ -162,7 +162,7 @@ def _clamp(value: float, low: float, high: float) -> float:
 
 
 @dataclass
-class Body:
+class Soma:
     """Seven needs, the intention that holds them, and how it all feels.
 
     ``scale`` folds time: 1 is human time, where a task takes an hour to
@@ -281,7 +281,7 @@ class Body:
         return " ".join(lines)
 
     def to_dict(self) -> dict:
-        """The whole body as plain data, so a restart is a waking up."""
+        """The whole soma as plain data, so a restart is a waking up."""
         return {
             "version": VERSION,
             "scale": self.scale,
@@ -299,32 +299,32 @@ class Body:
         }
 
     @classmethod
-    def from_dict(cls, raw: object) -> Body:
+    def from_dict(cls, raw: object) -> Soma:
         """Forgiving on purpose: unknown fields are dropped, missing take defaults."""
         if not isinstance(raw, dict) or raw.get("version") != VERSION:
             return cls()
-        body = cls(scale=_number(raw.get("scale"), 1.0) or 1.0)
-        body.t = _number(raw.get("t"))
-        body.valence = _number(raw.get("valence"))
-        body.arousal = _number(raw.get("arousal"))
-        body.dominant_since = _number(raw.get("dominant_since"))
-        body._prev_sum = _number(raw.get("prev_sum"))
-        body.dominant = raw.get("dominant") if isinstance(raw.get("dominant"), int) else None
-        body.active = raw.get("active") if isinstance(raw.get("active"), int) else None
-        body._next_need = raw.get("next_need") if isinstance(raw.get("next_need"), int) else 1
-        body._next_intention = (
+        soma = cls(scale=_number(raw.get("scale"), 1.0) or 1.0)
+        soma.t = _number(raw.get("t"))
+        soma.valence = _number(raw.get("valence"))
+        soma.arousal = _number(raw.get("arousal"))
+        soma.dominant_since = _number(raw.get("dominant_since"))
+        soma._prev_sum = _number(raw.get("prev_sum"))
+        soma.dominant = raw.get("dominant") if isinstance(raw.get("dominant"), int) else None
+        soma.active = raw.get("active") if isinstance(raw.get("active"), int) else None
+        soma._next_need = raw.get("next_need") if isinstance(raw.get("next_need"), int) else 1
+        soma._next_intention = (
             raw.get("next_intention") if isinstance(raw.get("next_intention"), int) else 1
         )
         needs = raw.get("needs")
         if isinstance(needs, list):
-            body.needs = [_need(row) for row in needs if isinstance(row, dict)]
+            soma.needs = [_need(row) for row in needs if isinstance(row, dict)]
         intentions = raw.get("intentions")
         if isinstance(intentions, list):
-            body.intentions = [_intention(row) for row in intentions if isinstance(row, dict)]
-        return body
+            soma.intentions = [_intention(row) for row in intentions if isinstance(row, dict)]
+        return soma
 
     def save(self, path: Path) -> None:
-        """Write the body where it can be found again; never leave half a file."""
+        """Write the soma where it can be found again; never leave half a file."""
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         temporary = path.with_suffix(path.suffix + ".tmp")
@@ -332,10 +332,17 @@ class Body:
         temporary.replace(path)
 
     @classmethod
-    def load(cls, path: Path) -> Body:
-        """A body from disk, or a new one when there is nothing to wake up."""
+    def load(cls, path: Path) -> Soma:
+        """The soma from disk, or a new one when there is nothing to wake up."""
+        target = Path(path)
+        if not target.exists():
+            # The file was called body.json before the soma was named; a
+            # machine that updates keeps the pressure it had.
+            older = target.with_name("body.json")
+            if older.exists():
+                target = older
         try:
-            raw = json.loads(Path(path).read_text(encoding="utf-8"))
+            raw = json.loads(target.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return cls()
         return cls.from_dict(raw)

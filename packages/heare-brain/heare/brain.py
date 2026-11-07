@@ -185,7 +185,7 @@ class Brain:
             self.intents, state=self.core.state, speak=self.core.hear,
             quiet=(self.settings.quiet_from, self.settings.quiet_to),
             daily_limit=int(self.settings.unsolicited_per_day),
-            body_path=self.settings.intents_path.with_name("body.json"),
+            soma_path=self.settings.intents_path.with_name("soma.json"),
         )
         self._review_lock = asyncio.Lock()
         self._consolidate_lock = asyncio.Lock()

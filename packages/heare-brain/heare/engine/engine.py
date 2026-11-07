@@ -18,7 +18,7 @@ from typing import Any
 from heare.core import Message
 from heare.core.conversation import RESULT_PREFIX
 from heare.engine.intent import Intent
-from heare.engine.soma import Body
+from heare.engine.soma import Soma
 from heare.engine.store import Intents
 from heare.core.i18n import _
 
@@ -30,7 +30,7 @@ TICK_S = 30.0
 
 # How often the body is written down. Losing a minute of pressure costs
 # nothing; writing on every event would cost a file write per event.
-BODY_SAVE_S = 60.0
+SOMA_SAVE_S = 60.0
 
 # A finished piece of work is worth telling for this long, then it is stale.
 WORK_NEWS_S = 2 * 3600
@@ -86,8 +86,8 @@ class Engine:
                  tick: float = TICK_S, now=time.time,
                  quiet: tuple[str, str] = ("22:00", "08:00"),
                  daily_limit: int = 1,
-                 body: Body | None = None,
-                 body_path: Path | None = None) -> None:
+                 soma: Soma | None = None,
+                 soma_path: Path | None = None) -> None:
         self._intents = intents
         self._state = state
         self._speak = speak
@@ -104,15 +104,15 @@ class Engine:
             # Equal ends are not a window, not a day-long silence.
             self._quiet_from = self._quiet_to = None
         self._daily_limit = max(0, int(daily_limit))
-        # Without a body the engine reacts to events on the spot. With one it
+        # Without a soma the engine reacts to events on the spot. With one it
         # lets a need grow first, so the intent survives the event that made it.
-        self._body_path = Path(body_path) if body_path is not None else None
-        if body is None and self._body_path is not None:
-            # A restart wakes the same body up instead of growing a new one.
-            body = Body.load(self._body_path)
-        self._body = body
-        self._body_at = self._now() if body is not None else None
-        self._body_saved_at: float | None = None
+        self._soma_path = Path(soma_path) if soma_path is not None else None
+        if soma is None and self._soma_path is not None:
+            # A restart wakes the same soma up instead of growing a new one.
+            soma = Soma.load(self._soma_path)
+        self._soma = soma
+        self._soma_at = self._now() if soma is not None else None
+        self._soma_saved_at: float | None = None
         self._seen_running: set[int] = set()
 
     def note(self, event: Any) -> None:
@@ -132,11 +132,11 @@ class Engine:
         status = str(data.get("status") or "")
         news = str(data.get("news") or "").strip()
         # The body hears every ending, including one that carries no news.
-        if self._body is not None:
+        if self._soma is not None:
             feeling = _FEELING.get(status)
             if feeling:
                 label = str(data.get("request") or news)[:200]
-                self._body.feed(feeling, about=f"task:{data.get('id')}", label=label)
+                self._soma.feed(feeling, about=f"task:{data.get('id')}", label=label)
                 if status in ("done", "stopped"):
                     self._retire(label)
         why = _WORTH_TELLING.get(status)
@@ -148,16 +148,16 @@ class Engine:
         )
 
     def _advance(self) -> None:
-        """Let the body feel time pass, and write down what has ripened."""
-        if self._body is None:
+        """Let the soma feel time pass, and write down what has ripened."""
+        if self._soma is None:
             return
         now = self._now()
-        if self._body_at is not None and now > self._body_at:
-            self._body.tick(now - self._body_at)
-        self._body_at = now
+        if self._soma_at is not None and now > self._soma_at:
+            self._soma.tick(now - self._soma_at)
+        self._soma_at = now
         self._watch_tasks()
-        self._hold_from_body(now)
-        self._save_body(now)
+        self._hold_from_soma(now)
+        self._save_soma(now)
 
     def _retire(self, label: str) -> None:
         """A closed task takes its waiting remark with it."""
@@ -168,8 +168,8 @@ class Engine:
                 self._intents.done(intent, at=now)
 
     def _watch_tasks(self) -> None:
-        """A task that is running is a thing left open; the body keeps it."""
-        if self._body is None or self._state is None:
+        """A task that is running is a thing left open; the soma keeps it."""
+        if self._soma is None or self._state is None:
             return
         tasks = getattr(self._state, "tasks", None)
         if not isinstance(tasks, dict):
@@ -180,13 +180,13 @@ class Engine:
             if task.id in self._seen_running:
                 continue
             self._seen_running.add(task.id)
-            self._body.feed(
+            self._soma.feed(
                 "task_opened", about=f"task:{task.id}", label=str(task.request)[:200],
             )
 
-    def _hold_from_body(self, now: float) -> None:
+    def _hold_from_soma(self, now: float) -> None:
         """Turn what has ripened into an intent, if it is not held already."""
-        held = self._body.propose() if self._body is not None else None
+        held = self._soma.propose() if self._soma is not None else None
         if held is None:
             return
         about = "soma:" + held.about
@@ -194,7 +194,7 @@ class Engine:
             return
         weight = 3 if held.commitment >= 0.75 else 2 if held.commitment >= 0.4 else 1
         # The body counts its own seconds; the store counts wall time.
-        left = held.until - self._body.t if held.until is not None else None
+        left = held.until - self._soma.t if held.until is not None else None
         self._intents.hold(
             what=held.about, why="soma", weight=weight,
             about=about, until=(now + left) if left is not None else None,
@@ -203,16 +203,16 @@ class Engine:
 
     def mood(self) -> str:
         """What presses, in the body's own words; empty when there is no body."""
-        return self._body.state() if self._body is not None else ""
+        return self._soma.state() if self._soma is not None else ""
 
-    def _save_body(self, now: float) -> None:
+    def _save_soma(self, now: float) -> None:
         """Write the body down now and then, not on every event."""
-        if self._body is None or self._body_path is None:
+        if self._soma is None or self._soma_path is None:
             return
-        if self._body_saved_at is not None and now - self._body_saved_at < BODY_SAVE_S:
+        if self._soma_saved_at is not None and now - self._soma_saved_at < SOMA_SAVE_S:
             return
-        self._body.save(self._body_path)
-        self._body_saved_at = now
+        self._soma.save(self._soma_path)
+        self._soma_saved_at = now
 
     def _the_person_spoke(self) -> None:
         """Spoke right after a remark of mine: that remark was answered."""

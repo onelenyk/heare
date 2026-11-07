@@ -1,14 +1,14 @@
-"""The body: needs that grow, hold, and let go."""
+"""The soma: needs that grow, hold, and let go."""
 
 from __future__ import annotations
 
-from heare.engine.soma import ACTIVATION, Body
+from heare.engine.soma import ACTIVATION, Soma
 
-def body() -> Body:
-    return Body()
+def soma() -> Soma:
+    return Soma()
 
 
-def run(w: Body, seconds: float, step: float = 1.0) -> None:
+def run(w: Soma, seconds: float, step: float = 1.0) -> None:
     left = seconds
     while left > 0:
         piece = min(step, left)
@@ -17,7 +17,7 @@ def run(w: Body, seconds: float, step: float = 1.0) -> None:
 
 
 def test_time_alone_makes_a_need_grow():
-    w = body()
+    w = soma()
     w.feed("silence_long")
     before = w.needs[0].level
     run(w, 3600)
@@ -25,7 +25,7 @@ def test_time_alone_makes_a_need_grow():
 
 
 def test_a_task_becomes_an_intention_only_when_it_grows():
-    w = body()
+    w = soma()
     w.feed("task_opened", "heare", "міграція heare")
     assert w.propose() is None
     run(w, 3600)
@@ -34,7 +34,7 @@ def test_a_task_becomes_an_intention_only_when_it_grows():
 
 
 def test_two_tasks_bind_to_their_own_things():
-    w = body()
+    w = soma()
     w.feed("task_opened", "a", "a")
     w.feed("task_opened", "b", "b")
     closure = [n for n in w.needs if n.drive == "closure"]
@@ -43,7 +43,7 @@ def test_two_tasks_bind_to_their_own_things():
 
 
 def test_closing_one_task_does_not_close_the_other():
-    w = body()
+    w = soma()
     w.feed("task_opened", "a", "a")
     w.feed("task_opened", "b", "b")
     run(w, 3600)
@@ -55,19 +55,19 @@ def test_closing_one_task_does_not_close_the_other():
 
 
 def test_without_events_nothing_is_bound_to_a_thing():
-    w = body()
+    w = soma()
     run(w, 7200)
     assert [n for n in w.needs if n.about != "self"] == []
 
 
 def test_nothing_appears_from_nowhere():
-    w = body()
+    w = soma()
     run(w, 7200)
     assert {n.drive for n in w.needs} <= {"connection"}
 
 
 def test_the_dominant_need_holds_for_a_while():
-    w = body()
+    w = soma()
     w.feed("task_opened", "a", "a")
     run(w, 60)
     first = w.dominant
@@ -80,7 +80,7 @@ def test_the_dominant_need_holds_for_a_while():
 
 
 def test_an_interruption_takes_the_floor_and_gives_it_back():
-    w = body()
+    w = soma()
     w.feed("task_opened", "a", "a")
     run(w, 3600)
     first = w.active
@@ -97,7 +97,7 @@ def test_an_interruption_takes_the_floor_and_gives_it_back():
 
 
 def test_commitment_grows_while_held():
-    w = body()
+    w = soma()
     w.feed("task_opened", "a", "a")
     run(w, 3600)
     early = w.propose()
@@ -110,7 +110,7 @@ def test_commitment_grows_while_held():
 
 
 def test_a_short_failure_does_not_kill_the_intention():
-    w = body()
+    w = soma()
     w.feed("task_opened", "a", "a")
     run(w, 3600)
     held = w.propose()
@@ -122,7 +122,7 @@ def test_a_short_failure_does_not_kill_the_intention():
 
 
 def test_an_expired_intention_is_dropped():
-    w = body()
+    w = soma()
     w.feed("task_opened", "a", "a")
     run(w, 3600)
     held = w.propose()
@@ -132,7 +132,7 @@ def test_an_expired_intention_is_dropped():
 
 
 def test_intentions_do_not_multiply():
-    w = body()
+    w = soma()
     for index in range(30):
         w.feed("task_opened", f"t{index}", f"t{index}")
         run(w, 60)
@@ -141,7 +141,7 @@ def test_intentions_do_not_multiply():
 
 
 def test_the_state_is_written_for_a_model_not_for_a_reader_of_numbers():
-    w = body()
+    w = soma()
     w.feed("task_opened", "heare", "міграція heare")
     run(w, 7200)
     text = w.state()
@@ -152,7 +152,7 @@ def test_the_state_is_written_for_a_model_not_for_a_reader_of_numbers():
 
 
 def test_performing_eases_more_the_first_time_than_the_tenth():
-    w = body()
+    w = soma()
     w.feed("task_opened", "a", "a")
     run(w, 3600)
     need = next(n for n in w.needs if n.drive == "closure")

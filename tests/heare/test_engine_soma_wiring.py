@@ -1,11 +1,11 @@
-"""The engine with a body: nothing is held until the need has grown."""
+"""The engine with a soma: nothing is held until the need has grown."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 from heare.engine import Engine, Intents
-from heare.engine.soma import Body
+from heare.engine.soma import Soma
 
 
 @dataclass
@@ -35,13 +35,13 @@ class Clock:
         self.moment += seconds
 
 
-def engine(tmp_path, *, body: Body | None = None):
+def engine(tmp_path, *, soma: Soma | None = None):
     store = Intents(tmp_path / "intents.json")
     said: list = []
     clock = Clock()
     motor = Engine(
         store, speak=said.append, now=clock,
-        quiet=("00:00", "00:00"), daily_limit=99, body=body,
+        quiet=("00:00", "00:00"), daily_limit=99, soma=soma,
     )
     return store, said, motor, clock
 
@@ -53,13 +53,13 @@ def test_without_a_body_the_result_is_said_at_once(tmp_path):
 
 
 def test_with_a_body_the_news_is_still_said_at_once(tmp_path):
-    _, said, motor, _ = engine(tmp_path, body=Body())
+    _, said, motor, _ = engine(tmp_path, soma=Soma())
     motor.note(event("done"))
     assert len(said) == 1
 
 
 def test_a_failure_becomes_an_intent_of_its_own_once_it_has_grown(tmp_path):
-    store, _, motor, clock = engine(tmp_path, body=Body())
+    store, _, motor, clock = engine(tmp_path, soma=Soma())
     motor.note(event("failed"))
     clock.go(3600)
     motor.note(tick())
@@ -68,7 +68,7 @@ def test_a_failure_becomes_an_intent_of_its_own_once_it_has_grown(tmp_path):
 
 
 def test_a_finished_task_leaves_nothing_pressing(tmp_path):
-    store, _, motor, clock = engine(tmp_path, body=Body())
+    store, _, motor, clock = engine(tmp_path, soma=Soma())
     motor.note(event("done"))
     clock.go(3600)
     motor.note(tick())
@@ -76,7 +76,7 @@ def test_a_finished_task_leaves_nothing_pressing(tmp_path):
 
 
 def test_time_is_what_grows_the_need_not_events(tmp_path):
-    store, _, motor, clock = engine(tmp_path, body=Body())
+    store, _, motor, clock = engine(tmp_path, soma=Soma())
     motor.note(event("failed"))
     motor.note(tick())
     motor.note(tick())
@@ -87,7 +87,7 @@ def test_time_is_what_grows_the_need_not_events(tmp_path):
 
 
 def test_the_same_need_is_not_held_twice(tmp_path):
-    store, _, motor, clock = engine(tmp_path, body=Body())
+    store, _, motor, clock = engine(tmp_path, soma=Soma())
     motor.note(event("failed"))
     clock.go(3600)
     motor.note(tick())
@@ -99,7 +99,7 @@ def test_the_same_need_is_not_held_twice(tmp_path):
 
 
 def test_speaking_does_not_make_an_intent(tmp_path):
-    store, _, motor, clock = engine(tmp_path, body=Body())
+    store, _, motor, clock = engine(tmp_path, soma=Soma())
     motor.note(Ev("heard", {}))
     clock.go(3600)
     motor.note(tick())
@@ -107,7 +107,7 @@ def test_speaking_does_not_make_an_intent(tmp_path):
 
 
 def test_a_failed_task_keeps_on_pressing_after_the_news_is_stale(tmp_path):
-    store, _, motor, clock = engine(tmp_path, body=Body())
+    store, _, motor, clock = engine(tmp_path, soma=Soma())
     motor.note(event("failed"))
     clock.go(3 * 3600)
     motor.note(tick())
@@ -117,7 +117,7 @@ def test_a_failed_task_keeps_on_pressing_after_the_news_is_stale(tmp_path):
 
 
 def test_the_intent_keeps_a_deadline(tmp_path):
-    store, _, motor, clock = engine(tmp_path, body=Body())
+    store, _, motor, clock = engine(tmp_path, soma=Soma())
     motor.note(event("failed"))
     clock.go(3600)
     motor.note(tick())
@@ -126,7 +126,7 @@ def test_the_intent_keeps_a_deadline(tmp_path):
 
 
 def test_the_weight_stays_inside_what_the_form_allows(tmp_path):
-    store, _, motor, clock = engine(tmp_path, body=Body())
+    store, _, motor, clock = engine(tmp_path, soma=Soma())
     motor.note(event("failed"))
     clock.go(3600)
     motor.note(tick())
@@ -135,7 +135,7 @@ def test_the_weight_stays_inside_what_the_form_allows(tmp_path):
 
 
 def test_the_news_is_said_the_same_with_a_body_and_without(tmp_path):
-    _, said_body, motor_body, _ = engine(tmp_path, body=Body())
+    _, said_body, motor_body, _ = engine(tmp_path, soma=Soma())
     motor_body.note(event("done"))
     _, said_plain, motor_plain, _ = engine(tmp_path)
     motor_plain.note(event("done"))
