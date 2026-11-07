@@ -290,10 +290,8 @@ class Engine:
         if self._state is None:
             return True
         spoke = self._heard_at is not None and self._now() - self._heard_at <= SPOKE_S
-        if not spoke:
-            present = self._state.around_any("present")
-            if present is not None and not present:
-                return False
+        if not spoke and not getattr(self._state, "around", {}).get("present", True):
+            return False
         return getattr(self._state, "phase", "idle") == "idle"
 
     def _deliver(self, intents: list[Intent]) -> None:
