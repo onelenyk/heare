@@ -162,10 +162,9 @@ class _Port:
     def nothing(self, channel: str) -> None:
         self._core._nothing(channel)
 
-    def note(self, key: str, value: object) -> None:
-        if self._core.state.around.get(key) != value:
-            self._core.state.around[key] = value
-            self._core.state.emit("around", key=key, value=value)
+    def note(self, channel: str, key: str, value: object) -> None:
+        if self._core.state.note(channel, key, value):
+            self._core.state.emit("around", key=key, value=value, channel=channel)
 
     def overheard(self, channel: str, text: str) -> None:
         self._core.state.emit("overheard", text=text, channel=channel)
@@ -458,7 +457,7 @@ class Core:
             # something is playing, what is not said to the assistant by
             # name is the music or the film, and is left alone.
             why = ("busy" if self._turn is not None and not self._turn.done()
-                   else "playing" if self.state.around.get("playing") else "")
+                   else "playing" if self.state.around_any("playing") else "")
             if why:
                 self.state.emit("overheard", text=message.text, channel=message.channel, why=why)
                 return
@@ -925,7 +924,7 @@ class Core:
             known += ("\n\nA permission question waits for an answer: «"
                       f"{self._permission.what[:120]}». Only the person allows it — by word "
                       "or button; you never allow it, nor say that you did.")
-        playing = self.state.around.get("playing")
+        playing = self.state.around_any("playing")
         if playing:
             known += ("\n\nSound is playing nearby (" + ", ".join(map(str, playing)) + "). "
                       "While it plays, you answer only when called by name.")

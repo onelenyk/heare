@@ -30,7 +30,7 @@ class Registry:
                  on_executor: Callable[[str, str], None] | None = None) -> None:
         """*emit* tells the page a part changed; *on_executor* is called
         when a part that does work is let in, with its channel and about."""
-        self.bodies: dict[str, dict] = {}
+        self.known: dict[str, dict] = {}
         self._trusted_file = trusted_file
         self._emit = emit
         self._on_executor = on_executor
@@ -50,7 +50,7 @@ class Registry:
             remembered = set()
         # A folder the person put in the parts directory is a yes already:
         # nothing knocks its way in, it had to be carried there by hand.
-        return remembered | {pid for pid, b in self.bodies.items()
+        return remembered | {pid for pid, b in self.known.items()
                              if b.get("state") == "away"}
 
     def remember(self, pid: str) -> None:
@@ -77,14 +77,14 @@ class Registry:
                started: float | None = None, approves: bool = False,
                skills: list | None = None, name: str = "",
                machine: str | None = None) -> None:
-        old = self.bodies.get(pid) or {}
+        old = self.known.get(pid) or {}
         # A knock from a process that began at another time is the part
         # started again: counted while this brain runs, so after an update
         # it reads how often a part fell since.
         restarts = int(old.get("restarts") or 0)
         if started and old.get("started") and started != old["started"]:
             restarts += 1
-        self.bodies[pid] = {
+        self.known[pid] = {
             "channel": channel, "forms": forms, "about": about,
             "host": host, "state": state,
             # The machine key that claimed this pid, if one did. A machine
@@ -113,7 +113,7 @@ class Registry:
         }
         if state == "approved" and "executor" in forms and self._on_executor:
             self._on_executor(channel, about)
-        self._tell(self.bodies[pid])
+        self._tell(self.known[pid])
 
     def load(self, parts_dir: Path) -> None:
         """Know every part with a manifest before it knocks: away, trusted."""
@@ -137,17 +137,17 @@ class Registry:
                         list(manifest.get("ui") or []))
 
     def by_channel(self, channel: str) -> dict | None:
-        found = [b for b in self.bodies.values() if b.get("channel") == channel]
+        found = [b for b in self.known.values() if b.get("channel") == channel]
         approved = [b for b in found if b.get("state") == "approved"]
         chosen = (approved or found)[-1:] if found else []
         return chosen[0] if chosen else None
 
     def pid_of(self, entry: dict) -> str:
-        return next(pid for pid, b in self.bodies.items() if b is entry)
+        return next(pid for pid, b in self.known.items() if b is entry)
 
     def approves(self, pid: str) -> bool:
         """Whether a trusted part may say yes to the open permission."""
-        entry = self.bodies.get(pid) or {}
+        entry = self.known.get(pid) or {}
         return entry.get("state") == "approved" and bool(entry.get("approves"))
 
     def skilled(self) -> dict[str, dict]:
@@ -155,7 +155,7 @@ class Registry:
         return {pid: {"channel": b["channel"], "name": b["name"], "about": b["about"],
                       "skills": [dict(s) for s in b["skills"]],
                       "values": dict(b.get("values") or {})}
-                for pid, b in self.bodies.items()
+                for pid, b in self.known.items()
                 if b.get("state") == "approved" and b.get("skills")}
 
     def parts(self) -> dict[str, dict]:
@@ -164,14 +164,14 @@ class Registry:
         ``delegate`` — and not a page's window."""
         return {pid: {"name": b["name"], "about": b["about"], "state": b["state"],
                       "now": _now(b), "skills": [dict(s) for s in b["skills"]]}
-                for pid, b in self.bodies.items()
+                for pid, b in self.known.items()
                 if b.get("state") in ("approved", "away")
                 and "executor" not in b.get("forms", [])
                 and not pid.startswith("window@")}
 
     def works(self, pid: str) -> bool:
         """Whether a part is a let-in executor: one that may act on the others."""
-        entry = self.bodies.get(pid) or {}
+        entry = self.known.get(pid) or {}
         return entry.get("state") == "approved" and "executor" in entry.get("forms", [])
 
     def skill(self, pid: str, name: str) -> tuple[str, dict] | None:
@@ -184,12 +184,12 @@ class Registry:
         self._emit(kind, **data)
 
     def channel_of(self, pid: str) -> str:
-        entry = self.bodies.get(pid) or {}
+        entry = self.known.get(pid) or {}
         return str(entry.get("channel") or pid.split("@")[0])
 
     def forget(self, pid: str) -> dict | None:
         """Out of the list and out of trust; the entry it was, or None."""
-        entry = self.bodies.pop(pid, None)
+        entry = self.known.pop(pid, None)
         if entry is None:
             return None
         self._untrust(pid)
@@ -204,15 +204,15 @@ class Registry:
         try:
             await asyncio.wait_for(event.wait(), APPROVAL_WAIT_S)
         except TimeoutError:
-            self.bodies[pid]["state"] = "expired"
+            self.known[pid]["state"] = "expired"
         finally:
             if self._waiting.get(pid) is event:
                 self._waiting.pop(pid, None)
-        return self.bodies[pid]["state"]
+        return self.known[pid]["state"]
 
     def decide(self, pid: str, state: str) -> bool:
         """The person's yes or no; False when nothing of that name waits."""
-        entry = self.bodies.get(pid)
+        entry = self.known.get(pid)
         if entry is None or entry.get("state") != "pending":
             return False
         entry["state"] = state
@@ -233,7 +233,7 @@ class Registry:
         self._listening[pid] = self._listening.get(pid, 0) + 1
         if pid in self._fading:
             self._fading.pop(pid).cancel()
-        entry = self.bodies.get(pid)
+        entry = self.known.get(pid)
         if entry is not None and entry.get("state") == "away":
             entry["state"] = "approved"
             self._tell(entry)
@@ -244,7 +244,7 @@ class Registry:
         if self._listening[pid]:
             return
         del self._listening[pid]
-        entry = self.bodies.get(pid)
+        entry = self.known.get(pid)
         if entry is None or entry.get("state") != "approved":
             return
         entry["state"] = "away"
@@ -257,10 +257,10 @@ class Registry:
         """A window away long enough leaves the list; its key stays, so the
         page comes back by knocking."""
         self._fading.pop(pid, None)
-        entry = self.bodies.get(pid)
+        entry = self.known.get(pid)
         if entry is None or entry.get("state") != "away":
             return
-        del self.bodies[pid]
+        del self.known[pid]
         self._tell(entry, "forgotten")
 
     # -- hearing ----------------------------------------------------------
@@ -274,7 +274,7 @@ class Registry:
         conversation is the person's, not every trusted part's."""
         if pid is None:
             return True
-        entry = self.bodies.get(pid)
+        entry = self.known.get(pid)
         if entry is None:
             return False
         if entry.get("hears") == "all":

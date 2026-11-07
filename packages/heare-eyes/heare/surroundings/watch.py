@@ -58,13 +58,14 @@ class Surroundings:
             "present": None if idle is None else float(idle) < PRESENT_S,
         }
 
-    async def _note(self, port: Port, key: str, value: object) -> bool:
+    async def _note(self, port: Port, channel: str, key: str,
+                    value: object) -> bool:
         """Post one fact and say whether the brain took it.
 
         ``Door.note`` hands back its task; a plain port that returns
         nothing is taken as accepted.
         """
-        result = port.note(key, value)
+        result = port.note(channel, key, value)
         if not inspect.isawaitable(result):
             return True
         try:
@@ -73,7 +74,8 @@ class Surroundings:
             logger.warning("could not tell the brain about %s: %s", key, exc)
             return False
 
-    async def run(self, port: Port, gate: Callable[[], bool] | None = None) -> None:
+    async def run(self, port: Port, gate: Callable[[], bool] | None = None, *,
+                  channel: str = "eyes") -> None:
         told: dict = {}
         unknown: set[str] = set()
         silent_for = 0.0
@@ -103,7 +105,7 @@ class Surroundings:
                     unknown.discard(key)
                 if told.get(key, _UNSET) != value:
                     changed = True
-                    if await self._note(port, key, value):
+                    if await self._note(port, channel, key, value):
                         told[key] = value
             calm = 0 if changed or countdown else calm + 1
             away = self._idle_now is not None and self._idle_now >= AWAY_S

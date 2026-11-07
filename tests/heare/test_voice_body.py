@@ -78,7 +78,7 @@ def test_the_port_sends_each_report_exactly():
     port.heard(Message(text="привіт", channel="voice", speech_ms=120.0))
     port.heard(Message(text="без часу", channel="voice"))
     port.nothing("voice")
-    port.note("playing", "music")
+    port.note("voice", "playing", "music")
     port.overheard("voice", "quiet")
     verdict = port.said_over("voice", "ага", 150.0, False)
 

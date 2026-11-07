@@ -19,6 +19,7 @@ from heare.core.forms import Permission, Question, Task
 
 logger = logging.getLogger("heare.core.state")
 JOURNAL = 200
+_UNSET = object()
 
 
 @dataclass(frozen=True)
@@ -41,8 +42,10 @@ class State:
     parts: dict[str, list[str]] = field(
         default_factory=lambda: {"inputs": [], "outputs": [], "executors": []}
     )
-    # What is going on around it, as its inputs last reported.
-    around: dict[str, object] = field(default_factory=dict)
+    # Keyed by (channel, key): two parts cannot erase each other's fact.
+    around: dict[tuple[str, str], object] = field(default_factory=dict)
+    # The newest value of each key, whichever part said it last.
+    _latest: dict[str, tuple[str, object]] = field(default_factory=dict)
     journal: deque = field(default_factory=lambda: deque(maxlen=JOURNAL))
     dropped: int = 0
     _readers: list[asyncio.Queue] = field(default_factory=list)
@@ -57,6 +60,19 @@ class State:
                 self.dropped += 1
                 logger.warning("an event reader is full; %s dropped", kind)
         return event
+
+    def note(self, channel: str, key: str, value: object) -> bool:
+        """Keep a fact under the part that reported it; true when it changed."""
+        if self.around.get((channel, key), _UNSET) == value:
+            return False
+        self.around[(channel, key)] = value
+        self._latest[key] = (channel, value)
+        return True
+
+    def around_any(self, key: str) -> object | None:
+        """The newest value of a key, from whichever part said it last."""
+        latest = self._latest.get(key)
+        return latest[1] if latest is not None else None
 
     def set_phase(self, phase: str) -> None:
         if phase != self.phase:
@@ -80,5 +96,6 @@ class State:
             "tasks": [t.view() for t in self.tasks.values()],
             "permission": self.permission.view() if self.permission else None,
             "question": self.question.view() if self.question else None,
-            "around": self.around,
+            # Flat as `/api/state` and the page always saw it.
+            "around": {key: value for key, (_channel, value) in self._latest.items()},
         }

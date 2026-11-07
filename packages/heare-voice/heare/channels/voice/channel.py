@@ -185,7 +185,7 @@ class Voice:
             text, key = said
             logger.error("the microphone is deaf: %s", text)
             if self._port is not None:
-                self._port.note(key, text)
+                self._port.note(self.name, key, text)
         if not reading.deaf or reading.shut:
             # Shut by the system: a reopen is only another shut stream.
             self._retry_s = WATCHDOG_RETRY_S
@@ -407,7 +407,7 @@ class Voice:
             return
         self._synthesis_failed = True
         if self._port is not None:
-            self._port.note("tts", "failed")
+            self._port.note(self.name, "tts", "failed")
 
     def pause(self) -> None:
         self.mouth.pause_all()

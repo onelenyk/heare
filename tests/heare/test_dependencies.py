@@ -49,7 +49,7 @@ LEAVES = {"heare.keys", "heare.laws", "heare.model.providers", "heare.hand", "he
 # argument on ``Memory.keep`` and the said dict built once and used twice),
 # for keeping what really went out (the last turn's messages, a task's brief),
 # and for a model's own words after an act, instead of a catalog's.
-CORE_LINES = 1605
+CORE_LINES = 1623
 
 
 def _imports(path: Path) -> set[str]:

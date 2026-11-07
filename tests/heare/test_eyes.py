@@ -30,7 +30,7 @@ async def test_a_note_is_posted_as_the_door_expects():
         transport=_answered(seen), headers={"X-Heare-Token": "secret"},
     ) as client:
         door = Door(client, "http://127.0.0.1:9790")
-        door.note("playing", ["Music"])
+        door.note("eyes", "playing", ["Music"])
         await door.settle()
 
     assert len(seen) == 1
@@ -48,7 +48,7 @@ async def test_a_failed_post_is_logged_and_does_not_kill_the_loop(caplog):
     async with httpx.AsyncClient(transport=_answered(seen, status=500)) as client:
         door = Door(client, "http://127.0.0.1:9790")
         with caplog.at_level("WARNING", logger="heare.eyes"):
-            door.note("app", "Cursor")
+            door.note("eyes", "app", "Cursor")
             await door.settle()
 
     assert [json.loads(r.content)["kind"] for r in seen] == ["note", "state"]
@@ -59,7 +59,7 @@ async def test_the_label_follows_the_front_app():
     seen: list[httpx.Request] = []
     async with httpx.AsyncClient(transport=_answered(seen)) as client:
         door = Door(client, "http://127.0.0.1:9790")
-        door.note("app", "Telegram")
+        door.note("eyes", "app", "Telegram")
         await door.settle()
 
     assert door.values()["sees"] == "Telegram"
@@ -89,7 +89,7 @@ async def test_looking_can_be_turned_off_and_is_reported():
         door.event({"kind": "control", "channel": "eyes",
                     "name": "looking", "value": False})
         await door.settle()
-        door.note("app", "Cursor")
+        door.note("eyes", "app", "Cursor")
         await door.settle()
 
     assert door.looking is False
@@ -162,7 +162,7 @@ async def test_a_failed_sensor_says_unknown(caplog):
         told: list[tuple[str, object]] = []
 
         class Port:
-            def note(self, key: str, value: object) -> None:
+            def note(self, channel: str, key: str, value: object) -> None:
                 told.append((key, value))
 
         import heare.surroundings.watch as module

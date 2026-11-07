@@ -60,10 +60,12 @@ class Port(Protocol):
     def nothing(self, channel: str) -> None:
         """What began was not a turn after all: a cough, a breath."""
 
-    def note(self, key: str, value: object) -> None:
+    def note(self, channel: str, key: str, value: object) -> None:
         """A fact about the surroundings that has changed — «playing»:
         what is making sound now. Not a message: nothing is answered, the
-        core simply knows it from here on."""
+        core simply knows it from here on. The channel is the part that
+        reported it, so two parts may speak of the same key without one
+        erasing the other."""
 
     def overheard(self, channel: str, text: str) -> None:
         """Something was said and understood, but not to the assistant.

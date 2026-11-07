@@ -46,11 +46,11 @@ async def test_presence_follows_the_streams(tmp_path):
     registry.listens("eyes@mac")
     registry.listens("eyes@mac")
     registry.left("eyes@mac")
-    assert registry.bodies["eyes@mac"]["state"] == "approved"
+    assert registry.known["eyes@mac"]["state"] == "approved"
     registry.left("eyes@mac")
-    assert registry.bodies["eyes@mac"]["state"] == "away"
+    assert registry.known["eyes@mac"]["state"] == "away"
     registry.listens("eyes@mac")
-    assert registry.bodies["eyes@mac"]["state"] == "approved"
+    assert registry.known["eyes@mac"]["state"] == "approved"
     assert [data["state"] for kind, data in told][-2:] == ["away", "approved"]
 
 
@@ -62,8 +62,8 @@ async def test_a_window_away_long_enough_leaves_but_a_manifest_part_stays(tmp_pa
         registry.listens(pid)
         registry.left(pid)
     await asyncio.sleep(0.05)
-    assert "window@laptop-1a2b" not in registry.bodies
-    assert registry.bodies["eyes@mac"]["state"] == "away"
+    assert "window@laptop-1a2b" not in registry.known
+    assert registry.known["eyes@mac"]["state"] == "away"
 
 
 async def test_a_part_hears_its_own_the_person_hears_all(tmp_path):
@@ -90,7 +90,7 @@ def test_a_manifest_makes_a_part_known_and_trusted(tmp_path):
     registry, _, _ = _registry(tmp_path)
     registry.load(tmp_path / "parts")
 
-    assert registry.bodies["eyes@mac"]["state"] == "away"
+    assert registry.known["eyes@mac"]["state"] == "away"
     assert "eyes@mac" in registry.trusted()
 
 
@@ -98,9 +98,9 @@ def test_a_version_is_kept_until_the_part_says_another(tmp_path):
     registry, _, _ = _registry(tmp_path)
     registry.attach("eyes@mac", "eyes", [], "", "mac", "approved", version="1.2.0")
     registry.attach("eyes@mac", "eyes", [], "", "mac", "away")
-    assert registry.bodies["eyes@mac"]["version"] == "1.2.0"
+    assert registry.known["eyes@mac"]["version"] == "1.2.0"
     registry.attach("eyes@mac", "eyes", [], "", "mac", "approved", version="1.3.0")
-    assert registry.bodies["eyes@mac"]["version"] == "1.3.0"
+    assert registry.known["eyes@mac"]["version"] == "1.3.0"
 
 
 def test_a_part_that_began_again_is_counted(tmp_path):
@@ -109,10 +109,10 @@ def test_a_part_that_began_again_is_counted(tmp_path):
         "eyes@mac", "eyes", ["input"], "", "mac", "approved", started=started)
     attach(100.0)
     attach(100.0)  # the same process knocking again after the stream broke
-    assert registry.bodies["eyes@mac"]["restarts"] == 0
+    assert registry.known["eyes@mac"]["restarts"] == 0
     attach(200.0)
     attach(300.0)
-    assert registry.bodies["eyes@mac"]["restarts"] == 2
-    assert registry.bodies["eyes@mac"]["started"] == 300.0
+    assert registry.known["eyes@mac"]["restarts"] == 2
+    assert registry.known["eyes@mac"]["started"] == 300.0
     registry.attach("eyes@mac", "eyes", ["input"], "", "mac", "approved")
-    assert registry.bodies["eyes@mac"]["started"] == 300.0  # a manifest says nothing
+    assert registry.known["eyes@mac"]["started"] == 300.0  # a manifest says nothing

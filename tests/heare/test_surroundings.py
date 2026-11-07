@@ -71,7 +71,7 @@ def test_the_poll_uses_one_ps_per_round(monkeypatch):
 
 async def test_while_something_plays_only_the_name_gets_an_answer():
     room = await open_room()
-    room.line.port.note("playing", ["Music"])
+    room.line.port.note("eyes", "playing", ["Music"])
     room.core.hear(Message(text="Я знову закохався, і це назавжди", channel="text",
                            addressed=False))
     await room.settled()
@@ -88,8 +88,8 @@ async def test_while_something_plays_only_the_name_gets_an_answer():
 
 async def test_when_it_is_quiet_again_he_is_understood_without_the_name():
     room = await open_room()
-    room.line.port.note("playing", ["Music"])
-    room.line.port.note("playing", [])
+    room.line.port.note("eyes", "playing", ["Music"])
+    room.line.port.note("eyes", "playing", [])
     room.model.will_say("Так, тепер тихо.")
     room.core.hear(Message(text="О, нарешті тихо, правда?", channel="text",
                            addressed=False))
@@ -106,7 +106,7 @@ async def test_it_knows_its_work_and_the_room_without_being_told():
     await room.until(lambda: worker.tasks)
     room.says("стоп")
     await room.settled()
-    room.line.port.note("playing", ["Google Chrome"])
+    room.line.port.note("eyes", "playing", ["Google Chrome"])
     room.model.will_say("Нічого, усе зупинено.")
     room.says("Що ти зараз робиш?")
     await room.settled()
@@ -122,7 +122,7 @@ async def test_a_gap_between_two_tracks_is_not_silence():
     told: list = []
 
     class Port:
-        def note(self, key, value):
+        def note(self, channel, key, value):
             if key == "playing":
                 told.append((key, list(value)))
 
@@ -146,7 +146,7 @@ async def test_it_reports_the_app_and_whether_the_person_is_present():
     told: list = []
 
     class Port:
-        def note(self, key, value):
+        def note(self, channel, key, value):
             told.append((key, value))
 
     watch = Surroundings(playing=lambda: [], front=lambda: "Cursor",
@@ -171,7 +171,7 @@ async def test_a_drawing_request_is_not_swallowed_by_the_rule():
     """Typed and clicked messages are addressed by nature: the rule is
     about speech that names nobody."""
     room = await open_room()
-    room.line.port.note("playing", ["Music"])
+    room.line.port.note("eyes", "playing", ["Music"])
     room.model.will_say(Says("Ось."))
     room.says("Покажи список")
     await room.settled()

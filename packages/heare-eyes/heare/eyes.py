@@ -73,7 +73,7 @@ class Door:
         self._sending.add(task)
         task.add_done_callback(self._sending.discard)
 
-    def note(self, key: str, value: object) -> asyncio.Task[bool] | None:
+    def note(self, channel: str, key: str, value: object) -> asyncio.Task[bool] | None:
         """Post the fact without waiting; the task says whether it was taken.
 
         ``Surroundings`` awaits the task and only marks the fact told after
@@ -85,17 +85,17 @@ class Door:
             return None
         if key == "app":
             self.sees = str(value or N_("quiet"))
-        task = asyncio.create_task(self._post(key, value))
+        task = asyncio.create_task(self._post(channel, key, value))
         self._sending.add(task)
         task.add_done_callback(self._sending.discard)
         return task
 
-    async def _post(self, key: str, value: object) -> bool:
+    async def _post(self, channel: str, key: str, value: object) -> bool:
         taken = False
         try:
             answer = await self._client.post(
                 f"{self._base}/api/input", timeout=NOTE_TIMEOUT_S, json={
-                    "channel": self.name, "kind": "note", "key": key, "value": value,
+                    "channel": channel, "kind": "note", "key": key, "value": value,
                 })
             answer.raise_for_status()
             taken = True
@@ -133,7 +133,8 @@ async def run() -> int:
             door.wire = wire
             door.tell()
             try:
-                await Surroundings().run(door, gate=lambda: door.looking)
+                await Surroundings().run(
+                    door, gate=lambda: door.looking, channel=door.name)
             finally:
                 await door.settle()
 

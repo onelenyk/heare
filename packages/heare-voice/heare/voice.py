@@ -174,9 +174,9 @@ class HttpPort:
     def nothing(self, channel: str) -> None:
         self._report("/api/input", {"channel": channel, "kind": "nothing"})
 
-    def note(self, key: str, value: object) -> None:
+    def note(self, channel: str, key: str, value: object) -> None:
         self._report("/api/input", {
-            "channel": CHANNEL, "kind": "note", "key": key, "value": value,
+            "channel": channel, "kind": "note", "key": key, "value": value,
         })
 
     def overheard(self, channel: str, text: str) -> None:

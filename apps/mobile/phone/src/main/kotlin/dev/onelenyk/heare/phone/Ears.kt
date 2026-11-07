@@ -130,10 +130,10 @@ class Ears : Service() {
     private fun notice(): Notification {
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(
-            NotificationChannel(CHANNEL, tr("heare is here"), NotificationManager.IMPORTANCE_LOW))
+            NotificationChannel(NOTIFICATION_CHANNEL, tr("heare is here"), NotificationManager.IMPORTANCE_LOW))
         val open = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
-        return Notification.Builder(this, CHANNEL)
+        return Notification.Builder(this, NOTIFICATION_CHANNEL)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentTitle("heare")
             .setContentText(tr("Connected to the brain"))
@@ -144,7 +144,7 @@ class Ears : Service() {
 
     companion object {
         private const val NOTE = 1
-        private const val CHANNEL = "ears"
+        private const val NOTIFICATION_CHANNEL = "ears"
         private const val SAID = "said"
         private const val SAID_NOTE = 2
 

@@ -70,7 +70,7 @@ def names(path: Path | None = None) -> frozenset[str]:
     return frozenset(w for w in (called.lower(), "дока", "doka", "heare") if w)
 
 
-def now_block(around: Mapping[str, object], now: float) -> str:
+def now_block(around: Mapping[str | tuple[str, str], object], now: float) -> str:
     """What the sources say is true now, from the notes that carry ``until``.
 
     A source's text may contain instructions of its own, so the block is
@@ -91,6 +91,9 @@ def now_block(around: Mapping[str, object], now: float) -> str:
             continue
         label = value.get("label")
         if not isinstance(label, str) or not label.strip():
+            # A fact is keyed by (channel, key); only the key names it.
+            if isinstance(key, tuple):
+                key = key[1] if len(key) > 1 else key[0]
             label = str(key)
         lines.append((label.strip()[:30], text.strip()[:200]))
     if not lines:

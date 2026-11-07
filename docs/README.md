@@ -3,7 +3,7 @@
 Три шари, і кожен знає своє місце.
 
 - **`product/`** — живий план: як heare стає мережею тіл. `README.md`
-  (загальний), `brain.md`, `body-desktop.md`, `body-web.md`, `hands.md`,
+  (загальний), `brain.md`, `mac.md`, `page.md`, `hands.md`,
   `protocol.md`, `setup.md`, `clock.md` (надійність — що робимо зараз). Тут
   правда про **як зараз** (стан звірено 28 жовтня) і **що далі**.
 - **`laws.md`, `vision.md`, `plan.md`, `engine.md`** — навіщо, закони,

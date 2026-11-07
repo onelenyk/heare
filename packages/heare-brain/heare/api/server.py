@@ -101,6 +101,7 @@ _STATUS_FIELDS: dict[str, tuple[str, ...]] = {
 # walks the router and fails when a route is neither here nor explicitly
 # local-only.
 REMOTE_WINDOW_ALLOWED: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("POST", re.compile(r"^/api/parts$")),
     ("POST", re.compile(r"^/api/bodies$")),
     ("POST", re.compile(r"^/api/message$")),
     ("POST", re.compile(r"^/api/input$")),
@@ -389,6 +390,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
     updates = Updates(settings, build_info["version"], home, core.state.emit)
 
     PART_CALLS = (
+        ("POST", re.compile(r"^/api/parts$")),
         ("POST", re.compile(r"^/api/bodies$")),
         ("POST", re.compile(r"^/api/input$")),
         ("POST", re.compile(r"^/api/input/said_over$")),
@@ -443,7 +445,8 @@ def build(core: Core, settings: Any, vitals: Any = None,
             return await handler(request)
         if pid.startswith("machine@"):
             if (request.method, request.path) in (
-                    ("POST", "/api/bodies"), ("GET", "/api/update/mine"),
+                    ("POST", "/api/parts"), ("POST", "/api/bodies"),
+                    ("GET", "/api/update/mine"),
                     ("POST", "/api/update/mine/failed")):
                 request["part"] = pid
                 return await handler(request)
@@ -635,7 +638,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         Path(settings.parts_file), core.state.emit,
         on_executor if make_executor is not None else None)
     registry.load(Path(settings.parts_dir))
-    bodies = registry.bodies
+    bodies = registry.known
     trust = skills.Trust(Path(settings.parts_file).parent / "part_skills.json")
     calls = skills.Calls()
     seen = Seen(registry, calls)
@@ -739,7 +742,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         name = who.split("@", 1)[1]
         if pid.split("@", 1)[-1] != name:
             return False
-        entry = registry.bodies.get(pid)
+        entry = registry.known.get(pid)
         if entry is not None:
             claimed = entry.get("machine")
             if claimed is not None and claimed != who:
@@ -753,7 +756,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
                                      or owner.get("machine") != who):
                 return False
         if channel in core.executors:
-            holder = registry.bodies.get(pid)
+            holder = registry.known.get(pid)
             if holder is None or holder.get("channel") != channel:
                 return False
         return True
@@ -936,7 +939,8 @@ def build(core: Core, settings: Any, vitals: Any = None,
         elif kind == "overheard":
             core.port.overheard(channel, str(data.get("text", "")))
         elif kind == "note":
-            core.port.note(str(data.get("key", "")), data.get("value"))
+            core.port.note(str(data.get("channel") or ""),
+                           str(data.get("key", "")), data.get("value"))
         elif kind == "state":
             values = data.get("values")
             if not isinstance(values, dict):
@@ -1616,7 +1620,8 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.post("/api/pair-code", pair_code),
         web.post("/api/message", message),
         web.get("/health", health),
-        web.post("/api/bodies", register),
+        web.post("/api/parts", register),
+        web.post("/api/bodies", register),  # the old name, still a part's knock
         web.post("/api/bodies/{id}/approve", approve),
         web.post("/api/bodies/{id}/reject", reject),
         web.post("/api/bodies/{id}/forget", forget),

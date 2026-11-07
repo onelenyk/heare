@@ -14,6 +14,7 @@ import time
 from heare.core import FAILURE_LINE, RESULT_PREFIX, Core, Message
 from heare.core.i18n import _ as said_as
 from heare.core.conversation import CONTEXTS_KEPT, HISTORY_TURNS, LOOKED_ALREADY, LOOK_STEPS
+from heare.core.state import State
 from heare.language import uk
 from heare.memory.book import Book
 from heare.memory.journal import Journal
@@ -1389,4 +1390,36 @@ async def test_stop_is_heard_without_asking_the_model():
     room.says("Зупини все, що робиш, будь ласка")
     await room.settled()
     assert len(room.model.asked) == 1 and room.page.said
+    await room.close()
+
+
+def test_two_channels_keep_their_own_facts_and_the_newest_wins():
+    state = State()
+    assert state.note("eyes", "playing", ["Music"]) is True
+    assert state.note("phone", "playing", ["Podcast"]) is True
+
+    assert state.around[("eyes", "playing")] == ["Music"]
+    assert state.around[("phone", "playing")] == ["Podcast"]
+    assert state.around_any("playing") == ["Podcast"]
+    assert state.snapshot()["around"] == {"playing": ["Podcast"]}
+
+
+def test_a_note_without_a_channel_does_not_overwrite_a_real_one():
+    state = State()
+    state.note("eyes", "playing", ["Music"])
+    state.note("", "playing", ["An old part"])
+
+    assert state.around[("eyes", "playing")] == ["Music"]
+    assert state.around[("", "playing")] == ["An old part"]
+
+
+async def test_playing_from_a_channel_holds_the_room_talk():
+    room = await open_room()
+    room.line.port.note("eyes", "playing", ["Music"])
+    room.core.hear(Message(text="Я знову закохався", channel="text",
+                           addressed=False))
+    await room.settled()
+    assert room.page.said == []
+    assert [e.data["why"] for e in room.core.state.journal
+            if e.kind == "overheard"] == ["playing"]
     await room.close()

@@ -1,11 +1,11 @@
-"""Screens the person asks for, written on the spot and kept as their files.
+"""Images the person asks for, written on the spot and kept as their files.
 
 The built-in page is deliberately small. Everything else — costs, a
 history view, a form for some setting — the person asks for, and it is
-written as one self-contained page. A screen is saved in the person's own
+written as one self-contained page. An image is saved in the person's own
 folder; the assistant's code does not change.
 
-A screen is opened under a sandbox (``show_screen`` in ``server.py``): it
+An image is opened under a sandbox (``show_screen`` in ``server.py``): it
 gets an opaque origin, cannot read or write ``/api/*``, and cannot fetch
 anything at all. That is the point — a model wrote it, and model output
 must not become code in the person's origin. So it may show only what it
@@ -40,7 +40,7 @@ _WRITE = (
 _NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,60}")
 
 
-class ScreenMaker:
+class ImageMaker:
     name = "screens"
     about = ("makes a separate screen — a whole page with scripts that lives by "
              "itself and shows the assistant's state or data live (a panel, a "

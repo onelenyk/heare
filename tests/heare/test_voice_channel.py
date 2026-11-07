@@ -111,7 +111,7 @@ class FakePort:
     def nothing(self, channel_name: str) -> None:
         self.nothing_calls.append(channel_name)
 
-    def note(self, key: str, value: object) -> None:
+    def note(self, channel_name: str, key: str, value: object) -> None:
         self.notes.append((key, value))
 
     def overheard(self, channel_name: str, text: str) -> None:

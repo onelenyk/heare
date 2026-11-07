@@ -118,5 +118,5 @@ it.
 ## PLANS
 
 The live plan is `docs/product/`: the overall one plus one file per app
-(brain, body-desktop, body-web, hands, protocol). Session notes and
+(brain, mac, page, hands, protocol). Session notes and
 drafts are not committed.

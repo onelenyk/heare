@@ -89,6 +89,9 @@ class State:
     phase: str = "idle"
     around: dict = field(default_factory=dict)
 
+    def around_any(self, key: str):
+        return self.around.get(key)
+
 
 def test_it_waits_while_the_person_is_away(tmp_path):
     store = Intents(tmp_path / "intents.json")
@@ -430,3 +433,21 @@ async def test_a_corrupt_intent_row_does_not_kill_engine_run(tmp_path, caplog):
         await asyncio.gather(task, return_exceptions=True)
 
     assert said and "Сайт готовий." in said[0].text
+
+
+def test_it_reads_presence_from_a_channel_note(tmp_path):
+    from heare.core.state import State
+
+    store = Intents(tmp_path / "intents.json")
+    said: list = []
+    state = State()
+    state.note("eyes", "present", False)
+    motor = Engine(store, state=state, speak=said.append, now=lambda: 100.0,
+                   quiet=("00:00", "00:00"), daily_limit=99)
+
+    motor.note(event("done"))
+    assert said == []  # away: it waits
+
+    state.note("eyes", "present", True)
+    motor.note(Ev("around", {}))
+    assert len(said) == 1 and "Сайт готовий." in said[0].text

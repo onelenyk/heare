@@ -107,7 +107,9 @@ async def test_a_note_updates_the_surroundings_and_is_announced(tmp_path):
     while not events.empty():
         seen.append(events.get_nowait())
     around = [e for e in seen if e.kind == "around"]
-    assert around[-1].data == {"key": "playing", "value": ["Music"]}
+    assert around[-1].data == {
+        "key": "playing", "value": ["Music"], "channel": "eyes",
+    }
     await _close(room, client)
 
 
@@ -492,7 +494,7 @@ async def test_a_delegated_reply_can_be_watched_from_the_screen(tmp_path):
 
 
 async def test_a_screen_asked_for_is_written_saved_and_announced(tmp_path):
-    from heare.api.screens import ScreenMaker
+    from heare.api.images import ImageMaker
 
     room, client, auth, settings = await _open(tmp_path)
 
@@ -501,7 +503,7 @@ async def test_a_screen_asked_for_is_written_saved_and_announced(tmp_path):
         return "name: my-tasks\n<!doctype html><h1>Справи</h1>"
 
     room.core.add_executor(
-        ScreenMaker(settings.screens_dir, write, room.core.state.emit)
+        ImageMaker(settings.screens_dir, write, room.core.state.emit)
     )
     room.model.will_say("Екран готовий.")
     task = room.core.delegate("зроби екран зі справами")
@@ -513,7 +515,7 @@ async def test_a_screen_asked_for_is_written_saved_and_announced(tmp_path):
 
 
 async def test_a_model_that_returns_no_page_is_said_plainly(tmp_path):
-    from heare.api.screens import ScreenMaker
+    from heare.api.images import ImageMaker
 
     room, client, auth, settings = await _open(tmp_path)
 
@@ -521,7 +523,7 @@ async def test_a_model_that_returns_no_page_is_said_plainly(tmp_path):
         return "Вибач, не можу."
 
     room.core.add_executor(
-        ScreenMaker(settings.screens_dir, write, room.core.state.emit)
+        ImageMaker(settings.screens_dir, write, room.core.state.emit)
     )
     task = room.core.delegate("зроби екран")
     await room.until(lambda: task.status == "done")
@@ -614,7 +616,7 @@ async def test_the_state_carries_the_model_the_tally_and_recent_history(tmp_path
 
 
 async def test_asking_to_change_the_drawing_hands_the_model_what_is_drawn(tmp_path):
-    from heare.api.screens import ScreenMaker
+    from heare.api.images import ImageMaker
 
     room, client, auth, settings = await _open(tmp_path)
     seen: list[str] = []
@@ -623,7 +625,7 @@ async def test_asking_to_change_the_drawing_hands_the_model_what_is_drawn(tmp_pa
         seen.append(request)
         return "name: board\n<!doctype html><h1>Дошка</h1>" + ("<button>ок</button>" if len(seen) > 1 else "")
 
-    maker = ScreenMaker(settings.screens_dir, write, room.core.state.emit)
+    maker = ImageMaker(settings.screens_dir, write, room.core.state.emit)
     room.core.add_executor(maker)
     room.model.will_say("Є.", "Додав.")
     first = room.core.delegate("намалюй дошку")
@@ -2185,12 +2187,27 @@ async def test_the_update_door_checks_and_refuses_what_it_cannot_do(tmp_path, mo
     await _close(room, client)
 
 
-async def _knock(client, headers, pid, forms, **more):
+async def _knock(client, headers, pid, forms, *, path="/api/bodies", **more):
     channel, host = pid.split("@")
-    answer = await client.post("/api/bodies", json={
+    answer = await client.post(path, json={
         "channel": channel, "forms": forms, "about": "", "key": pid, "host": host,
         **more}, headers=headers)
     return {"X-Heare-Token": (await answer.json())["token"]}
+
+
+async def test_the_old_knock_path_is_the_same_door(tmp_path):
+    (tmp_path / "parts.json").write_text(
+        '["old@desk", "new@desk"]', encoding="utf-8")
+    room, client, master, _ = await _open(tmp_path)
+    old = await _knock(client, master, "old@desk", ["output"],
+                       path="/api/bodies")
+    new = await _knock(client, master, "new@desk", ["output"],
+                       path="/api/parts")
+    assert old["X-Heare-Token"] and new["X-Heare-Token"]
+    state = await (await client.get("/api/state", headers=master)).json()
+    assert state["bodies"]["old@desk"]["state"] == "approved"
+    assert state["bodies"]["new@desk"]["state"] == "approved"
+    await _close(room, client)
 
 
 PIN = {"name": "pin3", "about": "реле", "effect": "change",
