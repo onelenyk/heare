@@ -88,7 +88,12 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # The action installs the obsolete «tools» package by default, and
+      # sdkmanager no longer has it (7 November). The SDK the build needs
+      # Gradle fetches itself once the licences are accepted here.
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       # The build fetches the VAD library and the wake-word model itself;
       # between runs they are already here.
