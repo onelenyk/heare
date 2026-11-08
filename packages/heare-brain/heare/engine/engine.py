@@ -113,6 +113,7 @@ class Engine:
         self._soma = soma
         self._soma_at = self._now() if soma is not None else None
         self._soma_saved_at: float | None = None
+        self._last_soma_thing: str | None = None
         self._seen_running: set[int] = set()
 
     def note(self, event: Any) -> None:
@@ -131,14 +132,13 @@ class Engine:
         data = event.data
         status = str(data.get("status") or "")
         news = str(data.get("news") or "").strip()
-        # The body hears every ending, including one that carries no news.
         if self._soma is not None:
             feeling = _FEELING.get(status)
             if feeling:
                 label = str(data.get("request") or news)[:200]
-                self._soma.feed(feeling, about=f"task:{data.get('id')}", label=label)
+                self._soma.feed(feeling, thing_id=str(data.get("id")), kind="task", label=label)
                 if status in ("done", "stopped"):
-                    self._retire(label)
+                    self._retire(str(data.get("id")))
         why = _WORTH_TELLING.get(status)
         if why is None or not news:
             return
@@ -159,10 +159,10 @@ class Engine:
         self._hold_from_soma(now)
         self._save_soma(now)
 
-    def _retire(self, label: str) -> None:
+    def _retire(self, thing_id: str) -> None:
         """A closed task takes its waiting remark with it."""
         now = self._now()
-        about = "soma:" + label
+        about = "soma:" + thing_id
         for intent in self._intents.alive(now):
             if intent.about == about:
                 self._intents.done(intent, at=now)
@@ -181,24 +181,23 @@ class Engine:
                 continue
             self._seen_running.add(task.id)
             self._soma.feed(
-                "task_opened", about=f"task:{task.id}", label=str(task.request)[:200],
+                "task_opened", thing_id=str(task.id), kind="task", label=str(task.request)[:200],
             )
 
     def _hold_from_soma(self, now: float) -> None:
-        """Turn what has ripened into an intent, if it is not held already."""
-        held = self._soma.propose() if self._soma is not None else None
-        if held is None:
+        """Turn what presses into an intent, if it is not held already."""
+        want = self._soma.propose() if self._soma is not None else None
+        if want is None:
             return
-        about = "soma:" + held.about
+        about = "soma:" + want.thing_id
         if any(intent.about == about for intent in self._intents.alive(now)):
             return
-        weight = 3 if held.commitment >= 0.75 else 2 if held.commitment >= 0.4 else 1
-        # The body counts its own seconds; the store counts wall time.
-        left = held.until - self._soma.t if held.until is not None else None
+        thing = self._soma.thing(want.thing_id)
+        what = thing.label if thing is not None and thing.label else want.thing_id
+        weight = 3 if want.pressing >= 0.75 else 2 if want.pressing >= 0.4 else 1
         self._intents.hold(
-            what=held.about, why="soma", weight=weight,
-            about=about, until=(now + left) if left is not None else None,
-            not_before=now,
+            what=what, why="soma", weight=weight,
+            about=about, not_before=now,
         )
 
     def mood(self) -> str:
@@ -222,6 +221,9 @@ class Engine:
             self._answered = True
             self._gap_s = max(MIN_GAP_S, self._gap_s * BOLDER)
             self._ready_at = self._last_spoke + self._gap_s
+            if self._soma is not None and self._last_soma_thing is not None:
+                self._soma.engage(self._last_soma_thing)
+                self._last_soma_thing = None
 
     def _fresh_until(self, now: float) -> float:
         """How long work news stays worth telling.
@@ -319,8 +321,15 @@ class Engine:
                 and now - self._last_spoke > ANSWERED_S):
             # The last remark went unanswered: wait longer before the next.
             self._gap_s = min(MAX_GAP_S, self._gap_s * SHYER)
+            if self._soma is not None and self._last_soma_thing is not None:
+                self._soma.ignored()
+                self._last_soma_thing = None
         for intent in intents:
             self._intents.done(intent, at=now)
+            if self._soma is not None and intent.why == "soma":
+                thing_id = intent.about.removeprefix("soma:")
+                self._soma.spoke(thing_id)
+                self._last_soma_thing = thing_id
         self._last_spoke = now
         self._ready_at = now + self._gap_s
         self._answered = False

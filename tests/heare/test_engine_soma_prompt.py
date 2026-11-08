@@ -36,12 +36,12 @@ def engine(tmp_path, *, soma=None):
     return motor, clock
 
 
-def test_without_a_body_there_is_nothing_to_say_about_inside(tmp_path):
+def test_without_a_soma_there_is_nothing_to_say_about_inside(tmp_path):
     motor, _ = engine(tmp_path)
     assert motor.mood() == ""
 
 
-async def test_with_a_body_the_prompt_says_what_presses(tmp_path):
+async def test_with_a_soma_the_prompt_says_what_presses(tmp_path):
     motor, clock = engine(tmp_path, soma=Soma())
     motor.note(event())
     clock.go(3600)

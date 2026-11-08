@@ -1,8 +1,9 @@
-"""The soma: needs that grow, hold, and let go."""
+"""The soma: wants that grow, hold, and let go."""
 
 from __future__ import annotations
 
-from heare.engine.soma import ACTIVATION, Soma
+from heare.engine.soma import Soma
+
 
 def soma() -> Soma:
     return Soma()
@@ -16,149 +17,116 @@ def run(w: Soma, seconds: float, step: float = 1.0) -> None:
         left -= piece
 
 
-def test_time_alone_makes_a_need_grow():
+def test_time_alone_makes_a_want_grow():
     w = soma()
-    w.feed("silence_long")
-    before = w.needs[0].level
+    w.feed("task_opened", thing_id="7", kind="task", label="сайт")
+    before = w.wants[0].care
     run(w, 3600)
-    assert w.needs[0].level > before
+    assert w.wants[0].care > before
 
 
-def test_a_task_becomes_an_intention_only_when_it_grows():
+def test_a_failure_presses_at_once():
     w = soma()
-    w.feed("task_opened", "heare", "міграція heare")
-    assert w.propose() is None
-    run(w, 3600)
+    w.feed("task_failed", thing_id="7", kind="task", label="сайт")
     assert w.propose() is not None
-    assert w.propose().drive == "closure"
+    assert w.propose().verb == "finish"
+
+
+def test_an_opened_task_presses_only_when_it_has_grown():
+    w = soma()
+    w.feed("task_opened", thing_id="7", kind="task", label="сайт")
+    assert w.propose() is None
+    run(w, 3 * 3600)
+    assert w.propose() is not None
 
 
 def test_two_tasks_bind_to_their_own_things():
     w = soma()
-    w.feed("task_opened", "a", "a")
-    w.feed("task_opened", "b", "b")
-    closure = [n for n in w.needs if n.drive == "closure"]
-    assert len(closure) == 2
-    assert {n.about for n in closure} == {"a", "b"}
+    w.feed("task_opened", thing_id="a", kind="task", label="a")
+    w.feed("task_opened", thing_id="b", kind="task", label="b")
+    finishes = [x for x in w.wants if x.verb == "finish"]
+    assert len(finishes) == 2
+    assert {x.thing_id for x in finishes} == {"a", "b"}
 
 
-def test_closing_one_task_does_not_close_the_other():
+def test_done_closes_one_thing_and_leaves_a_trace():
     w = soma()
-    w.feed("task_opened", "a", "a")
-    w.feed("task_opened", "b", "b")
-    run(w, 3600)
-    first = next(n for n in w.needs if n.about == "a")
-    w.feed("task_done", "a", "a")
-    assert first is not None
-    other = next(n for n in w.needs if n.about == "b")
-    assert other.level >= ACTIVATION
+    w.feed("task_opened", thing_id="a", kind="task", label="a")
+    w.feed("task_opened", thing_id="b", kind="task", label="b")
+    run(w, 3 * 3600)
+    w.feed("task_done", thing_id="a", kind="task", label="a")
+    assert "a" in w.trace
+    assert any(t.id == "a" and t.state == "finished" for t in w.things)
+    b = next(x for x in w.wants if x.thing_id == "b")
+    assert b.care > 0.0
 
 
-def test_without_events_nothing_is_bound_to_a_thing():
-    w = soma()
-    run(w, 7200)
-    assert [n for n in w.needs if n.about != "self"] == []
-
-
-def test_nothing_appears_from_nowhere():
+def test_without_events_nothing_is_bound():
     w = soma()
     run(w, 7200)
-    assert {n.drive for n in w.needs} <= {"connection"}
+    assert w.wants == []
+    assert w.things == []
 
 
-def test_the_dominant_need_holds_for_a_while():
+def test_things_are_never_deleted():
     w = soma()
-    w.feed("task_opened", "a", "a")
-    run(w, 60)
-    first = w.dominant
-    w.feed("interrupted", "owner", "owner")
-    w.feed("interrupted", "owner", "owner")
-    run(w, 100)
-    assert w.dominant == first
-    run(w, 400)
-    assert w.dominant != first
+    w.feed("task_failed", thing_id="7", kind="task", label="сайт")
+    w.feed("task_done", thing_id="7", kind="task", label="сайт")
+    assert any(t.id == "7" and t.state == "finished" for t in w.things)
 
 
-def test_an_interruption_takes_the_floor_and_gives_it_back():
+def test_engage_hands_the_burden_over():
     w = soma()
-    w.feed("task_opened", "a", "a")
-    run(w, 3600)
-    first = w.active
-    first_dom = w.dominant
-    assert first is not None
-    w.feed("interrupted", "owner", "owner")
-    w.feed("interrupted", "owner", "owner")
-    run(w, 600)
-    assert w.dominant != first_dom
-    attunement = next(n for n in w.needs if n.drive == "attunement")
-    w.perform(attunement.id)
-    run(w, 600)
-    assert w.active == first
+    w.feed("task_failed", thing_id="7", kind="task", label="сайт")
+    before = w.wants[0].care
+    w.engage("7")
+    assert w.wants[0].carried is True
+    assert w.wants[0].pressing == 0.0
+    assert w.wants[0].care < before
 
 
-def test_commitment_grows_while_held():
+def test_ignored_leaves_her_alone_with_it():
     w = soma()
-    w.feed("task_opened", "a", "a")
-    run(w, 3600)
-    early = w.propose()
-    assert early is not None
-    held_id = early.id
-    early_commitment = early.commitment
-    run(w, 6000)
-    same = next(i for i in w.intentions if i.id == held_id)
-    assert same.commitment > early_commitment
+    w.feed("task_failed", thing_id="7", kind="task", label="сайт")
+    w.spoke("7")
+    assert w.wants[0].said == 1
+    w.ignored()
+    assert w.wants[0].said == 0
+    assert w.wants[0].carried is False
+    assert w.wants[0].pressing > 0.0
 
 
-def test_a_short_failure_does_not_kill_the_intention():
+def test_spoke_resets_pressing_and_costs_energy():
     w = soma()
-    w.feed("task_opened", "a", "a")
-    run(w, 3600)
-    held = w.propose()
-    assert held is not None
-    w.feed("task_failed", "a", "a")
-    run(w, 60)
-    again = next(i for i in w.intentions if i.id == held.id)
-    assert again.status in ("held", "active")
+    w.feed("task_failed", thing_id="7", kind="task", label="сайт")
+    w.spoke("7")
+    assert w.wants[0].pressing == 0.0
+    assert w.wants[0].said == 1
+    assert w.energy < 1.0
 
 
-def test_an_expired_intention_is_dropped():
+def test_tiredness_raises_the_bar():
     w = soma()
-    w.feed("task_opened", "a", "a")
-    run(w, 3600)
-    held = w.propose()
-    assert held is not None
-    run(w, 100_000)
-    assert held.status in ("dropped", "done")
+    full = w.threshold()
+    w.energy = 0.2
+    assert w.threshold() > full
 
 
-def test_intentions_do_not_multiply():
+def test_a_carried_want_does_not_re_press_on_time():
     w = soma()
-    for index in range(30):
-        w.feed("task_opened", f"t{index}", f"t{index}")
-        run(w, 60)
-    open_ones = [i for i in w.intentions if i.status in ("held", "active")]
-    assert len(open_ones) <= 12
+    w.feed("task_failed", thing_id="7", kind="task", label="сайт")
+    w.spoke("7")
+    w.engage("7")
+    run(w, 3 * 3600)
+    assert w.propose() is None
 
 
-def test_the_state_is_written_for_a_model_not_for_a_reader_of_numbers():
+def test_the_state_is_english_without_numbers():
     w = soma()
-    w.feed("task_opened", "heare", "міграція heare")
+    w.feed("task_failed", thing_id="heare", kind="task", label="міграція heare")
     run(w, 7200)
     text = w.state()
     assert "міграція heare" in text
     assert not any(char.isdigit() for char in text)
-    for word in ("drive", "need", "intent", "level", "urgency", "closure"):
+    for word in ("drive", "need", "level", "urgency", "closure", "attunement"):
         assert word not in text.lower()
-
-
-def test_performing_eases_more_the_first_time_than_the_tenth():
-    w = soma()
-    w.feed("task_opened", "a", "a")
-    run(w, 3600)
-    need = next(n for n in w.needs if n.drive == "closure")
-    gains: list[float] = []
-    for _ in range(10):
-        before = need.level
-        w.perform(need.id)
-        gains.append(before - need.level)
-    assert gains[0] > gains[9]

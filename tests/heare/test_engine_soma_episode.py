@@ -1,9 +1,4 @@
-"""A day with the soma: what it holds, what it lets go, what it says.
-
-Run with ``-s`` to see the numbers:
-
-    uv run pytest tests/heare/test_engine_soma_episode.py -s
-"""
+"""A day with the soma: what it holds, what it lets go."""
 
 from __future__ import annotations
 
@@ -92,25 +87,34 @@ def soma_intents(store, clock):
     return [i for i in store.alive(clock()) if i.about.startswith("soma:")]
 
 
-def test_without_a_body_the_episode_says_only_news(tmp_path):
+def test_without_a_soma_the_episode_says_only_news(tmp_path):
     store, said, _, clock, _ = episode(tmp_path, soma=None)
     assert soma_intents(store, clock) == []
     assert said, "news still has to be told"
 
 
-def test_with_a_body_the_finished_task_is_let_go(tmp_path):
-    store, _, _, clock, _ = episode(tmp_path, soma=Soma())
-    assert not [i for i in soma_intents(store, clock) if "зроби сайт" in i.what]
+def test_with_a_soma_the_finished_task_is_let_go(tmp_path):
+    store, _, motor, clock, _ = episode(tmp_path, soma=Soma())
+    soma = motor._soma
+    assert "зроби сайт" in soma.trace
+    assert not any(w.thing_id == "1" and w.care > 0.02 for w in soma.wants)
 
 
-def test_with_a_body_the_failed_task_keeps_pressing(tmp_path):
-    store, _, _, clock, _ = episode(tmp_path, soma=Soma(), horizon=1800)
-    assert [i for i in soma_intents(store, clock) if "онови залежності" in i.what]
+def test_with_a_soma_the_failed_task_keeps_pressing(tmp_path):
+    store, _, motor, clock, _ = episode(tmp_path, soma=Soma(), horizon=1800)
+    soma = motor._soma
+    want = next((w for w in soma.wants if w.thing_id == "2"), None)
+    assert want is not None
+    assert want.care > 0.0
 
 
-def test_a_failure_fades_instead_of_nagging_for_ever(tmp_path):
-    store, _, _, clock, _ = episode(tmp_path, soma=Soma(), horizon=30 * 3600)
-    assert not [i for i in soma_intents(store, clock) if "онови залежності" in i.what]
+def test_a_failure_does_not_nag_forever(tmp_path):
+    store, _, motor, clock, _ = episode(tmp_path, soma=Soma(), horizon=30 * 3600)
+    soma = motor._soma
+    want = next((w for w in soma.wants if w.thing_id == "2"), None)
+    assert want is not None
+    assert want.said >= 1
+    assert soma.propose() is None
 
 
 def test_nothing_is_held_twice(tmp_path):
@@ -129,23 +133,6 @@ def test_a_task_is_not_held_the_moment_it_starts(tmp_path):
     assert soma_intents(store, clock) == []
 
 
-def test_the_body_says_less_often_than_it_holds(tmp_path):
-    # Two endings are answers to the person and never wait for a budget;
-    # what the soma adds on its own is a news intent, and one a day is the cap.
+def test_the_soma_says_less_often_than_it_holds(tmp_path):
     store, said, _, clock, _ = episode(tmp_path, soma=Soma(), daily_limit=1)
     assert len(said) <= 3
-
-
-def test_the_episode_report(tmp_path, capsys):
-    for soma, label in ((None, "без Соми"), (Soma(), "із Сомою")):
-        store, said, motor, clock, _ = episode(tmp_path / str(bool(soma)), soma=soma)
-        every = list(store._by_id.values())
-        somas = [i for i in every if i.about.startswith("soma:")]
-        with capsys.disabled():
-            print(
-                f"{label:9} усього намірів {len(every):2} · з тіла {len(somas):2} · "
-                f"сказано {len(said):2}"
-            )
-            for intent in somas:
-                print(f"            · {intent.what} (вага {intent.weight})")
-    assert True

@@ -57,23 +57,27 @@ def engine(tmp_path, *, state=None, soma=None):
     return store, said, motor, clock
 
 
+def soma_intents(store, clock):
+    return [i for i in store.alive(clock()) if i.about.startswith("soma:")]
+
+
 def test_a_running_task_becomes_a_thing_left_open(tmp_path):
     state = State({1: Task(1, "зроби сайт")})
     store, _, motor, clock = engine(tmp_path, state=state)
     motor.note(Ev("tick", {}))
     soma = motor._soma
-    assert [n for n in soma.needs if n.drive == "closure" and n.about == "task:1"]
+    assert [w for w in soma.wants if w.verb == "finish" and w.thing_id == "1"]
 
 
 def test_the_same_running_task_is_not_opened_twice(tmp_path):
     state = State({1: Task(1, "зроби сайт")})
     _, _, motor, clock = engine(tmp_path, state=state)
     motor.note(Ev("tick", {}))
-    before = next(n for n in motor._soma.needs if n.about == "task:1").level
+    before = next(w for w in motor._soma.wants if w.thing_id == "1").care
     clock.go(600)
     motor.note(Ev("tick", {}))
     motor.note(Ev("tick", {}))
-    after = next(n for n in motor._soma.needs if n.about == "task:1").level
+    after = next(w for w in motor._soma.wants if w.thing_id == "1").care
     assert after < before + 0.05
 
 
@@ -81,9 +85,9 @@ def test_a_running_task_turns_into_an_intent_when_it_is_left_alone(tmp_path):
     state = State({1: Task(1, "зроби сайт")})
     store, _, motor, clock = engine(tmp_path, state=state)
     motor.note(Ev("tick", {}))
-    clock.go(3600)
+    clock.go(3 * 3600)
     motor.note(Ev("tick", {}))
-    soma = [i for i in store.alive(clock()) if i.about.startswith("soma:")]
+    soma = soma_intents(store, clock)
     assert soma
     assert soma[0].what == "зроби сайт"
 
@@ -92,24 +96,24 @@ def test_finishing_the_task_closes_it(tmp_path):
     state = State({1: Task(1, "зроби сайт")})
     store, _, motor, clock = engine(tmp_path, state=state)
     motor.note(Ev("tick", {}))
-    clock.go(3600)
+    clock.go(3 * 3600)
     state.tasks[1].status = "done"
     motor.note(ended(1, "done"))
     clock.go(7200)
     motor.note(Ev("tick", {}))
-    assert not [i for i in store.alive(clock()) if i.what == "зроби сайт"]
+    assert not [i for i in soma_intents(store, clock) if i.what == "зроби сайт"]
 
 
 def test_stopping_the_task_closes_it_too(tmp_path):
     state = State({1: Task(1, "зроби сайт")})
     store, _, motor, clock = engine(tmp_path, state=state)
     motor.note(Ev("tick", {}))
-    clock.go(3600)
+    clock.go(3 * 3600)
     state.tasks[1].status = "stopped"
     motor.note(ended(1, "stopped"))
     clock.go(7200)
     motor.note(Ev("tick", {}))
-    assert not [i for i in store.alive(clock()) if i.what == "зроби сайт"]
+    assert not [i for i in soma_intents(store, clock) if i.what == "зроби сайт"]
 
 
 def test_a_failed_task_keeps_pressing(tmp_path):
@@ -121,10 +125,10 @@ def test_a_failed_task_keeps_pressing(tmp_path):
     motor.note(ended(1, "failed"))
     clock.go(3600)
     motor.note(Ev("tick", {}))
-    assert [i for i in store.alive(clock()) if i.about.startswith("soma:")]
+    assert soma_intents(store, clock)
 
 
-def test_nothing_is_watched_without_a_body(tmp_path):
+def test_nothing_is_watched_without_a_soma(tmp_path):
     state = State({1: Task(1, "зроби сайт")})
     store = Intents(tmp_path / "intents.json")
     clock = Clock()
@@ -140,4 +144,4 @@ def test_no_state_no_watching(tmp_path):
     store, _, motor, clock = engine(tmp_path, state=None)
     motor.note(Ev("tick", {}))
     assert motor._soma is not None
-    assert not [n for n in motor._soma.needs if n.drive == "closure"]
+    assert not [w for w in motor._soma.wants if w.verb == "finish"]
