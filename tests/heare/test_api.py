@@ -19,6 +19,7 @@ from heare.api import registry as registry_mod
 from heare.api import server as api_server
 from heare.api.server import Screen, VoiceOut, build
 from heare.config import Settings
+from heare.core import PROTOCOL
 from heare.model.providers import PROVIDERS
 from tests.heare.fakes import Says, Worker, open_room
 
@@ -91,6 +92,31 @@ async def test_a_voice_body_talks_to_the_core_over_the_door(tmp_path):
     assert started.status == 200 and heard.status == 200
     await room.settled()
     assert any("привіт" in str(m) for m in room.model.asked)
+    await _close(room, client)
+
+
+async def test_a_heard_line_carries_the_machine_that_heard_it(tmp_path, monkeypatch):
+    (tmp_path / "parts.json").write_text('["voice@mac"]', encoding="utf-8")
+    room, client, auth, settings = await _open(tmp_path)
+    voice = await _part(client, auth, "voice@mac", approves=False)
+    heard = []
+    monkeypatch.setattr(room.core.port, "heard", heard.append)
+    assert (await client.post("/api/input", json={
+        "kind": "heard", "channel": "voice", "text": "привіт"},
+        headers=voice)).status == 200
+    assert [m.origin for m in heard] == ["mac"]
+
+    paired = await client.post("/api/pair", json={
+        "code": pair.make(Path(settings.pair_codes_file)),
+        "kind": "window", "name": "laptop"})
+    window = {"X-Heare-Token": paired.cookies["heare_session"].value}
+    await client.post("/api/bodies", headers=window, json={
+        "v": PROTOCOL,
+        "channel": "web", "forms": ["input", "output"]})
+    assert (await client.post("/api/input", json={
+        "kind": "heard", "channel": "web", "text": "привіт"},
+        headers=window)).status == 200
+    assert [m.origin for m in heard] == ["mac", ""]
     await _close(room, client)
 
 
@@ -188,6 +214,7 @@ async def test_a_button_answers_a_permission(tmp_path):
 async def _part(client, master, pid, *, approves):
     channel, host = pid.split("@")
     answer = await client.post("/api/bodies", json={
+        "v": PROTOCOL,
         "channel": channel, "forms": ["output"], "about": "", "key": pid,
         "host": host, "approves": approves}, headers=master)
     return {"X-Heare-Token": (await answer.json())["token"]}
@@ -676,6 +703,7 @@ async def test_the_person_can_redraw_a_widget_by_hand(tmp_path):
 async def test_a_new_part_waits_and_is_approved(tmp_path):
     room, client, auth, _ = await _open(tmp_path)
     registration = asyncio.create_task(client.post("/api/bodies", json={
+        "v": PROTOCOL,
         "channel": "voice", "forms": ["input"], "about": "мікрофон",
         "key": "voice@mac", "host": "mac"}, headers=auth))
     await asyncio.sleep(0.1)
@@ -694,6 +722,7 @@ async def test_a_new_part_waits_and_is_approved(tmp_path):
 async def test_a_rejected_part_is_not_used(tmp_path):
     room, client, auth, _ = await _open(tmp_path)
     registration = asyncio.create_task(client.post("/api/bodies", json={
+        "v": PROTOCOL,
         "channel": "voice", "forms": ["input"], "about": "мікрофон",
         "key": "voice@mac", "host": "mac"}, headers=auth))
     await asyncio.sleep(0.1)
@@ -706,6 +735,7 @@ async def test_a_remembered_part_does_not_ask_again(tmp_path):
     (tmp_path / "parts.json").write_text('["voice@mac"]', encoding="utf-8")
     room, client, auth, _ = await _open(tmp_path)
     answer = await client.post("/api/bodies", json={
+        "v": PROTOCOL,
         "channel": "voice", "forms": ["input"], "about": "мікрофон",
         "key": "voice@mac", "host": "mac"}, headers=auth)
     assert (await answer.json())["approved"] is True
@@ -716,6 +746,7 @@ async def test_a_part_can_be_forgotten_and_must_ask_again(tmp_path):
     (tmp_path / "parts.json").write_text('["voice@mac"]', encoding="utf-8")
     room, client, auth, _ = await _open(tmp_path)
     await client.post("/api/bodies", json={
+        "v": PROTOCOL,
         "channel": "voice", "forms": ["input"], "about": "мікрофон",
         "key": "voice@mac", "host": "mac"}, headers=auth)
 
@@ -726,6 +757,7 @@ async def test_a_part_can_be_forgotten_and_must_ask_again(tmp_path):
     assert json.loads((tmp_path / "parts.json").read_text()) == []
 
     again = asyncio.create_task(client.post("/api/bodies", json={
+        "v": PROTOCOL,
         "channel": "voice", "forms": ["input"], "about": "мікрофон",
         "key": "voice@mac", "host": "mac"}, headers=auth))
     await asyncio.sleep(0.1)
@@ -741,6 +773,7 @@ async def test_a_part_gets_its_own_key_and_no_more(tmp_path):
     room, client, master, _ = await _open(tmp_path)
 
     answer = await client.post("/api/bodies", json={
+        "v": PROTOCOL,
         "channel": "voice", "forms": ["input", "output"], "about": "",
         "key": "voice@mac", "host": "mac"}, headers=master)
     body = await answer.json()
@@ -759,6 +792,7 @@ async def test_a_part_gets_its_own_key_and_no_more(tmp_path):
         assert (await client.post(path, json={}, headers=own)).status == 403, path
 
     other = await client.post("/api/bodies", json={
+        "v": PROTOCOL,
         "channel": "eyes", "key": "eyes@mac", "host": "mac"}, headers=own)
     assert other.status == 403
 
@@ -785,6 +819,7 @@ async def test_a_folder_is_a_part_the_brain_already_knows(tmp_path):
     assert body["ui"][0]["name"] == "on"
 
     knocked = await client.post("/api/bodies", json={
+        "v": PROTOCOL,
         "channel": "demo", "forms": ["input"], "about": "кіно"}, headers=auth)
     assert (await knocked.json())["approved"] is True
     body = (await (await client.get("/api/state", headers=auth)).json()
@@ -799,18 +834,20 @@ async def test_the_voice_body_says_when_the_sound_has_stopped(tmp_path):
     room, client, auth, _ = await _open(tmp_path)
     out = VoiceOut(room.core)
     room.core.add_output(out)
-    await client.post("/api/bodies", json={
+    answer = await client.post("/api/bodies", json={
+        "v": PROTOCOL,
         "channel": "voice", "forms": ["input", "output"], "about": "",
         "key": "voice@mac", "host": "mac"}, headers=auth)
+    voice = {"X-Heare-Token": (await answer.json())["token"]}
 
     await client.post("/api/input", json={
         "kind": "state", "channel": "voice",
-        "values": {"speaking": True}}, headers=auth)
+        "values": {"speaking": True}}, headers=voice)
     assert out.speaking is True
 
     await client.post("/api/input", json={
         "kind": "state", "channel": "voice",
-        "values": {"speaking": False}}, headers=auth)
+        "values": {"speaking": False}}, headers=voice)
     assert out.speaking is False
     await _close(room, client)
 
@@ -824,6 +861,7 @@ async def test_a_part_declares_the_controls_the_person_will_see(tmp_path):
          "value": 1.0, "min": 0, "max": 1, "step": 0.05},
     ]
     await client.post("/api/bodies", json={
+        "v": PROTOCOL,
         "channel": "voice", "forms": ["input", "output"], "about": "мікрофон",
         "key": "voice@mac", "host": "mac", "ui": ui}, headers=auth)
     body = (await (await client.get("/api/state", headers=auth)).json()
@@ -836,11 +874,13 @@ async def test_a_part_declares_the_controls_the_person_will_see(tmp_path):
 async def test_turning_a_parts_control_is_a_wish_the_part_answers(tmp_path):
     (tmp_path / "parts.json").write_text('["voice@mac"]', encoding="utf-8")
     room, client, auth, _ = await _open(tmp_path)
-    await client.post("/api/bodies", json={
+    answer = await client.post("/api/bodies", json={
+        "v": PROTOCOL,
         "channel": "voice", "forms": ["input", "output"], "about": "мікрофон",
         "key": "voice@mac", "host": "mac",
         "ui": [{"name": "mic", "kind": "toggle", "label": "Microphone", "value": True}],
     }, headers=auth)
+    voice = {"X-Heare-Token": (await answer.json())["token"]}
     events = room.core.state.subscribe()
     turned = await client.post("/api/controls", json={
         "part": "voice@mac", "name": "mic", "value": False}, headers=auth)
@@ -855,7 +895,7 @@ async def test_turning_a_parts_control_is_a_wish_the_part_answers(tmp_path):
 
     reported = await client.post("/api/input", json={
         "kind": "state", "channel": "voice", "values": {"mic": False}},
-        headers=auth)
+        headers=voice)
     assert reported.status == 200
     body = (await (await client.get("/api/state", headers=auth)).json()
             )["bodies"]["voice@mac"]
@@ -864,6 +904,23 @@ async def test_turning_a_parts_control_is_a_wish_the_part_answers(tmp_path):
     wrong = await client.post("/api/controls", json={
         "part": "voice@mac", "name": "warp", "value": 1}, headers=auth)
     assert wrong.status == 404
+    await _close(room, client)
+
+
+async def test_a_state_report_without_a_part_is_refused(tmp_path):
+    room, client, auth, _ = await _open(tmp_path)
+    refused = await client.post("/api/input", json={
+        "kind": "state", "channel": "voice", "values": {"mic": True}},
+        headers=auth)
+    assert refused.status == 404
+    await _close(room, client)
+
+
+async def test_a_control_by_channel_is_not_a_part(tmp_path):
+    room, client, auth, _ = await _open(tmp_path)
+    refused = await client.post("/api/controls", json={
+        "part": "voice", "name": "mic", "value": True}, headers=auth)
+    assert refused.status == 404
     await _close(room, client)
 
 
@@ -891,7 +948,7 @@ async def test_a_phone_that_speaks_hears_its_own_replies(tmp_path):
     machine = await (await client.post(
         "/api/pair", json={"code": code, "kind": "machine", "name": "pixel"})).json()
     knocked = await (await client.post("/api/bodies", json={
-        "v": 1, "channel": "phone", "forms": ["input", "output"], "about": "a phone",
+        "v": PROTOCOL, "channel": "phone", "forms": ["input", "output"], "about": "a phone",
         "key": "phone@pixel", "host": "pixel"},
         headers={"X-Heare-Token": machine["token"]})).json()
     assert knocked["approved"] and knocked["token"]
@@ -1136,6 +1193,7 @@ async def test_a_remote_window_can_knock_as_its_own_body(tmp_path, monkeypatch):
     # the body names another part only for a machine; a window is always
     # itself, so the knock lands on its own card and cannot borrow one.
     answer = await client.post("/api/bodies", json={
+        "v": PROTOCOL,
         "channel": "web", "forms": ["input", "output"],
         "host": "elsewhere", "key": "voice@mac"})
     assert answer.status == 200
@@ -1266,6 +1324,7 @@ async def test_a_machine_key_knocks_for_its_part_and_the_part_gets_its_own(tmp_p
         "/api/pair", json={"code": code, "kind": "machine", "name": "mac"})
     machine = {"X-Heare-Token": (await answer.json())["token"]}
     knock = await client.post("/api/bodies", headers=machine, json={
+        "v": PROTOCOL,
         "channel": "voice", "host": "mac", "forms": ["input"]})
     assert knock.status == 200
     granted = await knock.json()
@@ -1281,7 +1340,7 @@ async def test_a_machine_key_knocks_without_a_second_card(tmp_path):
         "/api/pair", json={"code": code, "kind": "machine", "name": "mac"})).json()
     knock = await client.post("/api/bodies", headers={
         "X-Heare-Token": given["token"]},
-        json={"channel": "voice", "host": "mac", "forms": ["input"]})
+        json={"v": PROTOCOL, "channel": "voice", "host": "mac", "forms": ["input"]})
     assert knock.status == 200
     answer = await knock.json()
     assert answer["approved"] is True and answer["token"]
@@ -1289,7 +1348,7 @@ async def test_a_machine_key_knocks_without_a_second_card(tmp_path):
     # no question waits on the page.
     again = await (await client.post("/api/bodies", headers={
         "X-Heare-Token": answer["token"]},
-        json={"channel": "voice", "host": "mac", "forms": ["input"]})).json()
+        json={"v": PROTOCOL, "channel": "voice", "host": "mac", "forms": ["input"]})).json()
     assert again["approved"] is True
     await _close(room, client)
 
@@ -1322,7 +1381,7 @@ async def test_two_windows_of_one_browser_do_not_revoke_each_other(tmp_path):
 
 async def test_two_open_pages_are_two_parts_named_after_themselves(tmp_path):
     room, client, headers, settings = await _open(tmp_path)
-    knock = {"channel": "web", "forms": ["input", "output"],
+    knock = {"v": PROTOCOL, "channel": "web", "forms": ["input", "output"],
              "about": "сторінка в браузері"}
     pids = []
     for name in ("laptop", "phone"):
@@ -1352,7 +1411,7 @@ async def test_a_closed_page_is_away_and_comes_back_by_knocking(tmp_path, monkey
         "code": pair.make(Path(settings.pair_codes_file)),
         "kind": "window", "name": "laptop"})
     window = {"X-Heare-Token": paired.cookies["heare_session"].value}
-    knock = {"channel": "web", "forms": ["input", "output"]}
+    knock = {"v": PROTOCOL, "channel": "web", "forms": ["input", "output"]}
     pid = (await (await client.post("/api/bodies", headers=window,
                                      json=knock)).json())["pid"]
 
@@ -1377,7 +1436,7 @@ async def test_a_closed_page_is_away_and_comes_back_by_knocking(tmp_path, monkey
 
 async def test_one_page_s_switch_is_not_another_s(tmp_path):
     room, client, headers, settings = await _open(tmp_path)
-    knock = {"channel": "web", "forms": ["input", "output"],
+    knock = {"v": PROTOCOL, "channel": "web", "forms": ["input", "output"],
              "ui": [{"name": "aloud", "kind": "toggle", "value": False}]}
     windows, pids = [], []
     for name in ("laptop", "phone"):
@@ -1414,7 +1473,7 @@ async def test_a_closed_page_leaves_the_list_after_a_while(tmp_path, monkeypatch
         "code": pair.make(Path(settings.pair_codes_file)),
         "kind": "window", "name": "laptop"})
     window = {"X-Heare-Token": paired.cookies["heare_session"].value}
-    knock = {"channel": "web", "forms": ["input", "output"]}
+    knock = {"v": PROTOCOL, "channel": "web", "forms": ["input", "output"]}
     pid = (await (await client.post("/api/bodies", headers=window,
                                      json=knock)).json())["pid"]
 
@@ -1446,6 +1505,7 @@ async def test_a_page_that_listens_again_is_back_without_a_knock(tmp_path, monke
         "kind": "window", "name": "laptop"})
     window = {"X-Heare-Token": paired.cookies["heare_session"].value}
     pid = (await (await client.post("/api/bodies", headers=window, json={
+        "v": PROTOCOL,
         "channel": "web", "forms": ["input", "output"]})).json())["pid"]
 
     async def state() -> str:
@@ -1479,9 +1539,7 @@ async def _part_listening(client, headers, knock: dict) -> tuple[dict, object]:
     return token, stream
 
 
-async def _heard(stream, room, *events) -> list[dict]:
-    for kind, data in events:
-        room.core.state.emit(kind, **data)
+async def _reading(stream, kinds: set[str]) -> list[dict]:
     got: list[dict] = []
     # A fixed window: the stream is never quiet, it says "still here".
     end = asyncio.get_running_loop().time() + 0.3
@@ -1493,13 +1551,20 @@ async def _heard(stream, room, *events) -> list[dict]:
         for line in chunk.decode().splitlines():
             if line.startswith("data: "):
                 got.append(json.loads(line[6:]))
-    return [e for e in got if e["kind"] in {k for k, _ in events}]
+    return [e for e in got if e["kind"] in kinds]
+
+
+async def _heard(stream, room, *events) -> list[dict]:
+    for kind, data in events:
+        room.core.state.emit(kind, **data)
+    return await _reading(stream, {k for k, _ in events})
 
 
 async def test_a_part_hears_its_own_channel_not_the_conversation(tmp_path, monkeypatch):
     monkeypatch.setattr(api_server, "HEARTBEAT_S", 0.05)
     room, client, headers, _ = await _open(tmp_path)
     _, stream = await _part_listening(client, headers, {
+        "v": PROTOCOL,
         "channel": "eyes", "forms": ["input"], "key": "eyes@mac"})
     got = await _heard(stream, room,
                        ("heard", {"text": "мій пароль", "channel": "voice"}),
@@ -1513,6 +1578,7 @@ async def test_a_chat_that_shows_the_conversation_hears_it(tmp_path, monkeypatch
     monkeypatch.setattr(api_server, "HEARTBEAT_S", 0.05)
     room, client, headers, _ = await _open(tmp_path)
     _, stream = await _part_listening(client, headers, {
+        "v": PROTOCOL,
         "channel": "text", "forms": ["input", "output"], "key": "text@mac",
         "hears": "all"})
     got = await _heard(stream, room, ("said", {"text": "Готово.", "channel": "voice"}))
@@ -1531,10 +1597,20 @@ async def test_a_part_of_another_wire_is_told_why(tmp_path):
     await _close(room, client)
 
 
+async def test_a_part_that_speaks_no_protocol_version_is_told_why(tmp_path):
+    room, client, headers, _ = await _open(tmp_path)
+    answer = await (await client.post("/api/bodies", headers=headers, json={
+        "channel": "eyes", "key": "eyes@mac"})).json()
+    assert answer["approved"] is False
+    assert "no protocol version" in answer["why"]
+    await _close(room, client)
+
+
 async def test_the_brain_says_its_version_and_a_part_s_is_kept(tmp_path):
     (tmp_path / "parts.json").write_text('["voice@mac"]', encoding="utf-8")
     room, client, auth, _ = await _open(tmp_path)
     await client.post("/api/bodies", json={
+        "v": PROTOCOL,
         "channel": "voice", "forms": ["input"], "about": "мікрофон",
         "key": "voice@mac", "host": "mac", "version": "0.0.9"}, headers=auth)
 
@@ -2190,6 +2266,7 @@ async def test_the_update_door_checks_and_refuses_what_it_cannot_do(tmp_path, mo
 async def _knock(client, headers, pid, forms, *, path="/api/bodies", **more):
     channel, host = pid.split("@")
     answer = await client.post(path, json={
+        "v": PROTOCOL,
         "channel": channel, "forms": forms, "about": "", "key": pid, "host": host,
         **more}, headers=headers)
     return {"X-Heare-Token": (await answer.json())["token"]}
@@ -2264,6 +2341,7 @@ async def test_a_part_with_a_new_switch_is_asked_about_again(tmp_path):
     await _knock(client, master, "oled@desk", ["output"], skills=[PIN])
 
     knocking = asyncio.create_task(client.post("/api/bodies", json={
+        "v": PROTOCOL,
         "channel": "oled", "forms": ["output"], "about": "", "key": "oled@desk", "host": "desk",
         "skills": [PIN, {**PIN, "name": "pin4"}]}, headers=master))
     for _ in range(100):
@@ -2284,6 +2362,7 @@ async def test_a_knock_is_told_the_brain_s_offset_from_utc(tmp_path):
     (tmp_path / "parts.json").write_text('["oled@desk"]', encoding="utf-8")
     room, client, master, _ = await _open(tmp_path)
     answer = await (await client.post("/api/bodies", json={
+        "v": PROTOCOL,
         "channel": "oled", "forms": ["output"], "about": "", "key": "oled@desk",
         "host": "desk"}, headers=master)).json()
     assert answer["utc_offset"] == clock.localtime().tm_gmtoff
@@ -2296,21 +2375,22 @@ async def test_a_machine_key_cannot_claim_another_parts_name(tmp_path):
     (tmp_path / "parts.json").write_text('["opencode@mac"]', encoding="utf-8")
     room, client, master, settings = await _open(
         tmp_path,
-        make_executor=lambda name, about: RemoteExecutor(name, about, claim_wait_s=0.5))
+        make_executor=lambda i, n, a, m: RemoteExecutor(i, n, a, m, claim_wait_s=0.5))
     agent = await _knock(client, master, "opencode@mac", ["executor"])
-    executor = room.core.executors["opencode"]
+    executor = room.core.executors["opencode@mac"]
 
     given = await (await client.post("/api/pair", json={
         "code": pair.make(Path(settings.pair_codes_file)),
         "kind": "machine", "name": "mac"})).json()
     stolen = await client.post("/api/bodies", headers={
         "X-Heare-Token": given["token"]}, json={
+        "v": PROTOCOL,
         "channel": "opencode", "forms": ["executor"], "about": "mine",
         "key": "opencode@mac", "host": "mac"})
 
     assert stolen.status == 403
     assert "not your name" in await stolen.text()
-    assert room.core.executors["opencode"] is executor
+    assert room.core.executors["opencode@mac"] is executor
     state = await (await client.get("/api/state", headers=master)).json()
     assert state["bodies"]["opencode@mac"]["state"] == "approved"
     assert state["bodies"]["opencode@mac"]["about"] == ""
@@ -2327,6 +2407,7 @@ async def test_a_machine_key_can_claim_its_own_untouched_pid(tmp_path):
     machine = {"X-Heare-Token": given["token"]}
 
     first = await client.post("/api/bodies", headers=machine, json={
+        "v": PROTOCOL,
         "channel": "voice", "forms": ["input"], "host": "mac", "key": "voice@mac"})
     answer = await first.json()
     assert first.status == 200 and answer["approved"] is True and answer["token"]
@@ -2334,11 +2415,13 @@ async def test_a_machine_key_can_claim_its_own_untouched_pid(tmp_path):
 
     # The machine may knock again for the pid it claimed itself.
     again = await client.post("/api/bodies", headers=machine, json={
+        "v": PROTOCOL,
         "channel": "voice", "forms": ["input"], "host": "mac", "key": "voice@mac"})
     assert (await again.json())["approved"] is True
 
     # And for another pid nobody has claimed.
     other = await client.post("/api/bodies", headers=machine, json={
+        "v": PROTOCOL,
         "channel": "eyes", "forms": ["input"], "host": "mac", "key": "eyes@mac"})
     other_answer = await other.json()
     assert other_answer["approved"] is True and other_answer["token"]
@@ -2351,6 +2434,7 @@ async def test_an_approved_part_cannot_widen_hears_on_a_knock(tmp_path):
     old = await _knock(client, master, "voice@mac", ["input"])
 
     knocking = asyncio.create_task(client.post("/api/bodies", json={
+        "v": PROTOCOL,
         "channel": "voice", "forms": ["input"], "about": "", "key": "voice@mac",
         "host": "mac", "hears": "all"}, headers=old))
     for _ in range(100):
@@ -2378,6 +2462,7 @@ async def test_a_rejected_part_keeps_no_key(tmp_path):
     old = await _knock(client, master, "voice@mac", ["input"])
 
     knocking = asyncio.create_task(client.post("/api/bodies", json={
+        "v": PROTOCOL,
         "channel": "voice", "forms": ["input"], "about": "", "key": "voice@mac",
         "host": "mac", "hears": "all"}, headers=old))
     for _ in range(100):
@@ -2431,22 +2516,23 @@ async def test_a_second_knock_keeps_the_executor_and_its_job(tmp_path):
     (tmp_path / "parts.json").write_text('["opencode@mac"]', encoding="utf-8")
     room, client, master, _ = await _open(
         tmp_path,
-        make_executor=lambda name, about: RemoteExecutor(name, about, claim_wait_s=1.0))
+        make_executor=lambda i, n, a, m: RemoteExecutor(i, n, a, m, claim_wait_s=1.0))
     hands = await _knock(client, master, "opencode@mac", ["executor"])
-    executor = room.core.executors["opencode"]
+    executor = room.core.executors["opencode@mac"]
 
     task = room.core.delegate("зроби щось")
-    claim = await client.post("/api/executor/claim", json={"name": "opencode"},
+    claim = await client.post("/api/executor/claim", json={},
                               headers=hands)
     job = (await claim.json())["id"]
 
     again = await client.post("/api/bodies", json={
+        "v": PROTOCOL,
         "channel": "opencode", "forms": ["executor"], "about": "код, оновлено",
         "key": "opencode@mac", "host": "mac"}, headers=hands)
     assert (await again.json())["approved"] is True
-    assert room.core.executors["opencode"] is executor
+    assert room.core.executors["opencode@mac"] is executor
 
-    answered = await client.post(f"/api/executor/{job}/result?name=opencode",
+    answered = await client.post(f"/api/executor/{job}/result",
                                  json={"status": "done", "result": "зроблено"},
                                  headers=hands)
     assert answered.status == 200 and (await answered.json())["ok"] is True
@@ -2455,16 +2541,196 @@ async def test_a_second_knock_keeps_the_executor_and_its_job(tmp_path):
     await _close(room, client)
 
 
+async def test_a_claim_without_a_part_key_is_refused(tmp_path):
+    room, client, master, _ = await _open(tmp_path)
+    refused = await client.post("/api/executor/claim", json={}, headers=master)
+    assert refused.status == 404
+    await _close(room, client)
+
+
+async def test_two_machines_may_each_bring_hands_of_one_channel(tmp_path):
+    from heare.reach.remote import RemoteExecutor
+
+    room, client, master, settings = await _open(
+        tmp_path,
+        make_executor=lambda i, n, a, m: RemoteExecutor(i, n, a, m, claim_wait_s=0.5))
+    for name in ("server", "mac"):
+        machine = (await (await client.post("/api/pair", json={
+            "code": pair.make(Path(settings.pair_codes_file)),
+            "kind": "machine", "name": name})).json())["token"]
+        granted = await _knock(
+            client, {"X-Heare-Token": machine}, f"native-hands@{name}", ["executor"])
+        assert granted["X-Heare-Token"]
+    bodies = (await (await client.get("/api/state", headers=master)).json())["bodies"]
+    assert bodies["native-hands@server"]["state"] == "approved"
+    assert bodies["native-hands@mac"]["state"] == "approved"
+    assert {"native-hands@server", "native-hands@mac"} <= set(room.core.executors)
+    await _close(room, client)
+
+
+async def test_each_hand_hears_only_what_is_addressed_to_it(tmp_path, monkeypatch):
+    monkeypatch.setattr(api_server, "HEARTBEAT_S", 0.05)
+    room, client, master, settings = await _open(tmp_path)
+    tokens = {}
+    for name in ("server", "mac"):
+        machine = (await (await client.post("/api/pair", json={
+            "code": pair.make(Path(settings.pair_codes_file)),
+            "kind": "machine", "name": name})).json())["token"]
+        tokens[name] = await _knock(
+            client, {"X-Heare-Token": machine},
+            f"native-hands@{name}", ["executor"])
+    streams = {}
+    for name in ("server", "mac"):
+        streams[name] = await client.get("/api/events", headers=tokens[name])
+        await streams[name].content.readany()
+
+    room.core.state.emit("control", channel="native-hands", name="work",
+                         value="x", part="native-hands@server")
+    room.core.state.emit("control", channel="native-hands", name="other",
+                         value="y")
+
+    server = await _reading(streams["server"], {"control"})
+    mac = await _reading(streams["mac"], {"control"})
+    assert [e["name"] for e in server] == ["work"]
+    assert mac == []
+
+    streams["server"].close()
+    streams["mac"].close()
+    await _close(room, client)
+
+
+async def test_a_twins_state_lands_on_its_own_card(tmp_path):
+    room, client, master, settings = await _open(tmp_path)
+    tokens = {}
+    for name in ("server", "mac"):
+        machine = (await (await client.post("/api/pair", json={
+            "code": pair.make(Path(settings.pair_codes_file)),
+            "kind": "machine", "name": name})).json())["token"]
+        tokens[name] = await _knock(
+            client, {"X-Heare-Token": machine},
+            f"native-hands@{name}", ["executor"])
+
+    answered = await client.post("/api/input", json={
+        "kind": "state", "channel": "native-hands", "values": {"work": "x"}},
+        headers=tokens["server"])
+    assert answered.status == 200
+
+    bodies = (await (await client.get("/api/state", headers=master)).json())["bodies"]
+    assert bodies["native-hands@server"]["values"]["work"] == "x"
+    assert "work" not in bodies["native-hands@mac"]["values"]
+    await _close(room, client)
+
+
+async def test_a_second_output_on_a_channel_is_still_refused(tmp_path):
+    room, client, master, settings = await _open(tmp_path)
+    tokens = {}
+    for name in ("server", "mac"):
+        tokens[name] = (await (await client.post("/api/pair", json={
+            "code": pair.make(Path(settings.pair_codes_file)),
+            "kind": "machine", "name": name})).json())["token"]
+    first = await client.post("/api/bodies", headers={
+        "X-Heare-Token": tokens["server"]}, json={
+        "v": PROTOCOL,
+        "channel": "voice", "forms": ["output"], "host": "server",
+        "key": "voice@server"})
+    assert (await first.json())["approved"] is True
+    second = await client.post("/api/bodies", headers={
+        "X-Heare-Token": tokens["mac"]}, json={
+        "v": PROTOCOL,
+        "channel": "voice", "forms": ["output"], "host": "mac",
+        "key": "voice@mac"})
+    assert second.status == 403
+    assert "not your name" in await second.text()
+    await _close(room, client)
+
+
+async def test_a_hand_that_loses_its_agent_is_no_longer_an_executor(tmp_path):
+    from heare.reach.remote import RemoteExecutor
+
+    (tmp_path / "parts.json").write_text('["opencode@mac"]', encoding="utf-8")
+    room, client, master, _ = await _open(
+        tmp_path,
+        make_executor=lambda i, n, a, m: RemoteExecutor(i, n, a, m, claim_wait_s=0.5))
+    hands = await _knock(client, master, "opencode@mac", ["executor"])
+    assert "opencode@mac" in room.core.executors
+
+    clean = asyncio.create_task(client.post("/api/bodies", json={
+        "v": PROTOCOL,
+        "channel": "opencode", "forms": [], "about": "", "key": "opencode@mac",
+        "host": "mac"}, headers=hands))
+    for _ in range(100):
+        state = await (await client.get("/api/state", headers=master)).json()
+        if state["bodies"]["opencode@mac"]["state"] == "pending":
+            break
+        await asyncio.sleep(0.01)
+    assert state["bodies"]["opencode@mac"]["state"] == "pending"
+    await client.post("/api/bodies/opencode@mac/approve", headers=master)
+    assert (await (await clean).json())["approved"] is True
+    assert "opencode@mac" not in room.core.executors
+    await _close(room, client)
+
+
+async def test_forgetting_one_hand_leaves_its_twin_alone(tmp_path):
+    from heare.reach.remote import RemoteExecutor
+
+    room, client, master, settings = await _open(
+        tmp_path,
+        make_executor=lambda i, n, a, m: RemoteExecutor(i, n, a, m, claim_wait_s=0.5))
+    for name in ("server", "mac"):
+        machine = (await (await client.post("/api/pair", json={
+            "code": pair.make(Path(settings.pair_codes_file)),
+            "kind": "machine", "name": name})).json())["token"]
+        await _knock(client, {"X-Heare-Token": machine},
+                     f"native-hands@{name}", ["executor"])
+    assert {"native-hands@server", "native-hands@mac"} <= set(room.core.executors)
+
+    forgotten = await client.post("/api/bodies/native-hands@server/forget",
+                                  headers=master)
+    assert forgotten.status == 200
+    assert "native-hands@server" not in room.core.executors
+    assert "native-hands@mac" in room.core.executors
+    bodies = (await (await client.get("/api/state", headers=master)).json())["bodies"]
+    assert "native-hands@server" not in bodies
+    assert bodies["native-hands@mac"]["state"] == "approved"
+    await _close(room, client)
+
+
+async def test_forgetting_a_hand_ends_its_work(tmp_path):
+    from heare.core.i18n import _ as said_as
+    from heare.reach.remote import RemoteExecutor
+
+    (tmp_path / "parts.json").write_text('["opencode@mac"]', encoding="utf-8")
+    room, client, master, _ = await _open(
+        tmp_path,
+        make_executor=lambda i, n, a, m: RemoteExecutor(i, n, a, m, claim_wait_s=0.5))
+    await _knock(client, master, "opencode@mac", ["executor"])
+    hands = room.core.executors["opencode@mac"]
+
+    task = room.core.delegate("зроби щось")
+    await room.until(lambda: bool(hands._jobs))
+
+    forgotten = await client.post("/api/bodies/opencode@mac/forget", headers=master)
+
+    assert forgotten.status == 200
+    await room.until(lambda: task.status == "failed")
+    assert task.result == said_as(
+        "The hands on {where} are not connected.").format(where="mac")
+    assert "opencode@mac" not in room.core.executors
+    await _close(room, client)
+
+
 async def test_a_result_for_an_unknown_job_is_refused_and_logged(tmp_path, caplog):
     from heare.reach.remote import RemoteExecutor
 
-    room, client, auth, _ = await _open(tmp_path)
-    room.core.add_executor(RemoteExecutor("worker", "робить усе"))
+    room, client, _, settings = await _open(tmp_path)
+    room.core.add_executor(RemoteExecutor("worker@bench", "worker", "робить усе", "bench"))
+    token = authlib.issue(Path(settings.part_tokens_file), "worker@bench")
 
     with caplog.at_level(logging.WARNING, logger="heare.api.server"):
         refused = await client.post(
-            "/api/executor/999/result?name=worker",
-            json={"status": "done", "result": "нікому"}, headers=auth)
+            "/api/executor/999/result",
+            json={"status": "done", "result": "нікому"},
+            headers={"X-Heare-Token": token})
 
     assert refused.status == 404
     assert any("unknown job 999" in record.message for record in caplog.records)
@@ -2481,6 +2747,7 @@ async def test_a_paired_machine_never_vouches_for_a_key(tmp_path):
         "code": code, "kind": "machine", "name": "mac"})).json()
     head = {"X-Heare-Token": machine["token"]}
     knocked = await (await client.post("/api/bodies", headers=head, json={
+        "v": PROTOCOL,
         "channel": "voice", "key": "voice@mac", "host": "mac"})).json()
     part = {"X-Heare-Token": knocked["token"]}
     ask = {"key": "GROQ_API_KEY", "fingerprint": "a", "version": "1"}
@@ -2502,7 +2769,7 @@ async def test_a_part_stays_its_machines_across_a_brain_restart(tmp_path):
     code = pair.make(Path(settings.pair_codes_file))
     machine = await (await client.post("/api/pair", json={
         "code": code, "kind": "machine", "name": "mac"})).json()
-    about = {"channel": "voice", "key": "voice@mac", "host": "mac"}
+    about = {"v": PROTOCOL, "channel": "voice", "key": "voice@mac", "host": "mac"}
     first = await (await client.post("/api/bodies", json=about, headers={
         "X-Heare-Token": machine["token"]})).json()
     await _close(room, client)

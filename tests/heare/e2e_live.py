@@ -17,6 +17,8 @@ from pathlib import Path
 
 import httpx
 
+from heare.core import PROTOCOL
+
 BASE = os.environ.get("HEARE_URL", "http://127.0.0.1:9790")
 TOKEN_FILE = Path(os.environ.get(
     "HEARE_TOKEN_FILE", Path.home() / ".heare" / "api_token"))
@@ -102,6 +104,7 @@ async def control(client):
 async def forget(client):
     registration = asyncio.create_task(client.post(
         f"{BASE}/api/bodies", headers=HEAD, json={
+            "v": PROTOCOL,
             "channel": "probe", "forms": ["input"], "about": "e2e probe",
             "key": "probe@e2e", "host": "e2e"}))
     await asyncio.sleep(0.6)

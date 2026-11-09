@@ -19,7 +19,7 @@ from typing import AsyncIterator, Awaitable, Callable, Protocol
 
 # The version of the wire a part and the brain speak. Both ends read it from
 # here, so they cannot disagree about which number is theirs.
-PROTOCOL = 1
+PROTOCOL = 2
 
 
 @dataclass(frozen=True)
@@ -46,6 +46,7 @@ class Message:
     # code needs answered, not one the model should rephrase.
     verbatim: bool = False
     at: float = field(default_factory=time.time)
+    origin: str = ""
 
 
 class Port(Protocol):
@@ -187,9 +188,10 @@ class Outcome:
 
 
 class Executor(Protocol):
+    id: str  # the part's pid on the wire, or its name for a local executor
     name: str
-    # One line a model can choose by: what this one is good for.
-    about: str
+    about: str  # one line a model can choose by: what this one is good for
+    machine: str  # where it lives; empty when unknown
 
     async def run(self, task: str, desk: Desk) -> str | Outcome:
         """Do the task and return what came of it. Being cancelled is how
@@ -234,6 +236,9 @@ class Task:
     follows: bool = False
     started: float = field(default_factory=time.time)
     ended: float | None = None
+    origin: str = ""
+    hand: str = ""
+    explicit: bool = False
 
     def view(self) -> dict:
         return {

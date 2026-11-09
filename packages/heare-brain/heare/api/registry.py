@@ -27,13 +27,20 @@ WINDOW_GONE_S = 300.0
 class Registry:
     def __init__(self, trusted_file: Path,
                  emit: Callable[..., object],
-                 on_executor: Callable[[str, str], None] | None = None) -> None:
+                 on_executor: Callable[[str, str, str, str], None] | None = None,
+                 on_no_executor: Callable[[str], None] | None = None,
+                 on_present: Callable[[str, bool], None] | None = None) -> None:
         """*emit* tells the page a part changed; *on_executor* is called
-        when a part that does work is let in, with its channel and about."""
+        when a part that does work is let in, with its pid, channel, about
+        and host. *on_no_executor* is called with the pid when a part that
+        used to do work loses the executor form (hands with no agent).
+        *on_present* follows a part's stream: here, or away."""
         self.known: dict[str, dict] = {}
         self._trusted_file = trusted_file
         self._emit = emit
         self._on_executor = on_executor
+        self._on_no_executor = on_no_executor
+        self._on_present = on_present
         self._waiting: dict[str, asyncio.Event] = {}
         # How many event streams each part holds open. A part is there while
         # it listens: a closed page or a stopped body ends its stream, and the
@@ -112,8 +119,13 @@ class Registry:
             "name": name or old.get("name") or channel,
         }
         if state == "approved" and "executor" in forms and self._on_executor:
-            self._on_executor(channel, about)
+            self._on_executor(pid, channel, about, host)
+        if ("executor" not in forms and "executor" in (old.get("forms") or [])
+                and self._on_no_executor):
+            self._on_no_executor(pid)
         self._tell(self.known[pid])
+        if self._on_present is not None:
+            self._on_present(pid, True)
 
     def load(self, parts_dir: Path) -> None:
         """Know every part with a manifest before it knocks: away, trusted."""
@@ -136,14 +148,18 @@ class Registry:
                         str(manifest.get("about") or ""), host, "away",
                         list(manifest.get("ui") or []))
 
-    def by_channel(self, channel: str) -> dict | None:
-        found = [b for b in self.known.values() if b.get("channel") == channel]
-        approved = [b for b in found if b.get("state") == "approved"]
-        chosen = (approved or found)[-1:] if found else []
-        return chosen[0] if chosen else None
+    def one_on(self, channel: str) -> tuple[str, dict] | None:
+        """The single part of this channel that is not a hand, or None.
 
-    def pid_of(self, entry: dict) -> str:
-        return next(pid for pid, b in self.known.items() if b is entry)
+        A channel is a kind: one mouth, one pair of eyes. Hands are per pid
+        and excluded, so two of them on one channel never count as each
+        other's owner. Approved first, otherwise whatever is there."""
+        found = [(pid, b) for pid, b in self.known.items()
+                 if b.get("channel") == channel
+                 and "executor" not in b.get("forms", [])]
+        approved = [(pid, b) for pid, b in found if b.get("state") == "approved"]
+        chosen = approved or found
+        return chosen[-1] if chosen else None
 
     def approves(self, pid: str) -> bool:
         """Whether a trusted part may say yes to the open permission."""
@@ -173,6 +189,15 @@ class Registry:
         """Whether a part is a let-in executor: one that may act on the others."""
         entry = self.known.get(pid) or {}
         return entry.get("state") == "approved" and "executor" in entry.get("forms", [])
+
+    def executor_on(self, channel: str) -> bool:
+        """Whether any let-in or away part of this channel does work."""
+        return any(
+            b.get("channel") == channel
+            and b.get("state") in ("approved", "away")
+            and "executor" in b.get("forms", [])
+            for b in self.known.values()
+        )
 
     def skill(self, pid: str, name: str) -> tuple[str, dict] | None:
         """A let-in part's skill by name, with the part's channel; None else."""
@@ -237,6 +262,8 @@ class Registry:
         if entry is not None and entry.get("state") == "away":
             entry["state"] = "approved"
             self._tell(entry)
+        if self._on_present is not None:
+            self._on_present(pid, True)
 
     def left(self, pid: str) -> None:
         """A stream ended; the last one makes the part away."""
@@ -244,6 +271,8 @@ class Registry:
         if self._listening[pid]:
             return
         del self._listening[pid]
+        if self._on_present is not None:
+            self._on_present(pid, False)
         entry = self.known.get(pid)
         if entry is None or entry.get("state") != "approved":
             return
@@ -269,9 +298,11 @@ class Registry:
         """Whether a listener may hear an event with *data*.
 
         The person — the master key, a window — hears everything (*pid* is
-        None). A part hears its own channel and what is addressed to it,
-        unless it was let in as one that shows the whole conversation: the
-        conversation is the person's, not every trusted part's."""
+        None). A hand hears only what is addressed to it: two hands of one
+        channel on two machines must not hear each other. Every other part
+        hears its own channel and what is addressed to it, unless it was let
+        in as one that shows the whole conversation: the conversation is the
+        person's, not every trusted part's."""
         if pid is None:
             return True
         entry = self.known.get(pid)
@@ -279,6 +310,8 @@ class Registry:
             return False
         if entry.get("hears") == "all":
             return True
+        if "executor" in entry.get("forms", []):
+            return data.get("part") == pid
         return data.get("channel") == entry["channel"] or data.get("part") == pid
 
     def _tell(self, entry: dict, state: str | None = None) -> None:

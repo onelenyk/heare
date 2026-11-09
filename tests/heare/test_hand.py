@@ -44,7 +44,7 @@ class Hand:
 
 
 async def take(wire, work, **hooks):
-    return await hand.take(wire, "native-hands", work, **hooks)
+    return await hand.take(wire, work, **hooks)
 
 
 def _results(wire: Wire) -> list[dict]:
@@ -83,7 +83,7 @@ async def test_a_failing_model_is_a_sentence_not_a_traceback():
 
 async def test_a_stop_is_heard_through_the_step_and_nothing_more_is_done():
     wire = Wire({"/api/executor/7/step": [httpx.Response(200, json={"stopped": True})]})
-    desk = hand.Desk(wire, hand.Job(7, "x"), "native-hands")
+    desk = hand.Desk(wire, hand.Job(7, "x"))
 
     desk.step("думаю")
     await asyncio.gather(*desk._steps)
@@ -93,7 +93,7 @@ async def test_a_stop_is_heard_through_the_step_and_nothing_more_is_done():
 
 async def test_a_step_after_a_brain_restart_stops_the_hand():
     wire = Wire({"/api/executor/7/step": [httpx.Response(404, text="no such job")]})
-    desk = hand.Desk(wire, hand.Job(7, "x"), "native-hands")
+    desk = hand.Desk(wire, hand.Job(7, "x"))
 
     desk.step("думаю")
     await asyncio.gather(*desk._steps)

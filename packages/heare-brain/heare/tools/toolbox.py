@@ -34,13 +34,13 @@ class Toolbox:
         *,
         memory: Memory | None,
         state: State,
-        delegate: Callable[[str, bool], Task],
+        delegate: Callable[[str, bool, str], Task],
         stop: Callable[[], int],
         words: Any | Callable[[], Any],
         has_executors: Callable[[], bool],
         reminders: Reminders | None = None,
         now: Callable[[], float] = time.time,
-        hands: Callable[[], list[tuple[str, str]]] = lambda: [],
+        hands: Callable[[], list[tuple[str, str, str, str]]] = lambda: [],
         bodies: Callable[[], Bodies | None] = lambda: None,
     ) -> None:
         self._memory = memory

@@ -111,6 +111,12 @@ INSTALLER = (Path(__file__).resolve().parents[2]
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_the_page_names_the_hand_that_works_and_the_one_that_asks():
+    assert "t.executor" in SCRIPT
+    assert "question.executor" in SCRIPT
+    assert "permission.executor" in SCRIPT
+
+
 def test_the_installer_s_script_parses(tmp_path):
     script = tmp_path / "installer.js"
     script.write_text("\n".join(re.findall(r"<script>(.*?)</script>", INSTALLER, re.S)),

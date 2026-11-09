@@ -42,6 +42,7 @@ _NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,60}")
 
 class ImageMaker:
     name = "screens"
+    id = "screens"
     about = ("makes a separate screen — a whole page with scripts that lives by "
              "itself and shows the assistant's state or data live (a panel, a "
              "monitor, a settings form). Not for plain tables, lists and text: "

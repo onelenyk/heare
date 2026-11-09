@@ -16,6 +16,7 @@ from heare_panel import device, state
 from heare_panel.link import (
     ABOUT,
     EVENT_KINDS,
+    PROTOCOL,
     VERSION,
     Link,
     LinkError,
@@ -162,7 +163,7 @@ def test_pair_exchanges_the_machine_key_for_a_part_key():
     assert knock["path"] == "/api/bodies"
     assert knock["headers"]["x-heare-token"] == "machine-secret"
     assert json.loads(knock["body"]) == {
-        "v": 1,
+        "v": PROTOCOL,
         "version": VERSION,
         "key": PID,
         "host": "esp32c3-a1b2",
@@ -568,6 +569,14 @@ def test_a_skill_that_runs_out_of_memory_is_answered_not_dropped():
     link.events()
 
     assert json.loads(server.requests[1]["body"]) == {"ok": False, "result": "панелі забракло пам'яті"}
+
+
+def test_the_panel_speaks_the_brain_s_protocol():
+    """Two numbers, one wire: the panel is frozen and cannot import the
+    core, so a drift is caught here instead of on the desk."""
+    from heare.core import PROTOCOL as BRAIN
+
+    assert PROTOCOL == BRAIN
 
 
 def test_the_knock_s_answer_gives_the_panel_the_brain_s_time_zone():

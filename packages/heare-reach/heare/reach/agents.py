@@ -240,6 +240,7 @@ class Agent:
                  mcp_servers: list[dict] | None = None,
                  mode: str = MODE) -> None:
         self.name = known.name
+        self.id = self.name
         self.mode = mode if mode in MODES else MODE
         self.about = known.about
         self._known = known

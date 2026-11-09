@@ -160,7 +160,7 @@ class Brain:
             delegator=Router(
                 self.settings, lambda: self.core.state.tasks,
                 expected=lambda: (Path(self.settings.parts_dir) / route_native / "heare.json").is_file(),
-                present=lambda: list(self.core.executors)),
+                present=lambda: list(self.core.executors.values())),
             gate=Judge(self.settings),
             prompt=lambda: persona.prompt(
                 self.core.state.around, self.bodies.parts() if self.bodies else None,
@@ -176,7 +176,8 @@ class Brain:
             words=lambda: self.core.words,
             has_executors=lambda: bool(self.core.executors),
             reminders=self.intents,
-            hands=lambda: [(e.name, e.about) for e in self.core.executors.values()],
+            hands=lambda: [(e.id, e.name, e.machine, e.about)
+                           for e in self.core.executors.values()],
             bodies=lambda: self.bodies,
         ))
         # Hands are a body: they register over the door and are added then.
@@ -297,8 +298,9 @@ class Brain:
         self.core.hydrate(self.journal.tail_messages())
         self._runner = await serve(
             self.core, self.settings, lambda: model_info(self.settings),
-            make_executor=lambda name, about: route.executor(
-                name, about, RemoteExecutor, lambda: list(self.core.executors.values()),
+            make_executor=lambda id, name, about, machine: route.executor(
+                id, name, about, machine, RemoteExecutor,
+                lambda: list(self.core.executors.values()),
                 lambda: self.core.state.tasks),
             mind=self.mind, features=self.features,
             show_bodies=lambda skilled: setattr(self, "bodies", skilled),

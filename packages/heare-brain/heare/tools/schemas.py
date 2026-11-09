@@ -74,6 +74,10 @@ _DELEGATE = {
                         "something new."
                     ),
                 },
+                "hand": {
+                    "type": "string",
+                    "description": "Which hands to give it to: a machine from the list, or a hand's id (for example native-hands@server). Leave it out to use the hands on the machine where the person is speaking."
+                },
             },
             "required": ["task"],
         },
@@ -172,15 +176,17 @@ _READ_BODY = {
 }
 
 
-def delegate(hands: list[tuple[str, str]]) -> dict:
+def delegate(hands: list[tuple[str, str, str, str]]) -> dict:
     """The delegate verb, naming the hands that are here: without them the
     voice took «the panel on the desk» for the page's canvas (26 October)."""
     if not hands:
         return _DELEGATE
-    roster = "\n".join(f"- {name}: {about}" for name, about in hands)
+    roster = "\n".join(
+        f'- {machine or "here"}: {pid} — {about}'
+        for pid, _name, machine, about in hands)
     function = dict(_DELEGATE["function"])
     function["description"] = (
-        f"{function['description']} The hands here now, and what each can "
-        f"reach:\n{roster}"
+        f"{function['description']} The hands here now, by machine (the id is "
+        f"what `hand` takes):\n{roster}"
     )
     return {"type": "function", "function": function}

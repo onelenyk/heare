@@ -11,10 +11,11 @@ from heare.api.registry import Registry
 
 def _registry(tmp_path):
     told: list[tuple[str, dict]] = []
-    executors: list[tuple[str, str]] = []
+    executors: list[tuple[str, str, str, str]] = []
     registry = Registry(tmp_path / "parts.json",
                         lambda kind, **data: told.append((kind, data)),
-                        lambda channel, about: executors.append((channel, about)))
+                        lambda pid, channel, about, host: executors.append(
+                            (pid, channel, about, host)))
     return registry, told, executors
 
 
@@ -29,7 +30,7 @@ async def test_a_yes_is_remembered_and_a_part_at_work_is_an_executor(tmp_path):
 
     assert "opencode@mac" in registry.trusted()
     assert json.loads((tmp_path / "parts.json").read_text()) == ["opencode@mac"]
-    assert executors == [("opencode", "руки")]
+    assert executors == [("opencode@mac", "opencode", "руки", "mac")]
     assert not registry.decide("opencode@mac", "approved")  # nothing waits now
 
 
@@ -52,6 +53,20 @@ async def test_presence_follows_the_streams(tmp_path):
     registry.listens("eyes@mac")
     assert registry.known["eyes@mac"]["state"] == "approved"
     assert [data["state"] for kind, data in told][-2:] == ["away", "approved"]
+
+
+async def test_presence_follows_the_knock_and_the_stream(tmp_path):
+    seen: list[tuple[str, bool]] = []
+    registry = Registry(
+        tmp_path / "parts.json", lambda kind, **data: None,
+        on_present=lambda pid, on: seen.append((pid, on)))
+
+    registry.attach("opencode@mac", "opencode", ["executor"], "руки", "mac", "approved")
+    assert seen[-1] == ("opencode@mac", True)
+    registry.listens("opencode@mac")
+    assert seen[-1] == ("opencode@mac", True)
+    registry.left("opencode@mac")
+    assert seen[-1] == ("opencode@mac", False)
 
 
 async def test_a_window_away_long_enough_leaves_but_a_manifest_part_stays(tmp_path, monkeypatch):
@@ -116,3 +131,44 @@ def test_a_part_that_began_again_is_counted(tmp_path):
     assert registry.known["eyes@mac"]["started"] == 300.0
     registry.attach("eyes@mac", "eyes", ["input"], "", "mac", "approved")
     assert registry.known["eyes@mac"]["started"] == 300.0  # a manifest says nothing
+
+
+def test_two_executors_of_one_channel_do_not_hear_each_other(tmp_path):
+    registry, _, _ = _registry(tmp_path)
+    registry.attach("native-hands@server", "native-hands", ["executor"],
+                    "швидкі", "server", "approved")
+    registry.attach("native-hands@mac", "native-hands", ["executor"],
+                    "швидкі", "mac", "approved")
+
+    assert registry.hears("native-hands@server", {"channel": "native-hands"}) is False
+    assert registry.hears("native-hands@server",
+                          {"part": "native-hands@server"}) is True
+    assert registry.hears("native-hands@server",
+                          {"part": "native-hands@mac"}) is False
+
+
+def test_two_pages_still_share_the_web_channel(tmp_path):
+    registry, _, _ = _registry(tmp_path)
+    pages = ("window@laptop-1a2b", "window@desk-3c4d")
+    for pid in pages:
+        registry.attach(pid, "web", ["input", "output"], "", "mac", "approved")
+
+    assert all(registry.hears(pid, {"channel": "web"}) for pid in pages)
+
+
+def test_two_executors_of_one_channel_are_called_back_by_pid(tmp_path):
+    calls: list[tuple[str, str, str, str]] = []
+    registry = Registry(
+        tmp_path / "parts.json", lambda kind, **data: None,
+        lambda pid, channel, about, host: calls.append((pid, channel, about, host)))
+
+    registry.attach("native-hands@server", "native-hands", ["executor"],
+                    "швидкі", "server", "approved")
+    registry.attach("native-hands@mac", "native-hands", ["executor"],
+                    "швидкі", "mac", "approved")
+
+    assert calls == [
+        ("native-hands@server", "native-hands", "швидкі", "server"),
+        ("native-hands@mac", "native-hands", "швидкі", "mac"),
+    ]
+    assert registry.executor_on("native-hands") is True

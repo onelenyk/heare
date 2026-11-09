@@ -28,7 +28,7 @@ def _toolbox(
     return Toolbox(
         memory=memory,
         state=state or State(),
-        delegate=delegate or (lambda request: Task(1, request, "")),
+        delegate=delegate or (lambda request, follows=False, hand="": Task(1, request, "")),
         stop=stop,
         words=uk,
         has_executors=lambda: has_executors,
@@ -112,7 +112,8 @@ async def test_delegate_calls_the_callback_and_acknowledges():
     asked: list[str] = []
 
     spoken = await _toolbox(
-        delegate=lambda request, follows: asked.append(request) or Task(1, request, "")
+        delegate=lambda request, follows=False, hand="": (
+            asked.append(request) or Task(1, request, ""))
     )._run_delegate({"task": "перевір пошту"})
 
     assert spoken == "Handed over: the work has started."
@@ -121,8 +122,8 @@ async def test_delegate_calls_the_callback_and_acknowledges():
 
 async def test_delegate_passes_on_whether_the_work_goes_on_from_the_last():
     asked: list[tuple[str, bool]] = []
-    box = _toolbox(delegate=lambda request, follows: asked.append((request, follows))
-                   or Task(1, request, ""))
+    box = _toolbox(delegate=lambda request, follows=False, hand="": (
+        asked.append((request, follows)) or Task(1, request, "")))
 
     await box._run_delegate({"task": "видали його", "continues": True})
     await box._run_delegate({"task": "список покупок"})
@@ -138,13 +139,30 @@ async def test_a_duplicate_running_request_is_not_started_again():
     state.tasks[1] = Task(1, "відкрий файл", "worker")
     box = _toolbox(
         state=state,
-        delegate=lambda request, follows: asked.append(request) or Task(2, request, ""),
+        delegate=lambda request, follows=False, hand="": (
+            asked.append(request) or Task(2, request, "")),
     )
 
     spoken = await box._run_delegate({"task": "Відкрий файл"})
 
     assert spoken == "That is already under way."
     assert asked == []
+
+
+async def test_the_same_request_on_another_hand_is_a_new_task():
+    asked: list[str] = []
+    state = State()
+    state.tasks[1] = Task(1, "відкрий файл", "worker", hand="")
+    box = _toolbox(
+        state=state,
+        delegate=lambda request, follows=False, hand="": (
+            asked.append(request) or Task(2, request, "")),
+    )
+
+    spoken = await box._run_delegate({"task": "Відкрий файл", "hand": "worker@mac"})
+
+    assert spoken == "Handed over: the work has started."
+    assert asked == ["Відкрий файл"]
 
 
 async def test_stop_work_reports_what_it_stopped():
@@ -296,11 +314,16 @@ async def test_a_bad_reminder_stores_nothing(tmp_path, arguments, spoken):
 
 
 def test_delegate_names_the_hands_that_are_here():
-    box = Toolbox(memory=None, state=State(), delegate=lambda r, c: Task(1, r, ""),
+    box = Toolbox(memory=None, state=State(),
+                  delegate=lambda r, c=False, h="": Task(1, r, ""),
                   stop=lambda: 0, words=uk, has_executors=lambda: True,
-                  hands=lambda: [("native-hands", "панель на столі: світло, піни")])
-    described = box.verbs()["delegate"][0]["function"]["description"]
-    assert "- native-hands: панель на столі: світло, піни" in described
+                  hands=lambda: [("native-hands@desk", "native-hands", "desk",
+                                  "панель на столі: світло, піни")])
+    schema = box.verbs()["delegate"][0]
+    described = schema["function"]["description"]
+    assert "- desk: native-hands@desk — панель на столі: світло, піни" in described
+    assert "hand" in schema["function"]["parameters"]["properties"]
+    assert "hand" in described
 
 
 class _Bodies:
@@ -325,7 +348,8 @@ _KITCHEN = {"kitchen@mac": {"name": "кухня", "skills": [
 
 
 def _with(bodies) -> Toolbox:
-    return Toolbox(memory=None, state=State(), delegate=lambda r: Task(1, r, ""),
+    return Toolbox(memory=None, state=State(),
+                   delegate=lambda r, c=False, h="": Task(1, r, ""),
                    stop=lambda: 0, words=uk, has_executors=lambda: False,
                    bodies=lambda: bodies)
 

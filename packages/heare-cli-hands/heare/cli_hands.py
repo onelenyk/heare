@@ -443,7 +443,7 @@ async def run() -> int:
                     except TimeoutError:
                         pass
                     continue
-                if not await hand.take(wire, name, do, on_permit=screen.permit,
+                if not await hand.take(wire, do, on_permit=screen.permit,
                                        on_begin=begin, on_end=end):
                     await asyncio.sleep(hand.IDLE_S)
         finally:

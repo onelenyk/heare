@@ -622,21 +622,35 @@ def build(core: Core, settings: Any, vitals: Any = None,
 
         app.on_cleanup.append(stop)
 
-    def on_executor(channel: str, about: str) -> None:
-        """One executor per channel: a re-knock updates its card, not the
+    def on_executor(pid: str, channel: str, about: str, machine: str) -> None:
+        """One executor per pid: a re-knock updates its card, not the
         object that holds the jobs already handed to it."""
-        found = core.executors.get(channel)
+        found = core.executors.get(pid)
         if found is not None:
             try:
                 found.about = about
             except (AttributeError, TypeError):
                 pass
             return
-        core.add_executor(make_executor(channel, about))
+        core.add_executor(make_executor(pid, channel, about, machine))
+
+    def _present(pid: str, on: bool) -> None:
+        """The door says whether a part's stream is here or away."""
+        found = core.executors.get(pid)
+        if found is not None and hasattr(found, "set_present"):
+            found.set_present(on)
+
+    def _drop_executor(pid: str) -> None:
+        """One way out for a hand: its queued work fails, then it is gone."""
+        found = core.executors.pop(pid, None)
+        if found is not None and hasattr(found, "close"):
+            found.close()
 
     registry = Registry(
         Path(settings.parts_file), core.state.emit,
-        on_executor if make_executor is not None else None)
+        on_executor if make_executor is not None else None,
+        on_no_executor=_drop_executor,
+        on_present=_present)
     registry.load(Path(settings.parts_dir))
     bodies = registry.known
     trust = skills.Trust(Path(settings.parts_file).parent / "part_skills.json")
@@ -654,10 +668,10 @@ def build(core: Core, settings: Any, vitals: Any = None,
 
     async def claim(request: web.Request) -> web.Response:
         """A body's hands ask for work; the brain hands one out, or nothing."""
-        data = await body(request)
-        own_channel(request, str(data.get("name") or ""))
-        found = core.executors.get(str(data.get("name") or ""))
-        task = await found.claim() if hasattr(found, "claim") else None
+        found = core.executors.get(str(request.get("part") or ""))
+        if not hasattr(found, "claim"):
+            raise web.HTTPNotFound(text="no such body")
+        task = await found.claim()
         return web.json_response(task or {})
 
     async def step(request: web.Request) -> web.Response:
@@ -697,14 +711,12 @@ def build(core: Core, settings: Any, vitals: Any = None,
             job, str(data.get("status", "done")), str(data.get("result", "")),
         ):
             logger.warning("a result came for unknown job %s from %s", job,
-                           request.query.get("name") or "")
+                           request["part"])
             raise web.HTTPNotFound(text="no such job")
         return web.json_response({"ok": True})
 
     def _executor_for(request: web.Request):
-        name = request.query.get("name") or ""
-        own_channel(request, name)
-        found = core.executors.get(name)
+        found = core.executors.get(str(request.get("part") or ""))
         if not hasattr(found, "claim"):
             raise web.HTTPNotFound(text="no such body")
         return found
@@ -732,9 +744,10 @@ def build(core: Core, settings: Any, vitals: Any = None,
             return {}
         return {"token": auth.issue(part_tokens, pid)}
 
-    def machine_may_claim(who: str, pid: str, channel: str) -> bool:
-        """A machine gets only the pids it claimed and never a part or
-        executor someone already has.
+    def machine_may_claim(who: str, pid: str, channel: str, forms: list) -> bool:
+        """A machine gets only the pids it claimed and never a part someone
+        already has. Hands are per pid: many machines may each bring their
+        own of one kind.
 
         A manifest is a folder the person put there by hand; it is not a
         claim, so an away entry whose host is this machine may still be
@@ -749,13 +762,15 @@ def build(core: Core, settings: Any, vitals: Any = None,
                 return False
             if claimed is None and entry.get("state") != "away":
                 return False
-        owner = registry.by_channel(channel)
+        if "executor" in forms:
+            return True
+        owner = registry.one_on(channel)
         if owner is not None:
-            owner_pid = registry.pid_of(owner)
-            if owner_pid != pid and (owner.get("state") == "approved"
-                                     or owner.get("machine") != who):
+            owner_pid, owner_entry = owner
+            if owner_pid != pid and (owner_entry.get("state") == "approved"
+                                     or owner_entry.get("machine") != who):
                 return False
-        if channel in core.executors:
+        if registry.executor_on(channel):
             holder = registry.known.get(pid)
             if holder is None or holder.get("channel") != channel:
                 return False
@@ -766,7 +781,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         one its replies fell to the first output there was (the page). A
         window is the page itself and has one."""
         if (not window and "output" in forms and channel not in core.outputs
-                and channel not in core.executors):
+                and not registry.executor_on(channel)):
             core.add_output(VoiceOut(core, channel))
 
     async def register(request: web.Request) -> web.Response:
@@ -780,6 +795,16 @@ def build(core: Core, settings: Any, vitals: Any = None,
             raise web.HTTPBadRequest(text="a part needs a channel")
         who = request.get("part") or request.get("window")
         window = who is not None and who.startswith("window@")
+        if not window:
+            version = data.get("v")
+            if version is None:
+                return web.json_response({"approved": False, "why": (
+                    "the part speaks no protocol version")})
+            if version != PROTOCOL:
+                # Said, not half understood: a part of another wire leaves with
+                # the reason instead of talking past the brain.
+                return web.json_response({"approved": False, "why": (
+                    f"the brain speaks protocol v{PROTOCOL}, the part v{version}")})
         # A browser cannot name its machine; a window is called what it was
         # paired as, never after the brain's host.
         host = str(data.get("host") or (who.split("@", 1)[1] if window
@@ -794,14 +819,9 @@ def build(core: Core, settings: Any, vitals: Any = None,
             machine = mine if auth.known(part_tokens, mine) else None
         if who is not None and who != pid and not machine:
             raise web.HTTPForbidden(text="not your name")
-        if machine is not None and not machine_may_claim(machine, pid, channel):
+        forms = list(data.get("forms") or [])
+        if machine is not None and not machine_may_claim(machine, pid, channel, forms):
             raise web.HTTPForbidden(text="not your name")
-        version = data.get("v")
-        if version is not None and version != PROTOCOL:
-            # Said, not half understood: a part of another wire leaves with
-            # the reason instead of talking past the brain.
-            return web.json_response({"approved": False, "why": (
-                f"the brain speaks protocol v{PROTOCOL}, the part v{version}")})
         hears = "all" if data.get("hears") == "all" else "own"
         # The part's own version: shown on its card, never a reason to trust.
         part_version = str(data["version"]) if data.get("version") else None
@@ -809,7 +829,6 @@ def build(core: Core, settings: Any, vitals: Any = None,
             started = float(data["started"]) if data.get("started") else None
         except (TypeError, ValueError):
             started = None
-        forms = list(data.get("forms") or [])
         about = str(data.get("about") or "")
         approves = data.get("approves") is True
         # What the part can do, in its own words.
@@ -915,7 +934,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
             raise web.HTTPNotFound(text="no such part")
         auth.revoke(part_tokens, pid)
         lent.forget(pid)
-        core.executors.pop(str(entry.get("channel", "")), None)
+        _drop_executor(pid)
         return web.json_response({"ok": True})
 
     def _decide(request: web.Request, state: str) -> web.Response:
@@ -945,9 +964,11 @@ def build(core: Core, settings: Any, vitals: Any = None,
             values = data.get("values")
             if not isinstance(values, dict):
                 raise web.HTTPBadRequest(text="values must be an object")
-            # A window reports for itself: several pages share the channel
-            # "web", and one page's switch is not another's.
-            entry = bodies.get(request.get("window") or "") or registry.by_channel(channel)
+            # A part reports for itself: several pages share the channel
+            # "web", and two hands of one channel share it too, so the part
+            # that reported updates its own card.
+            entry = (bodies.get(request.get("window") or "")
+                     or bodies.get(str(request.get("part") or "")))
             if entry is None:
                 raise web.HTTPNotFound(text="no such part")
             entry["values"].update(values)
@@ -967,10 +988,14 @@ def build(core: Core, settings: Any, vitals: Any = None,
             text = str(data.get("text", "")).strip()
             if not text:
                 raise web.HTTPBadRequest(text="nothing was said")
+            pid = str(request.get("part") or "")
+            entry = bodies.get(pid) or {}
+            origin = "" if pid.startswith("window@") else str(entry.get("host") or "")
             core.port.heard(Message(
                 text=text, channel=channel,
                 addressed=bool(data.get("addressed", True)),
                 speech_ms=data.get("speech_ms"),
+                origin=origin,
             ))
         else:
             raise web.HTTPBadRequest(text="unknown input event")
@@ -1084,16 +1109,15 @@ def build(core: Core, settings: Any, vitals: Any = None,
         part = str(data.get("part", ""))
         name = str(data.get("name", ""))
         value = data.get("value")
-        target = bodies.get(part) or registry.by_channel(part)
+        target = bodies.get(part)
         if target is not None:
             names = {str(c.get("name", "")) for c in target.get("ui") or []}
             if target.get("state") != "approved" or name not in names:
                 raise web.HTTPNotFound(text="no such control")
             # Addressed to the part as well as the channel: pages share the
             # channel "web", and a switch on one page's card is that page's.
-            pid = part if part in bodies else registry.pid_of(target)
             core.state.emit("control", channel=target["channel"], name=name,
-                            value=value, part=pid)
+                            value=value, part=part)
             return web.json_response({"ok": True})
         try:
             now = core.control(part, name, value)

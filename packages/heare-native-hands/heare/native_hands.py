@@ -44,7 +44,7 @@ CHANNEL = "native-hands"
 # Which bodies are here and what they can do the voice reads from the
 # registry itself; this says only what these hands are for.
 ABOUT = (
-    "acts on the bodies in «My body»; on this machine: files, commands, reports. "
+    "acts on the bodies in «My body»; on its own machine: files, commands, reports. "
     "Quick acts take seconds; long work runs in the background, fenced to its "
     "own folder. No browser. Short internet requests when turned on."
 )
@@ -541,7 +541,7 @@ async def run(settings: Settings | None = None, model: Model | None = None,
                 return await hand.run(job.request, desk)
 
             await hand_life.serve(
-                wire, CHANNEL, do,
+                wire, do,
                 on_begin=lambda job, desk: wire.report({"work": f"working: {job.request[:50]}"}),
                 on_end=lambda job, status, result: wire.report({"work": N_("waiting")}),
                 # The person hears a sentence; the reason goes to the log.

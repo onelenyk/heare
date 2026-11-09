@@ -11,6 +11,7 @@ import httpx
 import pytest
 
 from heare.config import Settings
+from heare.core import PROTOCOL
 from heare.eyes import Door
 from heare.surroundings import sense
 from heare.surroundings.watch import Surroundings
@@ -64,6 +65,7 @@ async def test_the_label_follows_the_front_app():
 
     assert door.values()["sees"] == "Telegram"
     assert json.loads(seen[-1].content) == {
+        "v": PROTOCOL,
         "channel": "eyes", "kind": "state",
         "values": {"looking": True, "sees": "Telegram"},
     }
@@ -95,6 +97,7 @@ async def test_looking_can_be_turned_off_and_is_reported():
     assert door.looking is False
     assert len(seen) == 1
     assert json.loads(seen[0].content) == {
+        "v": PROTOCOL,
         "channel": "eyes", "kind": "state",
         "values": {"looking": False, "sees": "quiet"},
     }

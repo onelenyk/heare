@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from heare.core.forms import Task
 from heare.core.i18n import _ as said
 from heare.model.route import FirstHand, Router
@@ -9,8 +11,9 @@ from heare.hand import Handoff
 
 
 class Named:
-    def __init__(self, name, does=None):
+    def __init__(self, name, does=None, machine="", id=""):
         self.name, self.about, self.does = name, "", does
+        self.id, self.machine = id or name, machine
         self.tasks: list[str] = []
 
     async def run(self, task, desk):
@@ -53,6 +56,8 @@ async def test_the_task_carries_the_last_turns_of_the_talk():
 class Desk:
     def __init__(self):
         self.steps = []
+        self.asked = ""
+        self.follows = False
 
     def step(self, text):
         self.steps.append(text)
@@ -80,19 +85,78 @@ async def test_with_nobody_to_hand_on_to_it_says_so():
     assert "інших рук зараз немає" in await first.run("x", Desk())
 
 
+async def test_hands_hand_on_to_the_same_machine_first():
+    def hand_on(task):
+        raise Handoff("Порахуй файли")
+
+    here = Named("opencode", id="opencode@server", machine="server")
+    away = Named("opencode", id="opencode@mac", machine="mac")
+    first = FirstHand(
+        Named("native-hands", hand_on, id="native-hands@server", machine="server"),
+        lambda: [first, here, away])
+
+    assert await first.run("порахуй", Desk()) == "opencode: готово"
+    assert here.tasks == ["Порахуй файли"]
+    assert away.tasks == []
+
+
+async def test_an_explicit_machine_does_not_hand_off_elsewhere():
+    def hand_on(task):
+        raise Handoff("Порахуй файли")
+
+    away = Named("opencode", id="opencode@mac", machine="mac")
+    first = FirstHand(
+        Named("native-hands", hand_on, id="native-hands@server", machine="server"),
+        lambda: [first, away],
+        lambda: {1: Task(1, "порахуй", "native-hands@server", explicit=True)})
+    desk = Desk()
+    desk.asked = "порахуй"
+
+    result = await first.run("порахуй", desk)
+    assert result.status == "failed"
+    assert result.text == said("No CLI hands on {where}.").format(where="server")
+    assert away.tasks == []
+
+
 async def test_after_a_restart_work_waits_for_native_hands_that_are_coming(monkeypatch):
     import heare.model.route as route
 
     monkeypatch.setattr(route, "WAIT_S", 2.0)
-    here = ["opencode"]
+    here = [Named("opencode")]
     router = Router(None, lambda: {1: Task(1, "блимни", "")},
                     expected=lambda: True, present=lambda: list(here))
     import asyncio
 
-    asyncio.get_running_loop().call_later(0.3, here.append, "native-hands")
+    asyncio.get_running_loop().call_later(0.3, here.append, Named("native-hands"))
     assert (await router.assign("блимни", [], [Named("opencode")]))[0] == "native-hands"
 
 
 async def test_native_hands_not_turned_on_are_not_waited_for():
     router = Router(None, lambda: {1: Task(1, "x", "")}, expected=lambda: False)
     assert (await router.assign("x", [], [Named("opencode")]))[0] == "opencode"
+
+
+async def test_an_explicit_hand_wins():
+    router = _router(Task(1, "x", "", hand="cli@mac"))
+    assert (await router.assign("x", [], [
+        Named("native-hands", id="native-hands@server", machine="server"),
+        Named("cli", id="cli@mac", machine="mac"),
+    ]))[0] == "cli@mac"
+
+
+async def test_the_origin_machine_is_the_default():
+    router = _router(Task(1, "x", "", origin="mac"))
+    assert (await router.assign("x", [], [
+        Named("native-hands", id="native-hands@server", machine="server"),
+        Named("native-hands", id="native-hands@mac", machine="mac"),
+    ]))[0] == "native-hands@mac"
+
+
+async def test_an_explicit_away_machine_fails_fast():
+    from heare.core import i18n
+
+    i18n.choose(lambda: "en")
+    router = _router(Task(1, "x", "", hand="mac"))
+    with pytest.raises(RuntimeError) as failed:
+        await router.assign("x", [], [Named("native-hands", machine="server")])
+    assert "not connected" in str(failed.value)

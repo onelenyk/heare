@@ -139,7 +139,7 @@ class Plain:
     ) -> tuple[str, str]:
         talk = "\n".join(f"{m['role']}: {m['content']}" for m in history)
         task = f"{request}\n\nThe last lines of the talk:\n{talk}" if talk else request
-        return executors[0].name, task
+        return executors[0].id, task
 
     async def brief(self, task: Task) -> str:
         return task.result
@@ -244,6 +244,7 @@ class Core:
         # Outputs paused because the person began to speak over them.
         self._hold: list[Output] | None = None
         self._last_channel = ""
+        self._origin = ""
         self._ids = itertools.count(1)
         self._jobs: dict[int, asyncio.Task] = {}
         self._permission: Permission | None = None
@@ -267,7 +268,7 @@ class Core:
         self.state.parts["outputs"] = sorted(self.outputs)
 
     def add_executor(self, part: Executor) -> None:
-        self.executors[part.name] = part
+        self.executors[part.id] = part
         self.state.parts["executors"] = sorted(self.executors)
 
     def attach_tools(self, tools: Tools) -> None:
@@ -448,6 +449,7 @@ class Core:
                 self._taking = False
 
     async def _take(self, message: Message) -> None:
+        self._origin = message.origin if message.person else ""
         if not message.person:
             self._turn = asyncio.create_task(self._answer(message))
             return
@@ -999,10 +1001,11 @@ class Core:
 
     # -- work -------------------------------------------------------------
 
-    def delegate(self, request: str, follows: bool = False) -> Task:
+    def delegate(self, request: str, follows: bool = False, hand: str = "") -> Task:
         """Hand a piece of work off. Returns at once; the result arrives
         later as a message of its own, in the quiet lane."""
-        task = Task(next(self._ids), request, executor="", follows=follows)
+        task = Task(next(self._ids), request, executor="", follows=follows,
+                    origin=self._origin, hand=hand, explicit=bool(hand))
         # A continuation keeps context, never permission.
         self.state.tasks[task.id] = task
         job = asyncio.create_task(self._work(task), name=f"task-{task.id}")

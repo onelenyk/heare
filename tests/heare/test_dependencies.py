@@ -48,8 +48,11 @@ LEAVES = {"heare.keys", "heare.laws", "heare.model.providers", "heare.hand", "he
 # On 31 October 2026 for carrying a turn's own quality signals (the ``fields``
 # argument on ``Memory.keep`` and the said dict built once and used twice),
 # for keeping what really went out (the last turn's messages, a task's brief),
-# and for a model's own words after an act, instead of a catalog's.
-CORE_LINES = 1623
+# and for a model's own words after an act, instead of a catalog's. On
+# 9 November 2026 for the executor's own id and machine: the pid is who does
+# the work, the channel only says what kind of hands it is — and for the
+# origin machine of the utterance and the hand the model named on the Task.
+CORE_LINES = 1631
 
 
 def _imports(path: Path) -> set[str]:

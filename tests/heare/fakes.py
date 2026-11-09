@@ -143,6 +143,7 @@ class Worker:
     def __init__(self, name: str = "worker", result: str = "Готово.",
                  asks: tuple[tuple[str, str], ...] = ()) -> None:
         self.name, self.about = name, "робить усе"
+        self.id, self.machine = name, ""
         self.result, self.asks = result, asks
         self.tasks: list[str] = []
         self.follows: list[bool] = []

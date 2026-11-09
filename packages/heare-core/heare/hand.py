@@ -56,17 +56,17 @@ class Desk:
     before the next act, so nothing is done after a stop.
     """
 
-    def __init__(self, wire: part.Wire, job: Job, name: str,
+    def __init__(self, wire: part.Wire, job: Job,
                  on_permit: Callable[[str, bool | None, str, str], None] | None = None,
                  ) -> None:
-        self._wire, self._job, self._name = wire, job, name
+        self._wire, self._job = wire, job
         self._on_permit = on_permit
         self.follows, self.asked = job.continues, job.asked
         self.stopped = False
         self._steps: set[asyncio.Task] = set()
 
     def _path(self, what: str) -> str:
-        return f"/api/executor/{self._job.id}/{what}?name={self._name}"
+        return f"/api/executor/{self._job.id}/{what}"
 
     def step(self, text: str) -> None:
         """What it is doing — said without waiting: a step is not an answer."""
@@ -113,9 +113,9 @@ class Desk:
         return allowed
 
 
-async def claim(wire: part.Wire, name: str) -> Job | None:
+async def claim(wire: part.Wire) -> Job | None:
     """One piece of work, or None: nothing waiting, or a brain that said no."""
-    answer = await wire.post("/api/executor/claim", {"name": name})
+    answer = await wire.post("/api/executor/claim", {})
     try:
         task = answer.json() if answer.status_code == 200 else {}
     except ValueError:
@@ -126,7 +126,7 @@ async def claim(wire: part.Wire, name: str) -> Job | None:
                bool(task.get("continues")), str(task.get("asked") or ""))
 
 
-async def take(wire: part.Wire, name: str,
+async def take(wire: part.Wire,
                do: Callable[[Job, Desk], Awaitable[str]], *,
                on_permit: Callable[[str, bool | None, str, str], None] | None = None,
                on_begin: Callable[[Job, Desk], None] | None = None,
@@ -137,10 +137,10 @@ async def take(wire: part.Wire, name: str,
     A stop is ``stopped``; any other failure is ``failed`` with the words
     ``failed`` makes of it — the hand chooses what the person may hear.
     """
-    job = await claim(wire, name)
+    job = await claim(wire)
     if job is None:
         return False
-    desk = Desk(wire, job, name, on_permit)
+    desk = Desk(wire, job, on_permit)
     if on_begin is not None:
         on_begin(job, desk)
     status, result = "done", ""
@@ -163,7 +163,7 @@ async def take(wire: part.Wire, name: str,
         status, result = "failed", failed(exc)
     if on_end is not None:
         on_end(job, status, result)
-    answer = await wire.post(f"/api/executor/{job.id}/result?name={name}",
+    answer = await wire.post(f"/api/executor/{job.id}/result",
                              {"status": status, "result": result})
     if answer.status_code >= 400:
         logger.warning("the brain refused the result for job %d (HTTP %d)",
@@ -171,9 +171,9 @@ async def take(wire: part.Wire, name: str,
     return True
 
 
-async def serve(wire: part.Wire, name: str,
+async def serve(wire: part.Wire,
                 do: Callable[[Job, Desk], Awaitable[str]], **hooks) -> None:
     """Take work forever, resting ``IDLE_S`` whenever none came."""
     while True:
-        if not await take(wire, name, do, **hooks):
+        if not await take(wire, do, **hooks):
             await asyncio.sleep(IDLE_S)

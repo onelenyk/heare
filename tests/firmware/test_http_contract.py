@@ -14,6 +14,7 @@ import socket
 from aiohttp.test_utils import TestClient, TestServer
 from heare.api.server import Screen, build
 from heare.config import Settings
+from heare.core import PROTOCOL
 from heare_panel.http import build_request, read_head
 
 from tests.firmware.fakes import FakeSocket
@@ -49,6 +50,7 @@ async def test_a_raw_http_1_0_event_stream_has_no_transfer_encoding(tmp_path):
     master = {"X-Heare-Token": (tmp_path / "token").read_text()}
     try:
         knock = asyncio.create_task(client.post("/api/bodies", headers=master, json={
+            "v": PROTOCOL,
             "channel": "panel", "forms": ["output"], "key": "panel@test",
             "host": "test", "hears": "all"}))
         await asyncio.sleep(0.05)

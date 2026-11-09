@@ -1324,7 +1324,7 @@ async def test_a_failed_hand_work_is_not_done():
     from heare.reach.remote import RemoteExecutor
 
     room = await open_room()
-    hands = RemoteExecutor("worker", "робить усе")
+    hands = RemoteExecutor("worker@bench", "worker", "робить усе")
     room.core.add_executor(hands)
     task = room.core.delegate("зроби")
     claimed = await hands.claim()

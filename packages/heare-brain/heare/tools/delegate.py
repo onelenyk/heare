@@ -9,24 +9,25 @@ from heare.core.state import State
 
 
 async def run(
-    start: Callable[[str, bool], Task], state: State, words: Any, arguments: dict
+    start: Callable[[str, bool, str], Task], state: State, words: Any, arguments: dict
 ) -> str:
     request = str(arguments.get("task", "")).strip()
     if not request:
         return "Nothing was started: the task was empty."
-    if same(state, words, request) is not None:
+    hand = str(arguments.get("hand") or "").strip()
+    if same(state, words, request, hand) is not None:
         return "That is already under way."
-    start(request, arguments.get("continues") is True)
+    start(request, arguments.get("continues") is True, hand)
     return "Handed over: the work has started."
 
 
-def same(state: State, words: Any, request: str) -> Task | None:
+def same(state: State, words: Any, request: str, hand: str = "") -> Task | None:
     """A piece of work already running that this request repeats. One
     request is one job: asked again before it is done, it is the same
-    job, not a second one."""
+    job, not a second one — unless it was meant for other hands."""
     asked = set(words.tokens(request))
     for task in state.tasks.values():
-        if task.status != "running":
+        if task.status != "running" or task.hand != hand:
             continue
         running = set(words.tokens(task.request))
         common = len(asked & running)

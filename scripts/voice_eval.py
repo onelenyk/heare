@@ -81,6 +81,7 @@ class Hands:
     """The one executor: delegate is offered, and work ends at once."""
 
     name = "opencode"
+    id = "opencode"
     about = "робить файли, код, shell"
 
     async def run(self, task: str, desk: object) -> str:

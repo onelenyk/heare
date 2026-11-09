@@ -8,7 +8,7 @@ from aiohttp.test_utils import TestClient, TestServer
 from heare.api import server as api_server
 from heare.api.server import Screen, build
 from heare.config import Settings
-from heare.core import Permission, Question
+from heare.core import PROTOCOL, Permission, Question
 from tests.heare.fakes import open_room
 
 # The words that must never reach a filtered stream.
@@ -34,6 +34,7 @@ async def _open(tmp_path):
 
 
 async def _listening(client, master, knock: dict) -> dict:
+    knock = {"v": PROTOCOL, **knock}
     asked = asyncio.create_task(client.post("/api/bodies", headers=master, json=knock))
     await asyncio.sleep(0.05)
     await client.post(f"/api/bodies/{knock['key']}/approve", headers=master)

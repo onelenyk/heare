@@ -243,7 +243,8 @@ async def report(client: httpx.AsyncClient, base: str, channel: str,
     """Tell the brain what the part's controls are worth now."""
     try:
         answer = await client.post(f"{base}/api/input", json={
-            "channel": channel, "kind": "state", "values": dict(values)})
+            "channel": channel, "kind": "state", "values": dict(values),
+            "v": PROTOCOL})
         answer.raise_for_status()
     except httpx.HTTPError as exc:
         logger.warning("could not report the state: %s", exc)
@@ -281,6 +282,7 @@ class Wire:
         """A call that outlives a brain restart: while the brain is away the
         call waits and is made again, instead of ending the part."""
         said = False
+        body = {"v": PROTOCOL, **(body or {})}
         while True:
             try:
                 return await self.client.post(f"{self.base}{path}", json=body)

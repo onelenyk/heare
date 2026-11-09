@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-05 23:43+0200\n"
+"POT-Creation-Date: 2026-11-09 21:50+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -1680,8 +1680,19 @@ msgstr "провайдер відповів {code}"
 msgid "alive"
 msgstr "живий"
 
+#, python-brace-format
+msgid "The hands on {where} are not connected."
+msgstr "Руки на {where} не на зв'язку."
+
+msgid "No hands are here."
+msgstr "Тут немає рук."
+
 msgid "This is not for the quick hands, and no other hands are here."
 msgstr "Це не для швидких рук, а інших рук зараз немає."
+
+#, python-brace-format
+msgid "No CLI hands on {where}."
+msgstr "На {where} немає рук-агентів."
 
 #, python-brace-format
 msgid "handed over from {name}"

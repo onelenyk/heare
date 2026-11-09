@@ -33,9 +33,11 @@ HOST = "bench"
 
 
 class Bench:
-    def __init__(self, room, settings, boards, hand_model):
+    def __init__(self, room, settings, boards, hands: dict[str, Script]):
         self.room, self.settings = room, settings
-        self.boards, self.hand_model = boards, hand_model
+        self.boards, self.hands = boards, hands
+        # The hand older scenarios speak to: the first one started.
+        self.hand_model = next(iter(hands.values()))
 
     async def until(self, check, seconds: float = 5.0, what: str = "") -> None:
         loop = asyncio.get_running_loop()
@@ -45,12 +47,25 @@ class Bench:
                 raise AssertionError(f"the bench waited in vain: {what}")
             await asyncio.sleep(0.02)
 
-    def say(self, words: str, *hand: Says | str) -> None:
+    def say(self, words: str, *hand: Says | str,
+            hand_id: str = "", origin: str = "") -> None:
         """The person's words, the voice handing them over, and what the
-        hands' model does with them."""
-        self.room.model.will_say(Says(calls=(("delegate", {"task": words}),)))
-        self.hand_model.will_say(*hand)
-        self.room.core.hear(Message(text=words, channel="screen"))
+        hands' model does with them.
+
+        *hand_id* is the hand the voice's model names (a pid: which machine);
+        *origin* is the machine the person spoke on, which the door knows and
+        the turn carries.
+        """
+        call: dict = {"task": words}
+        if hand_id:
+            call["hand"] = hand_id
+        self.room.model.will_say(Says(calls=(("delegate", call),)))
+        for model in self.hands.values():
+            model.will_say(*hand)
+        heard: dict = {"text": words, "channel": "screen"}
+        if origin:
+            heard["origin"] = origin
+        self.room.core.hear(Message(**heard))
 
     def done(self) -> list:
         return [t for t in self.room.core.state.tasks.values() if t.status != "running"]
@@ -61,8 +76,8 @@ class Bench:
 
 
 @contextlib.asynccontextmanager
-async def bench(tmp_path, *boards: sim.Board):
-    trusted = ["native-hands@bench", *(b.pid for b in boards)]
+async def bench(tmp_path, *boards: sim.Board, hands: tuple[str, ...] = (HOST,)):
+    trusted = [f"native-hands@{host}" for host in hands] + [b.pid for b in boards]
     (tmp_path / "parts.json").write_text(json.dumps(trusted), encoding="utf-8")
     held: dict = {}
     # The brain's own rule for who does what, as it runs live.
@@ -76,20 +91,26 @@ async def bench(tmp_path, *boards: sim.Board):
         pair_codes_file=tmp_path / "pair_codes.json", memory_dir=tmp_path / "memory",
         heard_dir=tmp_path / "heard", backups_dir=tmp_path / "home" / "backups",
     )
-    app = build(room.core, brain, make_executor=lambda name, about: route.executor(
-        name, about, lambda n, a: RemoteExecutor(n, a, claim_wait_s=0.5),
+    app = build(room.core, brain, make_executor=lambda i, n, a, m: route.executor(
+        i, n, a, m, lambda i, n, a, m: RemoteExecutor(i, n, a, m, claim_wait_s=0.5),
         lambda: list(room.core.executors.values()), lambda: room.core.state.tasks))
     server = TestServer(app, host="127.0.0.1")
     await server.start_server()
-    parts = Settings(path=tmp_path / "part.toml", api_token_file=tmp_path / "token",
-                     machine_token_file=tmp_path / "no-machine-token",
-                     url=f"http://127.0.0.1:{server.port}")
-    hand_model = Script()
-    tasks = [asyncio.create_task(sim.live(b, parts)) for b in boards]
-    tasks.append(asyncio.create_task(native_hands.run(parts, hand_model, HOST)))
-    found = Bench(room, parts, {b.pid: b for b in boards}, hand_model)
+    def settings_for(name: str) -> Settings:
+        return Settings(path=tmp_path / f"part-{name}.toml",
+                        api_token_file=tmp_path / "token",
+                        machine_token_file=tmp_path / "no-machine-token",
+                        url=f"http://127.0.0.1:{server.port}")
+
+    scripts = {host: Script() for host in hands}
+    parts = {host: settings_for(f"hand-{host}") for host in hands}
+    tasks = [asyncio.create_task(sim.live(b, settings_for(b.name))) for b in boards]
+    tasks += [asyncio.create_task(native_hands.run(parts[host], scripts[host], host))
+              for host in hands]
+    found = Bench(room, parts[hands[0]], {b.pid: b for b in boards}, scripts)
     try:
-        await found.until(lambda: "native-hands" in room.core.executors
+        await found.until(lambda: any(e.name == native_hands.CHANNEL
+                                      for e in room.core.executors.values())
                           and all(b.let_in.is_set() for b in boards),
                           what="the hands and the boards let in")
         yield found
@@ -110,7 +131,7 @@ async def test_words_go_from_the_voice_through_the_hands_to_the_board(tmp_path):
         task = await b.finished()
 
         assert desk.shown == "hello"
-        assert (task.executor, task.status, task.result) == ("native-hands", "done", "Показав.")
+        assert (task.executor, task.status, task.result) == ("native-hands@bench", "done", "Показав.")
         # The board's own answer is what the hands' model read.
         assert b.hand_model.asked[1][-1]["content"] == "shown: hello"
 
@@ -239,6 +260,39 @@ async def test_work_that_goes_on_stays_with_its_hands(tmp_path):
         await b.until(lambda: cli.tasks, what="the cli hands took it")
         assert cli.tasks[0].startswith("а тепер запусти")
         assert b.hand_model.asked == []
+
+
+async def test_two_machines_each_get_their_own_hands(tmp_path):
+    desk = sim.Board("desk", host="mac")
+    async with bench(tmp_path, desk, hands=("server", "mac")) as b:
+        await b.until(lambda: len(b.room.core.executors) == 2, seconds=2.0,
+                      what="two hands, one per machine")
+        assert set(b.room.core.executors) == {"native-hands@server", "native-hands@mac"}
+
+        b.say("покажи hello на платі",
+              Says(calls=(("desk__show", {"text": "hello", "seconds": 5}),)),
+              "Показав.", hand_id="native-hands@server")
+
+        task = await b.finished()
+
+        assert task.executor == "native-hands@server"
+        assert b.hands["server"].asked and not b.hands["mac"].asked
+
+
+async def test_without_a_machine_the_hands_where_the_person_spoke_take_it(tmp_path):
+    desk = sim.Board("desk", host="mac")
+    async with bench(tmp_path, desk, hands=("server", "mac")) as b:
+        await b.until(lambda: len(b.room.core.executors) == 2, seconds=2.0,
+                      what="two hands, one per machine")
+
+        b.say("покажи hello на платі",
+              Says(calls=(("desk__show", {"text": "hello", "seconds": 5}),)),
+              "Показав.", origin="server")
+
+        task = await b.finished()
+
+        assert task.executor == "native-hands@server"
+        assert b.hands["server"].asked and not b.hands["mac"].asked
 
 
 @pytest.fixture(autouse=True)
