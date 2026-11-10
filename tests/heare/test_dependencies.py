@@ -32,7 +32,7 @@ KNOW_EVERYTHING = {"app", "listener", "brain"}
 # heare.wire is what a provider needs on the wire beyond the key (opencode's
 # session): the brain's model and the parts' own one (heare.talk) send it alike.
 LEAVES = {"heare.keys", "heare.laws", "heare.model.providers", "heare.hand", "heare.words",
-          "heare.wire"}
+          "heare.wire", "heare.logs"}
 # The core may grow, but not into the tangle it replaces. If this fails,
 # something in the core is a part. Raised deliberately for the question
 # channel (an executor asking the person mid-work), not by drift; on

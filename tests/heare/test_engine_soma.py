@@ -28,16 +28,17 @@ def test_time_alone_makes_a_want_grow():
 def test_a_failure_presses_at_once():
     w = soma()
     w.feed("task_failed", thing_id="7", kind="task", label="сайт")
-    assert w.propose() is not None
-    assert w.propose().verb == "finish"
+    hot = w.hottest()
+    assert hot is not None and hot.pressing >= 0.5
+    assert hot.verb == "finish"
 
 
 def test_an_opened_task_presses_only_when_it_has_grown():
     w = soma()
     w.feed("task_opened", thing_id="7", kind="task", label="сайт")
-    assert w.propose() is None
+    assert w.hottest().pressing < 0.5
     run(w, 3 * 3600)
-    assert w.propose() is not None
+    assert w.hottest().pressing >= 0.5
 
 
 def test_two_tasks_bind_to_their_own_things():
@@ -105,11 +106,14 @@ def test_spoke_resets_pressing_and_costs_energy():
     assert w.energy < 1.0
 
 
-def test_tiredness_raises_the_bar():
+def test_a_reused_id_gets_its_own_label():
     w = soma()
-    full = w.threshold()
-    w.energy = 0.2
-    assert w.threshold() > full
+    w.feed("task_opened", thing_id="1", kind="task", label="old")
+    w.feed("task_done", thing_id="1", kind="task", label="old")
+    w.feed("task_opened", thing_id="1", kind="task", label="new")
+    thing = w.thing("1")
+    assert thing is not None
+    assert (thing.label, thing.state) == ("new", "alive")
 
 
 def test_a_carried_want_does_not_re_press_on_time():
@@ -118,7 +122,7 @@ def test_a_carried_want_does_not_re_press_on_time():
     w.spoke("7")
     w.engage("7")
     run(w, 3 * 3600)
-    assert w.propose() is None
+    assert w.hottest().pressing < 0.5
 
 
 def test_the_state_is_english_without_numbers():

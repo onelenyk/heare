@@ -21,6 +21,11 @@ HARD RULES:
 - **A part imports only the core and itself.** Two parts never import
   each other. `tests/heare/test_dependencies.py` enforces both; run it
   after any import change.
+- **A new inner life enters as a row in the soul's table, not as a
+  module.** `packages/heare-brain/heare/engine/soma.py` does not speak,
+  does not know the store, and hands the model one sentence; only
+  `engine/` imports it. `tests/heare/test_engine_soma_shape.py` holds
+  that edge.
 - Import style: `from heare.core.conversation import Core` — always
   absolute, always the `heare.` prefix.
 

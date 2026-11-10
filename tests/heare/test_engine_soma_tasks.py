@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from heare.engine import Soma, Engine, Intents
+from heare.engine.intent import ref
+
+REF = ref(1000.0, 1)
 
 
 @dataclass
@@ -19,6 +22,7 @@ class Task:
     request: str
     status: str = "running"
     executor: str = "opencode"
+    started: float = 1000.0
 
 
 @dataclass
@@ -66,18 +70,18 @@ def test_a_running_task_becomes_a_thing_left_open(tmp_path):
     store, _, motor, clock = engine(tmp_path, state=state)
     motor.note(Ev("tick", {}))
     soma = motor._soma
-    assert [w for w in soma.wants if w.verb == "finish" and w.thing_id == "1"]
+    assert [w for w in soma.wants if w.verb == "finish" and w.thing_id == REF]
 
 
 def test_the_same_running_task_is_not_opened_twice(tmp_path):
     state = State({1: Task(1, "зроби сайт")})
     _, _, motor, clock = engine(tmp_path, state=state)
     motor.note(Ev("tick", {}))
-    before = next(w for w in motor._soma.wants if w.thing_id == "1").care
+    before = next(w for w in motor._soma.wants if w.thing_id == REF).care
     clock.go(600)
     motor.note(Ev("tick", {}))
     motor.note(Ev("tick", {}))
-    after = next(w for w in motor._soma.wants if w.thing_id == "1").care
+    after = next(w for w in motor._soma.wants if w.thing_id == REF).care
     assert after < before + 0.05
 
 
@@ -138,6 +142,21 @@ def test_nothing_is_watched_without_a_soma(tmp_path):
     clock.go(3600)
     motor.note(Ev("tick", {}))
     assert motor.mood() == ""
+
+
+def test_a_restart_does_not_open_the_same_work_twice(tmp_path):
+    state = State({1: Task(1, "зроби сайт")})
+    path = tmp_path / "soma.json"
+    clock = Clock()
+    first = Engine(Intents(tmp_path / "intents.json"), now=clock, state=state, soma_path=path)
+    first.note(Ev("tick", {}))
+    before = next(w for w in first._soma.wants if w.verb == "finish")
+
+    second = Engine(Intents(tmp_path / "intents-2.json"), now=clock, state=state, soma_path=path)
+    second.note(Ev("tick", {}))
+    again = next(w for w in second._soma.wants if w.verb == "finish")
+
+    assert (again.care, again.pressing) == (before.care, before.pressing)
 
 
 def test_no_state_no_watching(tmp_path):

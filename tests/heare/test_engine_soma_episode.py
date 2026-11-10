@@ -114,7 +114,7 @@ def test_a_failure_does_not_nag_forever(tmp_path):
     want = next((w for w in soma.wants if w.thing_id == "2"), None)
     assert want is not None
     assert want.said >= 1
-    assert soma.propose() is None
+    assert soma.hottest().pressing < 0.5
 
 
 def test_nothing_is_held_twice(tmp_path):

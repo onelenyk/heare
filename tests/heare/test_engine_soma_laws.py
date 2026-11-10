@@ -120,11 +120,18 @@ def test_the_daily_budget_limits_the_soma(tmp_path):
 def test_a_spoken_want_does_not_re_press(tmp_path):
     soma = Soma()
     soma.feed("task_failed", thing_id="task:7", kind="task", label="Сайт готовий.")
-    assert soma.propose() is not None
+    assert soma.hottest().pressing >= 0.5
     soma.spoke("task:7")
-    assert soma.propose() is None  # she said her piece; time alone won't re-raise
+    assert soma.hottest().pressing < 0.5  # she said her piece; time alone won't re-raise
     soma.tick(3 * 3600)
-    assert soma.propose() is None  # habituation holds
+    assert soma.hottest().pressing < 0.5  # habituation holds
+
+
+def test_tiredness_raises_the_bar(tmp_path):
+    _, _, motor, _, soma = ripened(tmp_path)
+    rested = motor._bar()
+    soma.energy = 0.2
+    assert motor._bar() > rested
 
 
 def test_the_soma_does_not_name_the_person():

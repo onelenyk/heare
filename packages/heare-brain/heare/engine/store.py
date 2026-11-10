@@ -15,7 +15,7 @@ from dataclasses import asdict, fields
 from datetime import datetime
 from pathlib import Path
 
-from heare.engine.intent import Intent
+from heare.engine.intent import ANSWERS, REMINDER, Intent
 
 logger = logging.getLogger("heare.engine.store")
 
@@ -89,16 +89,19 @@ class Intents:
         """What is still worth saying — the «Тримаю в голові» list."""
         return [i for i in self._by_id.values() if i.alive(now)]
 
+    def get(self, intent_id: int) -> Intent | None:
+        return self._by_id.get(intent_id)
+
     def reminders(self, now: float) -> list[Intent]:
         """Held reminders, due or still ahead, soonest first."""
         held = [
             i for i in self._by_id.values()
-            if i.why == "reminder" and i.status == "held"
+            if i.why == REMINDER and i.status == "held"
             and (i.until is None or now < i.until)
         ]
         return sorted(held, key=lambda i: i.not_before or 0)
 
-    def cancel(self, intent_id: int, *, why: str = "reminder") -> bool:
+    def cancel(self, intent_id: int, *, why: str = REMINDER) -> bool:
         """Drop a held note of this kind; False if it is not there to drop."""
         intent = self._by_id.get(intent_id)
         if intent is None or intent.why != why or intent.status != "held":
@@ -120,7 +123,8 @@ class Intents:
         return sum(
             1 for i in self._by_id.values()
             if i.status == "delivered"
-            and i.why not in ("reminder", "task_done", "task_failed")
+            and i.why not in ANSWERS
+            and i.why != REMINDER
             and i.delivered_at is not None
             and datetime.fromtimestamp(i.delivered_at).date() == day
         )

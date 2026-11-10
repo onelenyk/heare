@@ -11,6 +11,29 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
+# Why an intent is held. The engine and the store both compare these, so they
+# are named here once instead of typed as strings in two files.
+SOMA = "soma"
+REMINDER = "reminder"
+TASK_DONE = "task_done"
+TASK_FAILED = "task_failed"
+ANSWERS = frozenset({TASK_DONE, TASK_FAILED})
+
+
+def ref(started: float | None, task_id: int) -> str:
+    """A task's name that outlives the process: ids start from 1 every boot."""
+    return f"{float(started):.3f}:{int(task_id)}" if started else str(int(task_id))
+
+
+def tag(kind: str, reference: str) -> str:
+    return f"{kind}:{reference}"
+
+
+def tagged(about: str, kind: str) -> str | None:
+    """The reference inside ``about``, if it is of that kind."""
+    head = kind + ":"
+    return about[len(head):] if about.startswith(head) else None
+
 
 @dataclass
 class Intent:

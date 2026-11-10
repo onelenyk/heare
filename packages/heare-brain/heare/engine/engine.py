@@ -17,10 +17,11 @@ from typing import Any
 
 from heare.core import Message
 from heare.core.conversation import RESULT_PREFIX
-from heare.engine.intent import Intent
-from heare.engine.soma import Soma
-from heare.engine.store import Intents
 from heare.core.i18n import _
+from heare.engine.intent import ANSWERS, REMINDER, SOMA, Intent, ref, tag, tagged
+from heare.engine.soma import Soma, Want
+from heare.engine.store import Intents
+from heare.logs import say
 
 logger = logging.getLogger("heare.engine")
 
@@ -47,11 +48,13 @@ _FEELING = {
     "failed": "task_failed",
     "stopped": "task_done",
 }
-# The result of work the person asked for is the answer to them, not news
-# they did not ask for: no daily budget, no quiet hours, no gap since the
-# last remark holds it back. With a budget of one a day, every result after
-# the first was never said (24 October).
-_ANSWERS = frozenset(_WORTH_TELLING.values())
+# A want is worth saying only when it presses harder than this; tiredness
+# raises the bar. The number lives here, not in the soul: the soul says what
+# presses, the engine says whether it may be said.
+SPEAK_THRESHOLD = 0.50
+TIRED_PENALTY = 0.45
+# More than three held remarks in one breath is a wall of text, not a remark.
+NEWS_PER_BREATH = 3
 
 # The least it says two things in a row. It grows bolder when the person
 # answers and waits longer when nobody does — trust, earned and lost.
@@ -115,6 +118,9 @@ class Engine:
         self._soma_saved_at: float | None = None
         self._last_soma_thing: str | None = None
         self._seen_running: set[int] = set()
+        self._blocked = ""
+        self._tired = False
+        self._spent = False
 
     def note(self, event: Any) -> None:
         """One event from the core: hold what it means, then deliver what is due."""
@@ -128,24 +134,34 @@ class Engine:
         # What ripens now is told at the next moment, not in the same breath.
         self._advance()
 
+    def _reference(self, data: Any) -> str:
+        task_id = int(data.get("id"))
+        started = data.get("started")
+        if started is None and self._state is not None:
+            task = getattr(self._state, "tasks", {}).get(task_id)
+            started = getattr(task, "started", None)
+        return ref(started, task_id)
+
     def _hold(self, event: Any) -> None:
         data = event.data
         status = str(data.get("status") or "")
         news = str(data.get("news") or "").strip()
+        reference = self._reference(data)
         if self._soma is not None:
             feeling = _FEELING.get(status)
             if feeling:
                 label = str(data.get("request") or news)[:200]
-                self._soma.feed(feeling, thing_id=str(data.get("id")), kind="task", label=label)
+                self._soma.feed(feeling, thing_id=reference, kind="task", label=label)
                 if status in ("done", "stopped"):
-                    self._retire(str(data.get("id")))
+                    self._retire(reference)
         why = _WORTH_TELLING.get(status)
         if why is None or not news:
             return
         self._intents.hold(
             what=news[:1000], why=why, weight=2,
-            about=f"task:{data.get('id')}", until=self._fresh_until(self._now()),
+            about=tag("task", reference), until=self._fresh_until(self._now()),
         )
+        say(f"engine: held {why} {reference}")
 
     def _advance(self) -> None:
         """Let the soma feel time pass, and write down what has ripened."""
@@ -158,11 +174,12 @@ class Engine:
         self._watch_tasks()
         self._hold_from_soma(now)
         self._save_soma(now)
+        self._energy()
 
-    def _retire(self, thing_id: str) -> None:
+    def _retire(self, reference: str) -> None:
         """A closed task takes its waiting remark with it."""
         now = self._now()
-        about = "soma:" + thing_id
+        about = tag(SOMA, reference)
         for intent in self._intents.alive(now):
             if intent.about == about:
                 self._intents.done(intent, at=now)
@@ -181,28 +198,84 @@ class Engine:
                 continue
             self._seen_running.add(task.id)
             self._soma.feed(
-                "task_opened", thing_id=str(task.id), kind="task", label=str(task.request)[:200],
+                "task_opened", thing_id=ref(getattr(task, "started", None), task.id),
+                kind="task", label=str(task.request)[:200],
             )
+
+    def _bar(self) -> float:
+        """How hard a want must press to be worth saying; tiredness raises it."""
+        if self._soma is None:
+            return 0.0
+        return SPEAK_THRESHOLD + (1.0 - self._soma.energy) * TIRED_PENALTY
+
+    def _ripened(self) -> Want | None:
+        want = self._soma.hottest() if self._soma is not None else None
+        if want is None or want.pressing < self._bar():
+            return None
+        return want
 
     def _hold_from_soma(self, now: float) -> None:
         """Turn what presses into an intent, if it is not held already."""
-        want = self._soma.propose() if self._soma is not None else None
+        want = self._ripened()
         if want is None:
             return
-        about = "soma:" + want.thing_id
+        about = tag(SOMA, want.thing_id)
         if any(intent.about == about for intent in self._intents.alive(now)):
             return
         thing = self._soma.thing(want.thing_id)
         what = thing.label if thing is not None and thing.label else want.thing_id
         weight = 3 if want.pressing >= 0.75 else 2 if want.pressing >= 0.4 else 1
         self._intents.hold(
-            what=what, why="soma", weight=weight,
+            what=what, why=SOMA, weight=weight,
             about=about, not_before=now,
         )
+        say(f"engine: held {want.verb} {want.thing_id} pressing {want.pressing:.2f}")
+
+    def _energy(self) -> None:
+        """Say once when tiredness starts, and once when it has worn off."""
+        if self._soma is None:
+            return
+        energy = self._soma.energy
+        if energy < 0.1 and not self._spent:
+            self._spent = self._tired = True
+            say("engine: spent; the bar is high")
+        elif energy < 0.5 and not self._tired:
+            self._tired = True
+            say("engine: tired; the bar is higher")
+        elif energy >= 0.5:
+            self._tired = self._spent = False
 
     def mood(self) -> str:
         """What presses, in the body's own words; empty when there is no body."""
         return self._soma.state() if self._soma is not None else ""
+
+    def held(self) -> list[Intent]:
+        """What waits to be said, heaviest first — the page shows this list."""
+        return sorted(
+            self._intents.alive(self._now()),
+            key=lambda intent: (-intent.weight, intent.made),
+        )
+
+    def say_now(self, intent_id: int) -> bool:
+        """Say one held intent now, whatever the hour, budget or gap."""
+        intent = self._intents.get(intent_id)
+        if intent is None or not intent.alive(self._now()):
+            return False
+        self._deliver([intent])
+        return True
+
+    def drop(self, intent_id: int) -> bool:
+        """Let one held intent go. A want is treated as heard, so it stops pressing."""
+        intent = self._intents.get(intent_id)
+        if intent is None or not intent.alive(self._now()):
+            return False
+        self._intents.done(intent, status="dropped")
+        if self._soma is not None and intent.why == SOMA:
+            reference = tagged(intent.about, SOMA)
+            if reference is not None:
+                self._soma.spoke(reference)
+        say(f"engine: dropped {intent_id} by hand")
+        return True
 
     def _save_soma(self, now: float) -> None:
         """Write the body down now and then, not on every event."""
@@ -224,6 +297,7 @@ class Engine:
             if self._soma is not None and self._last_soma_thing is not None:
                 self._soma.engage(self._last_soma_thing)
                 self._last_soma_thing = None
+                say("engine: answered; the gap narrows")
 
     def _fresh_until(self, now: float) -> float:
         """How long work news stays worth telling.
@@ -263,23 +337,46 @@ class Engine:
 
     def _deliver_due(self) -> None:
         """Deliver what is held — all of it in one breath — at a moment that suits."""
-        if self._speak is None or not self._present_and_idle():
+        if self._speak is None:
             return
         now = self._now()
-        due = self._intents.alive(now)
-        answers = [i for i in due if i.why in _ANSWERS]
-        if not self._waited():
-            due = []
-        reminders = [i for i in due if i.why == "reminder"]
-        news = [i for i in due if i.why not in _ANSWERS and i.why != "reminder"]
+        held = self._intents.alive(now)
+        # The result of work the person asked for is the answer to them, not
+        # news they did not ask for: no daily budget, no quiet hours, and no
+        # gap since the last remark holds it back (24 October).
+        answers = [i for i in held if i.why in ANSWERS]
+        if not self._present_and_idle():
+            self._silent("away or mid-turn", held)
+            return
+        due = held if self._waited() else []
+        reminders = [i for i in due if i.why == REMINDER]
+        news = [i for i in due if i.why not in ANSWERS and i.why != REMINDER]
         if self._is_quiet(now):
             news = []
         elif news:
-            news = news[:self._news_left(now)]
+            news = news[:min(self._news_left(now), NEWS_PER_BREATH)]
         chosen = reminders + answers + news
         if not chosen:
+            self._silent(self._why_silent(held, now), held)
             return
+        self._blocked = ""
         self._deliver(chosen)
+
+    def _silent(self, reason: str, held: list[Intent]) -> None:
+        if not held or not reason or reason == self._blocked:
+            return
+        self._blocked = reason
+        say(f"engine: silent, {reason}")
+
+    def _why_silent(self, held: list[Intent], now: float) -> str:
+        if not any(i.why in ANSWERS for i in held) and not self._waited():
+            return "too soon after the last remark"
+        news = [i for i in held if i.why not in ANSWERS and i.why != REMINDER]
+        if news and self._is_quiet(now):
+            return "quiet hours"
+        if news and self._news_left(now) <= 0:
+            return "the daily budget is spent"
+        return ""
 
     def _waited(self) -> bool:
         """Not too soon since the last remark: the gap widens when remarks
@@ -305,8 +402,8 @@ class Engine:
         not three — told apart in one breath instead of minutes apart. A
         reminder is exact words and costs no model call at all.
         """
-        reminders = [i for i in intents if i.why == "reminder"]
-        news = [i for i in intents if i.why != "reminder"]
+        reminders = [i for i in intents if i.why == REMINDER]
+        news = [i for i in intents if i.why != REMINDER]
         if reminders:
             self._speak(Message(
                 text=_("Reminder: {what}").format(what="; ".join(i.what for i in reminders)),
@@ -324,12 +421,15 @@ class Engine:
             if self._soma is not None and self._last_soma_thing is not None:
                 self._soma.ignored()
                 self._last_soma_thing = None
+                say("engine: no answer; the gap widens")
         for intent in intents:
             self._intents.done(intent, at=now)
-            if self._soma is not None and intent.why == "soma":
-                thing_id = intent.about.removeprefix("soma:")
-                self._soma.spoke(thing_id)
-                self._last_soma_thing = thing_id
+            if self._soma is not None and intent.why == SOMA:
+                reference = tagged(intent.about, SOMA)
+                if reference is not None:
+                    self._soma.spoke(reference)
+                    self._last_soma_thing = reference
+        say(f"engine: said {len(reminders)} reminder(s), {len(news)} news")
         self._last_spoke = now
         self._ready_at = now + self._gap_s
         self._answered = False

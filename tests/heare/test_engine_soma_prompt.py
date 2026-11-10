@@ -67,3 +67,14 @@ async def test_the_inside_line_carries_no_numbers(tmp_path):
     inside = motor.mood()
     assert inside
     assert not any(char.isdigit() for char in inside)
+
+
+def test_the_inside_line_shows_what_presses_first():
+    soma = Soma()
+    for i in range(1, 4):
+        soma.feed("task_opened", thing_id=f"cold{i}", kind="task", label=f"cold {i}")
+        want = soma._want("finish", f"cold{i}")
+        want.care, want.pressing, want.said = 0.9, 0.0, 3
+    soma.feed("task_failed", thing_id="hot", kind="task", label="the hot one")
+    inside = soma.state()
+    assert inside.index("the hot one") < inside.index("cold 1")

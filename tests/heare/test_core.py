@@ -1321,6 +1321,7 @@ async def test_a_broken_take_does_not_stop_the_conversation():
 
 
 async def test_a_failed_hand_work_is_not_done():
+    from heare.engine.intent import ref, tag
     from heare.reach.remote import RemoteExecutor
 
     room = await open_room()
@@ -1334,10 +1335,11 @@ async def test_a_failed_hand_work_is_not_done():
     await room.until(lambda: task.status == "failed")
     assert task.result == "Не вийшло."
 
+    about = tag("task", ref(task.started, task.id))
     path = room.extra["intents"]._path
-    await room.until(lambda: path.exists() and f"task:{task.id}" in path.read_text())
+    await room.until(lambda: path.exists() and about in path.read_text())
     rows = json.loads(path.read_text(encoding="utf-8"))
-    assert [r["why"] for r in rows if r.get("about") == f"task:{task.id}"] == [
+    assert [r["why"] for r in rows if r.get("about") == about] == [
         "task_failed"]
     assert all(r["why"] != "task_done" for r in rows)
     await room.close()

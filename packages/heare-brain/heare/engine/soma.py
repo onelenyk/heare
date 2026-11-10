@@ -1,8 +1,7 @@
-"""The soul: what presses, what she remembers, and when it is right to say it.
+"""The soul: what presses, and how much; the engine decides when to say it.
 
-The engine decides *when* something may be said. This decides *what* and
-*how much*: a want that rises by itself, is bound to a thing, and keeps
-pushing long after the event that made it is gone. Nothing here speaks.
+A want is bound to a thing and keeps pushing long after the event that made
+it is gone. Nothing here speaks, knows the store, or reaches the network.
 
 The old seven drives are gone; the soul wants in verbs — ``finish``,
 ``find out``, ``fix``, ``reach``, ``keep word``, ``rest`` — all one root:
@@ -15,9 +14,10 @@ A want carries four numbers:
   said     — how many times she has already brought it up
   carried  — the person took it over, so time stops pressing
 
-Energy is a modulator, not a switch: tiredness raises the bar to speak
-instead of forbidding speech. Things are never deleted — a finished task
-is remembered as a trace of good done against entropy.
+Energy is a state, not a verdict: the engine reads it and raises its own
+bar to speak; tiredness never forbids speech here. Things are never
+deleted — a finished task is remembered as a trace of good done against
+entropy.
 
 The model never sees numbers from here — only a sentence about what presses.
 """
@@ -63,8 +63,6 @@ APPRAISE = {
 DONE_EVENTS = {"task_done"}
 SHOCK_EVENTS = {"task_failed", "correction", "contradiction", "interrupted"}
 
-SPEAK_THRESHOLD = 0.50
-TIRED_PENALTY = 0.45
 PRESS_REGROW_PER_S = 0.0003
 HABIT = [1.0, 0.35, 0.12, 0.05, 0.02]
 ENGAGE_KEEP = 0.5
@@ -104,8 +102,6 @@ class Soma:
     wants: list[Want] = field(default_factory=list)
     trace: list[str] = field(default_factory=list)
     energy: float = ENERGY_START
-    valence: float = 0.0
-    arousal: float = 0.0
     last_spoken: str | None = None
 
     def thing(self, thing_id: str) -> Thing | None:
@@ -122,6 +118,10 @@ class Soma:
         if thing is None:
             thing = Thing(id=thing_id, kind=kind, label=label)
             self.things.append(thing)
+        else:
+            if label:
+                thing.label = label
+            thing.state = "alive"
         return thing
 
     def _want(self, verb: str, thing_id: str) -> Want | None:
@@ -141,6 +141,8 @@ class Soma:
         if event not in APPRAISE:
             return
         verb, care_delta, pressing_delta = APPRAISE[event]
+        if event == "task_opened" and self._want(verb, thing_id) is not None:
+            return
         self._ensure_thing(thing_id, kind, label)
         want = self._ensure_want(verb, thing_id)
         want.care = _clamp(want.care + care_delta, 0.0, 1.0)
@@ -168,17 +170,11 @@ class Soma:
         for thing in self.things:
             if thing.state == "alive" and not any(w.thing_id == thing.id for w in self.wants):
                 thing.state = "released"
-        self._feel(step)
 
-    def threshold(self) -> float:
-        return SPEAK_THRESHOLD + (1.0 - self.energy) * TIRED_PENALTY
-
-    def propose(self) -> Want | None:
-        bar = self.threshold()
+    def hottest(self) -> Want | None:
+        """The want that presses hardest; the engine decides whether it is enough."""
         best: Want | None = None
         for want in self.wants:
-            if want.pressing < bar:
-                continue
             if best is None or want.pressing > best.pressing:
                 best = want
         return best
@@ -215,17 +211,9 @@ class Soma:
                 self.trace.append(thing.label)
         self.wants = [w for w in self.wants if w.thing_id != thing_id]
 
-    def _feel(self, step: float) -> None:
-        total = sum(w.care for w in self.wants)
-        level = _clamp(total / 3.0, 0.0, 1.0)
-        target = _clamp(0.45 - level * 0.9 + (0.1 if self.trace else 0.0), -1.0, 1.0)
-        self.valence += (target - self.valence) * min(1.0, step / 1800.0)
-        hottest = max((w.pressing for w in self.wants), default=0.0)
-        self.arousal += (_clamp(hottest * 1.25, 0.0, 1.0) - self.arousal) * min(1.0, step / 60.0)
-
     def state(self) -> str:
         lines: list[str] = []
-        ranked = sorted(self.wants, key=lambda w: w.care, reverse=True)[:3]
+        ranked = sorted(self.wants, key=lambda w: w.pressing, reverse=True)[:3]
         for want in ranked:
             word = VERB[want.verb]["word"]
             thing = self._thing(want.thing_id)
@@ -233,12 +221,13 @@ class Soma:
             if want.carried:
                 lines.append(f"«{label}» is in your hands; you rest about it.")
             else:
-                lines.append(f"You want to {word} «{label}» — {_heat(want.care)}.")
+                lines.append(f"You want to {word} «{label}» — {_heat(want.pressing)}.")
         if self.trace:
             lines.append("You have finished: " + ", ".join(self.trace[-5:]) + ".")
         if not lines:
             lines.append("Nothing presses. It is quiet inside.")
-        lines.append("You feel " + _mood(self.valence) + " and " + _tense(self.arousal) + ".")
+        lines.append("You feel " + _mood(self.wants, bool(self.trace))
+                     + " and " + _tense(self.wants) + ".")
         return " ".join(lines)
 
     def to_dict(self) -> dict:
@@ -247,8 +236,6 @@ class Soma:
             "scale": self.scale,
             "t": self.t,
             "energy": self.energy,
-            "valence": self.valence,
-            "arousal": self.arousal,
             "last_spoken": self.last_spoken,
             "things": [asdict(t) for t in self.things],
             "wants": [asdict(w) for w in self.wants],
@@ -311,8 +298,6 @@ def _from_v2(raw: dict) -> Soma:
     soma = Soma(scale=_number(raw.get("scale"), 1.0) or 1.0)
     soma.t = _number(raw.get("t"))
     soma.energy = _number(raw.get("energy"), ENERGY_START)
-    soma.valence = _number(raw.get("valence"))
-    soma.arousal = _number(raw.get("arousal"))
     soma.last_spoken = raw.get("last_spoken") if isinstance(raw.get("last_spoken"), str) else None
     things = raw.get("things")
     if isinstance(things, list):
@@ -329,8 +314,6 @@ def _from_v2(raw: dict) -> Soma:
 def _from_v1(raw: dict) -> Soma:
     soma = Soma(scale=_number(raw.get("scale"), 1.0) or 1.0)
     soma.t = _number(raw.get("t"))
-    soma.valence = _number(raw.get("valence"))
-    soma.arousal = _number(raw.get("arousal"))
     needs = raw.get("needs")
     if isinstance(needs, list):
         for row in needs:
@@ -391,7 +374,9 @@ def _heat(urgency: float) -> str:
     return "badly"
 
 
-def _mood(valence: float) -> str:
+def _mood(wants: list[Want], has_trace: bool) -> str:
+    level = _clamp(sum(want.care for want in wants) / 3.0, 0.0, 1.0)
+    valence = _clamp(0.45 - level * 0.9 + (0.1 if has_trace else 0.0), -1.0, 1.0)
     if valence < -0.4:
         return "heavy"
     if valence < -0.15:
@@ -403,7 +388,9 @@ def _mood(valence: float) -> str:
     return "good"
 
 
-def _tense(arousal: float) -> str:
+def _tense(wants: list[Want]) -> str:
+    hottest = max((want.pressing for want in wants), default=0.0)
+    arousal = _clamp(hottest * 1.25, 0.0, 1.0)
     if arousal > 0.66:
         return "wound up"
     if arousal > 0.4:
