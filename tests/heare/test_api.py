@@ -2805,6 +2805,9 @@ async def test_a_machine_asks_only_for_its_own_update_and_nothing_else(tmp_path)
 
 async def test_what_the_engine_holds_is_shown_and_can_be_said_or_dropped(tmp_path):
     room, client, auth, _ = await _open(tmp_path)
+    # The page is the only caller here: a running engine would deliver a held
+    # answer on its own between the two requests, and the drop would be a 404.
+    room._motor.cancel()
     store = room.extra["intents"]
     held = store.hold("Сайт готовий.", why="task_done", weight=2,
                       about="task:t", until=time.time() + 3600)
