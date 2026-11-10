@@ -162,6 +162,7 @@ class Soma:
             want.carried = False
         if event in DONE_EVENTS:
             self._finish(thing_id)
+        self._trim()
 
     def tick(self, seconds: float) -> None:
         if seconds <= 0:
@@ -182,11 +183,7 @@ class Soma:
                 want.pressing = min(target, want.pressing + PRESS_REGROW_PER_S * step * (target - want.pressing))
         self.energy = min(1.0, self.energy + REST_PER_S * step)
         self.wants = [w for w in self.wants if w.care >= DROP_BELOW]
-        if len(self.wants) > HELD_AT_MOST:
-            # Everything else is let go: the thing stays as released, with
-            # no trace — it was not done, it stopped mattering.
-            self.wants.sort(key=self._rank, reverse=True)
-            del self.wants[HELD_AT_MOST:]
+        self._trim()
         for thing in self.things:
             if thing.state == "alive" and not any(w.thing_id == thing.id for w in self.wants):
                 thing.state = "released"
@@ -195,6 +192,20 @@ class Soma:
             thing for thing in self.things
             if thing.state == "alive" or thing.label in self.trace
         ]
+        # The last thing said is a hint for ``ignored``; a hint that points
+        # at a thing no longer here would be a lie about the state.
+        if self.last_spoken is not None and self.thing(self.last_spoken) is None:
+            self.last_spoken = None
+
+    def _trim(self) -> None:
+        """Never more than a dozen: the rest are let go, and the thing
+        stays as released, with no trace — it was not done, it stopped
+        mattering. Called from ``feed`` too, so the bound holds between
+        ticks, not only after one."""
+        if len(self.wants) <= HELD_AT_MOST:
+            return
+        self.wants.sort(key=self._rank, reverse=True)
+        del self.wants[HELD_AT_MOST:]
 
     def hottest(self) -> Want | None:
         """What presses hardest and freshest; the engine decides whether it is enough."""
@@ -280,10 +291,13 @@ class Soma:
             return cls()
         version = raw.get("version")
         if version == VERSION:
-            return _from_v2(raw)
-        if version in (None, 1):
-            return _from_v1(raw)
-        return cls()
+            soma = _from_v2(raw)
+        elif version in (None, 1):
+            soma = _from_v1(raw)
+        else:
+            return cls()
+        soma._trim()
+        return soma
 
     def save(self, path: Path) -> None:
         path = Path(path)

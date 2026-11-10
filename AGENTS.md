@@ -104,6 +104,7 @@ model — and are excluded by default.
 | Voice: hearing and speech | `packages/heare-voice/heare/voice.py`, `packages/heare-voice/heare/channels/voice/` |
 | Eyes: what is around | `packages/heare-eyes/heare/eyes.py`, `packages/heare-eyes/heare/surroundings/` |
 | Intents, reminders, moments, delivery | `packages/heare-brain/heare/engine/` |
+| What presses, and how much: the soul | `packages/heare-brain/heare/engine/soma.py`; `docs/product/soul.md` |
 | What the model sees: persona, laws, turn budget | `packages/heare-brain/heare/prompt/` |
 | What the model can call: recall, delegate, remind | `packages/heare-brain/heare/tools/` |
 | Profile, journal, recall, memory CLI | `packages/heare-memory/heare/memory/` |

@@ -376,6 +376,10 @@
     font: 9.5px/1.4 var(--mono);
     overflow-wrap: anywhere;
   }
+  .module.inner {
+    grid-column: 1 / -1;
+    border-style: dashed;
+  }
   .brain-foot {
     margin-top: 11px;
     padding-top: 9px;
@@ -1295,6 +1299,7 @@
                 <div class="module"><b>модель</b><span>model/</span></div>
                 <div class="module"><b>пам'ять</b><span>memory/</span></div>
                 <div class="module"><b>двигун</b><span>engine/ · інтенти, моменти, доставка</span></div>
+                <div class="module inner"><b>внутрішнє життя</b><span>engine/soma.py · що тисне; не говорить і не ходить у світ</span></div>
               </div>
               <div class="brain-foot">api/server.py · api/page.html · api/canvas.py · api/auth.py</div>
             </div>
@@ -1450,7 +1455,7 @@
       <article class="dist">
         <div class="dist-top"><span class="dist-name">heare-brain</span><span class="dist-index">03 / 08</span></div>
         <h3>Мозок</h3>
-        <p>Двері, розмова, пам'ять, двигун. Сторінка на 127.0.0.1:9790, події, API; <code>canvas.py</code> — те, що малює модель; <code>auth.py</code> — SHA-256 відбитки токенів.</p>
+        <p>Двері, розмова, пам'ять, двигун — і внутрішнє життя душі. Сторінка на 127.0.0.1:9790, події, API; <code>canvas.py</code> — те, що малює модель; <code>auth.py</code> — SHA-256 відбитки токенів.</p>
         <div class="files">
           <code>brain.py</code><code>api/server.py</code><code>api/page.html</code><code>api/canvas.py</code><code>api/auth.py</code><code>engine/</code><code>model/</code><code>memory/</code><code>language/</code><code>persona/</code><code>prompts/voice_rules.txt</code>
         </div>
@@ -1501,6 +1506,11 @@
     <div class="law">
       <span class="law-mark">Закон імпортів</span>
       <p>Ядро імпортує лише себе і стандартну бібліотеку. Частина імпортує лише ядро і себе; дві частини ніколи не імпортують одна одну. Це не домовленість — це перевіряє <code>tests/heare/test_dependencies.py</code>.</p>
+    </div>
+
+    <div class="law">
+      <span class="law-mark">Закон внутрішнього життя</span>
+      <p>Душа не говорить, не знає сховища намірів і не ходить у мережу: вона лише каже, що тисне. Нове внутрішнє життя входить <b>рядком у її таблицю</b>, а не новим модулем. Це перевіряють <code>test_engine_soma_shape.py</code> і <code>test_engine_soma_invariants.py</code>.</p>
     </div>
   </section>
 

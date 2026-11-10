@@ -122,3 +122,14 @@ def test_a_statement_about_tomorrow_is_not_a_plan():
 def test_a_plain_future_is_not_a_plan():
     assert en.open_loop("I'll be there in five") is None
     assert en.open_loop("it will be fine") is None
+
+
+def test_a_waiting_plan_is_not_held_again(tmp_path):
+    store, said, motor, clock = engine(tmp_path, daily_limit=0)
+    motor.note(heard("треба подзвонити мамі"))
+    clock.go(5 * 60)
+    motor.note(Ev("tick"))
+    clock.go(5 * 60)
+    motor.note(Ev("tick"))
+    plans = [i for i in store._by_id.values() if i.about.startswith("soma:plan:")]
+    assert len(plans) == 1, f"the same plan was held {len(plans)} times"

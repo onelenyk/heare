@@ -92,6 +92,16 @@ class Intents:
     def get(self, intent_id: int) -> Intent | None:
         return self._by_id.get(intent_id)
 
+    def waiting(self, about: str) -> bool:
+        """Whether a held note for this thing exists — due now or still
+        waiting. ``alive`` is the wrong question here: a note held until a
+        later moment is not due, and asking only for due ones held the same
+        plan on every tick (10 November)."""
+        return any(
+            intent.about == about and intent.status == "held"
+            for intent in self._by_id.values()
+        )
+
     def reminders(self, now: float) -> list[Intent]:
         """Held reminders, due or still ahead, soonest first."""
         held = [

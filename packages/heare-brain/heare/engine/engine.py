@@ -205,6 +205,9 @@ class Engine:
         if self._soma_at is not None and now > self._soma_at:
             self._soma.tick(now - self._soma_at)
         self._soma_at = now
+        # A want the cap just let go takes its remark with it now, not at
+        # the next delivery: the three states agree after every step.
+        self._forget_released(now)
         self._watch_tasks()
         self._hold_from_soma(now)
         self._save_soma(now)
@@ -256,7 +259,9 @@ class Engine:
         if want is None:
             return
         about = tag(SOMA, want.thing_id)
-        if any(intent.about == about for intent in self._intents.alive(now)):
+        # Due or still waiting: a plan held until its minute is not due
+        # yet, and asking only for due notes held it on every tick.
+        if self._intents.waiting(about):
             return
         thing = self._soma.thing(want.thing_id)
         what = thing.label if thing is not None and thing.label else want.thing_id
