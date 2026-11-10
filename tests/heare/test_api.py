@@ -1010,7 +1010,10 @@ LOCAL_ONLY = frozenset({
     ("POST", "/api/update/machine"),
     ("POST", "/api/machine/mine/report"),
     ("GET", "/api/machines"),
+    ("PUT", "/api/machines/{name}"),
+    ("POST", "/api/machines/{name}/forget"),
     ("POST", "/api/machines/{name}/parts/{part}"),
+    ("POST", "/api/machines/{name}/parts/{part}/restart"),
     ("GET", "/api/update/mine"),
     ("POST", "/api/update/mine/failed"),
     ("POST", "/api/bodies/{id}/approve"),
@@ -2849,7 +2852,7 @@ async def test_a_machine_reports_its_parts_and_learns_the_wish(tmp_path):
     }
     reported = await client.post("/api/machine/mine/report", headers=machine, json=body)
     assert reported.status == 200
-    assert await reported.json() == {"desired": {}}
+    assert await reported.json() == {"desired": {}, "restart": []}
 
     listed = await client.get("/api/machines", headers=owner)
     machines = (await listed.json())["machines"]
@@ -2865,7 +2868,7 @@ async def test_a_machine_reports_its_parts_and_learns_the_wish(tmp_path):
     assert after["machines"][0]["parts"][0]["on"] is True, "the keeper has not said yet"
 
     again = await client.post("/api/machine/mine/report", headers=machine, json=body)
-    assert await again.json() == {"desired": {"voice": False}}
+    assert await again.json() == {"desired": {"voice": False}, "restart": []}
 
     # A machine's key reports and nothing else: the list is the person's.
     denied = await client.get("/api/machines", headers=machine)
@@ -2884,4 +2887,49 @@ async def test_the_brain_s_own_keeper_reports_with_the_master_key(tmp_path):
     listed = await client.get("/api/machines", headers=owner)
     machines = (await listed.json())["machines"]
     assert [one["name"] for one in machines] == ["this-mac"]
+    await _close(room, client)
+
+
+async def test_a_machine_can_be_renamed_restarted_and_forgotten(tmp_path):
+    room, client, owner, settings = await _open(tmp_path)
+    token = authlib.issue(Path(settings.part_tokens_file), "machine@mac")
+    machine = {"X-Heare-Token": token}
+    body = {
+        "name": "mac", "version": "0.9.10", "platform": "darwin",
+        "load": [0.4], "disk_free": 1, "disk_total": 2,
+        "mem_free": 3, "mem_total": 4,
+        "parts": [{"name": "voice", "label": "Voice", "channel": "voice",
+                   "on": True, "state": "running", "why": ""}],
+    }
+    assert (await client.post("/api/machine/mine/report", headers=machine, json=body)).status == 200
+
+    renamed = await client.put("/api/machines/mac", headers=owner, json={"alias": "Мак"})
+    assert renamed.status == 200
+    assert (await renamed.json())["machines"][0]["alias"] == "Мак"
+
+    restarted = await client.post("/api/machines/mac/parts/voice/restart",
+                                  headers=owner, json={})
+    assert restarted.status == 200
+    again = await client.post("/api/machine/mine/report", headers=machine, json=body)
+    assert (await again.json())["restart"] == ["voice"]
+    once = await client.post("/api/machine/mine/report", headers=machine, json=body)
+    assert (await once.json())["restart"] == [], "a restart is a word, not a state"
+
+    forgotten = await client.post("/api/machines/mac/forget", headers=owner, json={})
+    assert forgotten.status == 200
+    listed = await client.get("/api/machines", headers=owner)
+    assert (await listed.json())["machines"] == []
+    denied = await client.post("/api/machine/mine/report", headers=machine, json=body)
+    assert denied.status == 401, "the key went with the machine"
+    await _close(room, client)
+
+
+async def test_a_paired_machine_with_no_parts_is_listed(tmp_path):
+    room, client, owner, settings = await _open(tmp_path)
+    authlib.issue(Path(settings.part_tokens_file), "machine@ghost")
+
+    listed = await client.get("/api/machines", headers=owner)
+    machines = (await listed.json())["machines"]
+    assert [one["name"] for one in machines] == ["ghost"]
+    assert machines[0]["reported"] is False and machines[0]["keyed"] is True
     await _close(room, client)

@@ -323,7 +323,7 @@
 | машина (ключ `machine@…`) | лише звітувати; `GET /api/machines` — `403` |
 | keeper на машині мозку (мастер, loopback) | звітувати з `name` у тілі |
 | вікно | не машина; звіт — `403` |
-| власник | `GET /api/machines`, `POST /api/machines/{name}/parts/{part}` |
+| власник | `GET /api/machines`, `POST /api/machines/{name}/parts/{part}`, `…/restart`, `PUT /api/machines/{name}`, `POST /api/machines/{name}/forget` |
 
 Бажане зберігає мозок (`~/.heare/machine/machines.json`), маніфести — лише
 keeper. Деталі: [machines.md](machines.md).

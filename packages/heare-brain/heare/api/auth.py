@@ -58,6 +58,11 @@ def known(path: Path, pid: str) -> bool:
     return pid in _read(path)
 
 
+def pids(path: Path) -> list[str]:
+    """Every pid that holds a key, for the machines the person may revoke."""
+    return sorted(_read(path))
+
+
 def owner(path: Path, token: str) -> str | None:
     """The pid this token belongs to, if it is any part's token."""
     if not token:

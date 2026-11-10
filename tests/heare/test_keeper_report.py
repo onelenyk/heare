@@ -14,6 +14,8 @@ def test_a_report_names_every_part_and_its_channel(tmp_path):
     voice = next(one for one in written["parts"] if one["name"] == "voice")
     assert voice["channel"] == "voice" and voice["on"] is True
     assert written["platform"] and written["version"]
+    assert written["mem_total"] is None or written["mem_total"] > 0
+    assert written["mem_free"] is None or written["mem_free"] >= 0
 
 
 def test_the_person_s_wish_turns_the_manifest(tmp_path):

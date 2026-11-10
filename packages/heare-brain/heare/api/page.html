@@ -231,6 +231,9 @@
   #machines .mpart small { min-width:0; color:var(--soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   #machines .mpart.pending small { color:var(--warn); }
   #machines .mpart .msend { margin-left:auto; flex:none; accent-color:var(--accent); }
+  #machines .mactions { display:flex; gap:3px; flex:none; }
+  #machines .mact { padding:0 5px; line-height:1.5; font-size:11px; }
+  #machines .mrename { min-width:0; width:100%; padding:1px 4px; border:1px solid var(--accent); border-radius:5px; background:var(--bg); color:var(--ink); font:600 12px var(--sans); }
 
   /* The drawer: a part's settings across the strip, its tongue under the card. */
   .pdrawer { grid-column:1 / -1; position:relative; border:1px solid var(--accent); border-radius:16px; background:var(--card); padding:12px 16px 14px; min-width:0; }
@@ -1047,6 +1050,7 @@ function machinesBehind(u) {
   });
 }
 function drawUpdate(u) {
+  updateState = u;
   const box = $("update");
   // The brain may be on the newest while a machine is not: its row still shows.
   const behind = u && u.state === "current" ? machinesBehind(u) : [];
@@ -3104,10 +3108,17 @@ try { restoring = sessionStorage.getItem("heare-restoring"); sessionStorage.remo
 if (restoring) { mindOpenDrawer(); mindShow("backups"); }
 
 /* ── machines ── */
-let machineList = [];
+let machineList = [], updateState = null;
 const machineTurn = (name, part, on) => api(
   `machines/${encodeURIComponent(name)}/parts/${encodeURIComponent(part)}`,
   {method: "POST", body: {on}});
+const machineRestart = (name, part) => api(
+  `machines/${encodeURIComponent(name)}/parts/${encodeURIComponent(part)}/restart`,
+  {method: "POST", body: {}});
+const machineRename = (name, alias) => api(
+  `machines/${encodeURIComponent(name)}`, {method: "PUT", body: {alias}});
+const machineForget = name => api(
+  `machines/${encodeURIComponent(name)}/forget`, {method: "POST", body: {}});
 
 async function loadMachines() {
   try {
@@ -3123,20 +3134,82 @@ function drawMachines() {
   box.replaceChildren(...machineList.map(machine => {
     const card = el("div", "machine");
     const top = el("div", "mtop");
-    top.append(el("span", "mdot" + (machine.state === "online" ? " on" : "")),
-               el("b", "mname", machine.name),
-               el("span", "mstate", machine.state === "online" ? tr("online") : tr("away")));
+    top.append(el("span", "mdot" + (machine.state === "online" ? " on" : "")));
+    const name = el("b", "mname", machine.alias || machine.name);
+    name.title = machine.pid;
+    top.append(name, el("span", "mstate", machine.state === "online" ? tr("online") : tr("away")));
+
+    const actions = el("span", "mactions");
+    const pencil = el("button", "mini mact", "✎");
+    pencil.type = "button"; pencil.title = tr("rename");
+    pencil.onclick = () => {
+      const field = el("input", "mrename");
+      field.value = machine.alias || machine.name;
+      top.replaceChild(field, name); field.focus(); field.select();
+      let done = false;
+      const save = () => {
+        if (done) return; done = true;
+        machineRename(machine.name, field.value.trim()).then(loadMachines).catch(loadMachines);
+      };
+      field.onkeydown = ev => {
+        if (ev.key === "Enter") save();
+        if (ev.key === "Escape") { done = true; loadMachines(); }
+      };
+      field.onblur = save;
+    };
+    actions.append(pencil);
+    if (machine.keyed) {
+      const drop = el("button", "mini mact", "✕");
+      drop.type = "button"; drop.title = tr("forget");
+      // Two presses, not a browser dialog: the app's window swallows those.
+      // The first says what it will do; the second, within a breath, does it.
+      drop.onclick = () => {
+        if (drop.dataset.armed !== "1") {
+          drop.dataset.armed = "1";
+          drop.textContent = "✕?";
+          drop.title = tr("forget this machine? its parts stop being trusted");
+          setTimeout(() => {
+            if (drop.isConnected) { drop.dataset.armed = "0"; drop.textContent = "✕"; }
+          }, 4000);
+          return;
+        }
+        machineForget(machine.name).then(loadMachines).catch(loadMachines);
+      };
+      actions.append(drop);
+    }
+    top.append(actions);
     card.append(top);
+
     const load = machine.load && machine.load.length ? `${tr("load")} ${machine.load[0]}` : "";
     const first = [machine.version ? "v" + machine.version : "", machine.platform, load]
       .filter(Boolean).join(" · ");
     if (first) card.append(el("div", "mmeta", first));
+
     const free = machine.disk_free != null ? `${(machine.disk_free / 1e9).toFixed(1)} GB ${tr("free")}` : "";
-    const seen = machine.seen
-      ? `${tr("last seen")} ${new Date(machine.seen * 1000).toLocaleTimeString(LOCALE, {hour: "2-digit", minute: "2-digit"})}`
+    const ram = machine.mem_total && machine.mem_free != null
+      ? `RAM ${(machine.mem_free / 1e9).toFixed(1)}/${(machine.mem_total / 1e9).toFixed(0)} GB ${tr("free")}`
       : "";
-    const second = [free, seen].filter(Boolean).join(" · ");
+    const second = [free, ram].filter(Boolean).join(" · ");
     if (second) card.append(el("div", "mmeta", second));
+
+    if (machine.seen) {
+      card.append(el("div", "mmeta",
+        `${tr("last seen")} ${new Date(machine.seen * 1000).toLocaleTimeString(LOCALE, {hour: "2-digit", minute: "2-digit"})}`));
+    }
+
+    const latest = updateState && updateState.latest;
+    if (latest && machine.reported && machine.version && machine.version !== latest) {
+      const up = el("button", "mini yes", tr("Update"));
+      up.type = "button";
+      up.onclick = () => {
+        up.disabled = true;
+        api("update/machine", {
+          method: "POST", body: {machine: machine.brain ? "machine@brain" : machine.pid},
+        }).catch(() => { up.disabled = false; });
+      };
+      card.append(up);
+    }
+
     for (const part of machine.parts || []) {
       const row = el("div", "mpart");
       const pending = part.desired !== null && part.desired !== undefined && part.desired !== part.on;
@@ -3145,6 +3218,12 @@ function drawMachines() {
       row.append(el("small", "", pending ? tr("pending")
         : part.state === "unwell" && part.why ? part.why
         : part.on ? tr("on") : tr("off")));
+      if (machine.reported && part.on) {
+        const again = el("button", "mini mact", "↻");
+        again.type = "button"; again.title = tr("restart");
+        again.onclick = () => machineRestart(machine.name, part.name).catch(() => {});
+        row.append(again);
+      }
       const sw = el("input", "msend");
       sw.type = "checkbox";
       sw.checked = !!part.on;

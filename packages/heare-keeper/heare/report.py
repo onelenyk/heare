@@ -13,7 +13,9 @@ import logging
 import os
 import platform
 import shutil
+import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import httpx
@@ -29,6 +31,40 @@ EVERY_S = 30.0
 TIMEOUT = httpx.Timeout(15.0, connect=5.0)
 
 
+def _sysctl(name: str) -> int | None:
+    try:
+        answer = subprocess.run(["sysctl", "-n", name], capture_output=True,
+                                text=True, timeout=2, check=False)
+        return int(answer.stdout.strip()) if answer.returncode == 0 else None
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
+def _memory() -> tuple[int | None, int | None]:
+    """Free and total RAM, in bytes; None where the machine will not say.
+
+    Linux answers in ``/proc/meminfo``; a Mac in two sysctls, and has no
+    ``SC_AVPHYS_PAGES`` to ask for the free half.
+    """
+    if sys.platform.startswith("linux"):
+        try:
+            info = {}
+            for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines():
+                key, _, rest = line.partition(":")
+                info[key] = int(rest.split()[0]) * 1024
+            return info.get("MemAvailable"), info.get("MemTotal")
+        except (OSError, ValueError, IndexError):
+            return None, None
+    total = _sysctl("hw.memsize")
+    pages = _sysctl("vm.page_free_count")
+    try:
+        page = os.sysconf("SC_PAGE_SIZE")
+    except (OSError, ValueError):
+        page = None
+    free = pages * page if pages is not None and page else None
+    return free, total
+
+
 def describe(folder: Path) -> dict:
     """What this machine has, as one report."""
     try:
@@ -39,6 +75,7 @@ def describe(folder: Path) -> dict:
         load = [round(value, 2) for value in os.getloadavg()]
     except (OSError, AttributeError):
         load = []
+    mem_free, mem_total = _memory()
     return {
         "version": part.installed() or "",
         "platform": sys.platform,
@@ -46,6 +83,8 @@ def describe(folder: Path) -> dict:
         "load": load,
         "disk_free": free,
         "disk_total": total,
+        "mem_free": mem_free,
+        "mem_total": mem_total,
         "parts": [
             {"name": one["name"], "label": one["label"], "what": one["what"],
              "channel": one["channel"], "on": bool(one["on"]),
@@ -85,9 +124,11 @@ def apply(folder: Path, desired: object) -> list[str]:
 class Report:
     """The keeper's half of the conversation, once every half minute."""
 
-    def __init__(self, settings: Settings, folder: Path) -> None:
+    def __init__(self, settings: Settings, folder: Path, *,
+                 on_restart: Callable[[str], None] | None = None) -> None:
         self.settings = settings
         self.folder = Path(folder)
+        self._on_restart = on_restart
 
     async def run(self) -> None:
         while True:
@@ -109,3 +150,8 @@ class Report:
             return
         body = answer.json() if answer.headers.get("Content-Type", "").startswith("application/json") else {}
         apply(self.folder, (body or {}).get("desired"))
+        again = (body or {}).get("restart")
+        if self._on_restart is not None and isinstance(again, list):
+            for name in again:
+                if isinstance(name, str) and name in machine.PARTS:
+                    self._on_restart(name)

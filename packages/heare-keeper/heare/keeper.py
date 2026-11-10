@@ -213,6 +213,9 @@ class Keeper:
         self._lock = Single(folder.parent / LOCK_NAME)
         self._fails: dict[str, int] = {}
         self._restarts: dict[str, int] = {}
+        # A part asked to start again by the person; the loop takes it down
+        # and puts it back, and it is not counted as a fall.
+        self._again: set[str] = set()
         self._fingerprint = _fingerprint(self._settings, folder)
 
     def _note(self, name: str, state: str, why: str = "", **fields) -> None:
@@ -221,6 +224,11 @@ class Keeper:
                              restarts=self._restarts.get(name, 0), **fields)
         except OSError:
             logger.exception("could not write the state of %s", name)
+
+    def restart(self, name: str) -> None:
+        """The person asked this one to start again; the loop does it."""
+        if name in machine.PARTS:
+            self._again.add(name)
 
     async def _keep(self, name: str, command: list[str]) -> None:
         while not self._stopping:
@@ -288,6 +296,11 @@ class Keeper:
                     for name in [known for known in machine.health(self._folder)
                                  if known not in asked]:
                         machine.forget(self._folder, name)
+                for name in [one for one in self._again if one in tasks]:
+                    task = tasks.pop(name)
+                    task.cancel()
+                    await asyncio.gather(task, return_exceptions=True)
+                self._again.clear()
                 for name, command in asked.items():
                     task = tasks.get(name)
                     if task is not None and task.done():
@@ -377,13 +390,15 @@ async def kept(folder: Path, settings_path: Path | None = None) -> int:
         machine_token_file=home / "machine" / "machine_token",
         machine_name_file=home / "machine" / "machine_name",
     )
-    running = asyncio.create_task(Keeper(folder, settings_path).run())
+    keeper = Keeper(folder, settings_path)
+    running = asyncio.create_task(keeper.run())
     # Held here: a task nobody keeps a reference to may be collected.
     taking = asyncio.create_task(Updating(settings, HOME).run())
     # What this machine has, and what the person asked it to run. The
     # keeper's own settings, not the developer's home: a test's temporary
     # machine must not report to a brain that happens to run here.
-    reporting = asyncio.create_task(Report(settings, folder).run())
+    reporting = asyncio.create_task(
+        Report(settings, folder, on_restart=keeper.restart).run())
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, running.cancel)

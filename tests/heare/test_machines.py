@@ -25,7 +25,7 @@ def report(**over: object) -> dict:
 
 def test_a_report_is_kept_and_read_back(tmp_path):
     machines = Machines(tmp_path / "machines.json")
-    assert machines.report("machine@mac", report(), now=100.0) == {}
+    assert machines.report("machine@mac", report(), now=100.0) == {"desired": {}, "restart": []}
 
     view = machines.view({}, now=110.0)
     assert [machine["name"] for machine in view] == ["mac"]
@@ -48,7 +48,8 @@ def test_what_the_person_asked_for_comes_back(tmp_path):
     machines = Machines(tmp_path / "machines.json")
     machines.report("machine@mac", report(), now=100.0)
     assert machines.desire("machine@mac", "voice", False)
-    assert machines.report("machine@mac", report(), now=200.0) == {"voice": False}
+    assert machines.report("machine@mac", report(), now=200.0) == {
+        "desired": {"voice": False}, "restart": []}
 
 
 def test_the_wish_and_the_truth_are_both_visible(tmp_path):
@@ -103,3 +104,43 @@ def test_a_part_on_the_wire_appears_without_a_report(tmp_path):
     assert machine["state"] == "online"
     assert machine["parts"][0]["online"] is True
     assert machine["parts"][0]["pids"] == ["voice@mac"]
+
+
+def test_a_restart_is_said_once(tmp_path):
+    machines = Machines(tmp_path / "machines.json")
+    machines.report("machine@mac", report(), now=100.0)
+    assert machines.restart("machine@mac", "voice")
+    first = machines.report("machine@mac", report(), now=200.0)
+    assert first["restart"] == ["voice"]
+    second = machines.report("machine@mac", report(), now=300.0)
+    assert second["restart"] == [], "a restart outlived the report that carried it"
+
+
+def test_a_name_for_the_page_is_not_a_new_key(tmp_path):
+    machines = Machines(tmp_path / "machines.json")
+    machines.report("machine@mac", report(), now=100.0)
+    assert machines.rename("machine@mac", "Мак Назара")
+    machine = machines.view({}, now=110.0)[0]
+    assert machine["alias"] == "Мак Назара" and machine["pid"] == "machine@mac"
+
+
+def test_a_forgotten_machine_leaves_no_card(tmp_path):
+    machines = Machines(tmp_path / "machines.json")
+    machines.report("machine@mac", report(), now=100.0)
+    assert machines.forget("machine@mac")
+    assert machines.view({}, now=110.0) == []
+    assert not machines.forget("machine@mac")
+
+
+def test_a_paired_machine_is_listed_before_it_reports(tmp_path):
+    machines = Machines(tmp_path / "machines.json").view(
+        {}, now=0.0, paired=("machine@ghost",))
+    assert machines[0]["name"] == "ghost"
+    assert machines[0]["reported"] is False
+    assert machines[0]["parts"] == []
+
+
+def test_a_paired_machine_can_be_named_before_it_reports(tmp_path):
+    machines = Machines(tmp_path / "machines.json")
+    assert machines.rename("machine@ghost", "Комора")
+    assert machines.view({}, now=0.0, paired=("machine@ghost",))[0]["alias"] == "Комора"

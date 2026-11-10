@@ -84,6 +84,9 @@ def _row(raw: object) -> dict | None:
         "disk_free": _int(raw.get("disk_free")),
         "disk_total": _int(raw.get("disk_total")),
         "seen": _number(raw.get("seen")) or 0.0,
+        "alias": _text(raw.get("alias"), 40),
+        "mem_free": _int(raw.get("mem_free")),
+        "mem_total": _int(raw.get("mem_total")),
         "parts": [part for part in (_part(item) for item in raw.get("parts") or [])
                   if part is not None][:MAX_PARTS],
         "desired": {str(name): bool(on) for name, on in desired.items()
@@ -96,6 +99,9 @@ class Machines:
     def __init__(self, path: Path) -> None:
         self._path = Path(path)
         self._rows: dict[str, dict] = {}
+        # A restart is a one-shot word, not a state: it does not outlive the
+        # brain, and it is said once, in the next report.
+        self._restart: dict[str, set[str]] = {}
         self._load()
 
     def _load(self) -> None:
@@ -133,13 +139,16 @@ class Machines:
             "load": _load(data.get("load")),
             "disk_free": _int(data.get("disk_free")),
             "disk_total": _int(data.get("disk_total")),
+            "mem_free": _int(data.get("mem_free")),
+            "mem_total": _int(data.get("mem_total")),
             "seen": now,
             "parts": [part for part in (_part(item) for item in data.get("parts") or [])
                       if part is not None][:MAX_PARTS],
         })
         self._rows[pid] = row
         self._save()
-        return dict(row["desired"])
+        again = sorted(self._restart.pop(pid, set()))
+        return {"desired": dict(row["desired"]), "restart": again}
 
     def desire(self, pid: str, part: str, on: bool) -> bool:
         """What the person asked for; False when the name is not a part."""
@@ -149,10 +158,7 @@ class Machines:
         if row is None:
             if not pid.startswith("machine@"):
                 return False
-            row = {"pid": pid, "host": pid.split("@", 1)[-1], "version": "",
-                   "platform": "", "arch": "", "load": [], "disk_free": None,
-                   "disk_total": None, "seen": 0.0, "parts": [], "desired": {}}
-            self._rows[pid] = row
+            row = self._rows[pid] = _empty(pid)
         row["desired"][part] = on
         self._save()
         return True
@@ -160,11 +166,42 @@ class Machines:
     def wanted(self, pid: str) -> dict[str, bool]:
         return dict((self._rows.get(pid) or {}).get("desired") or {})
 
+    def restart(self, pid: str, part: str) -> bool:
+        """Ask for one part to be started again; the next report carries it."""
+        if not part or not _PART.match(part):
+            return False
+        self._restart.setdefault(pid, set()).add(part)
+        return True
+
+    def rename(self, pid: str, alias: str) -> bool:
+        """A name for the page; the key stays, so no part is re-keyed."""
+        row = self._rows.get(pid)
+        if row is None:
+            if not pid.startswith("machine@"):
+                return False
+            row = self._rows[pid] = _empty(pid)
+        row["alias"] = _text(alias, 40)
+        self._save()
+        return True
+
+    def forget(self, pid: str) -> bool:
+        """Out of the list: a revoked machine leaves no card behind."""
+        if self._rows.pop(pid, None) is None:
+            return False
+        self._restart.pop(pid, None)
+        self._save()
+        return True
+
     # -- what the page shows ------------------------------------------------
 
-    def view(self, known: dict[str, dict], now: float) -> list[dict]:
-        """Every machine, from its report and from the parts on the wire."""
+    def view(self, known: dict[str, dict], now: float,
+             paired: tuple[str, ...] = ()) -> list[dict]:
+        """Every machine, from its report, its parts on the wire, and the
+        keys it was paired with (a machine may be paired and never report)."""
         machines: dict[str, dict] = {}
+        for pid in paired:
+            if pid.startswith("machine@"):
+                machines[pid] = _blank(pid, pid.split("@", 1)[-1])
         for pid, row in self._rows.items():
             machines[pid] = _from_report(row, now)
         for pid, entry in known.items():
@@ -204,11 +241,22 @@ class Machines:
         return sorted(machines.values(), key=lambda machine: machine["name"].lower())
 
 
+def _empty(pid: str) -> dict:
+    """A machine the brain knows of but has not heard from yet."""
+    return {
+        "pid": pid, "host": pid.split("@", 1)[-1], "alias": "", "version": "",
+        "platform": "", "arch": "", "load": [], "disk_free": None,
+        "disk_total": None, "mem_free": None, "mem_total": None,
+        "seen": 0.0, "parts": [], "desired": {},
+    }
+
+
 def _blank(pid: str, host: str) -> dict:
     return {
         "pid": pid, "name": pid.split("@", 1)[-1], "host": host,
         "state": "away", "seen": 0.0, "version": "", "platform": "", "arch": "",
-        "load": [], "disk_free": None, "disk_total": None, "reported": False,
+        "alias": "", "load": [], "disk_free": None, "disk_total": None,
+        "mem_free": None, "mem_total": None, "reported": False,
         "parts": [],
     }
 
@@ -222,12 +270,15 @@ def _from_report(row: dict, now: float) -> dict:
         "host": row.get("host") or row["pid"].split("@", 1)[-1],
         "state": state,
         "seen": seen,
+        "alias": row.get("alias") or "",
         "version": row.get("version") or "",
         "platform": row.get("platform") or "",
         "arch": row.get("arch") or "",
         "load": list(row.get("load") or []),
         "disk_free": row.get("disk_free"),
         "disk_total": row.get("disk_total"),
+        "mem_free": row.get("mem_free"),
+        "mem_total": row.get("mem_total"),
         "reported": True,
         "desired": dict(row.get("desired") or {}),
         "parts": [

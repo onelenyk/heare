@@ -658,6 +658,17 @@ def build(core: Core, settings: Any, vitals: Any = None,
         on_no_executor=_drop_executor,
         on_present=_present)
     registry.load(Path(settings.parts_dir))
+
+    def machines_view() -> list[dict]:
+        """The machines as the page sees them: reports, parts, and keys."""
+        shown = machines.view(
+            registry.known, time.time(),
+            tuple(auth.pids(part_tokens)))
+        for machine in shown:
+            machine["keyed"] = auth.known(part_tokens, machine["pid"])
+            machine["brain"] = machine["pid"] == f"machine@{settings.host}"
+        return shown
+
     bodies = registry.known
     trust = skills.Trust(Path(settings.parts_file).parent / "part_skills.json")
     calls = skills.Calls()
@@ -809,14 +820,10 @@ def build(core: Core, settings: Any, vitals: Any = None,
             if not name:
                 raise web.HTTPBadRequest(text="a machine needs a name")
             given = f"machine@{name}"
-        return web.json_response({
-            "desired": machines.report(given, data, time.time()),
-        })
+        return web.json_response(machines.report(given, data, time.time()))
 
     async def machines_list(request: web.Request) -> web.Response:
-        return web.json_response({
-            "machines": machines.view(registry.known, time.time()),
-        })
+        return web.json_response({"machines": machines_view()})
 
     async def machine_part(request: web.Request) -> web.Response:
         """The person's switch: what this machine should run from now on."""
@@ -828,9 +835,40 @@ def build(core: Core, settings: Any, vitals: Any = None,
             raise web.HTTPBadRequest(text="on is true or false")
         if not machines.desire(f"machine@{name}", part, on):
             raise web.HTTPBadRequest(text="not a part name")
-        return web.json_response({
-            "machines": machines.view(registry.known, time.time()),
-        })
+        return web.json_response({"machines": machines_view()})
+
+    async def machine_restart(request: web.Request) -> web.Response:
+        """One part starts again: a word to the keeper, not a new state."""
+        name = request.match_info["name"]
+        part = request.match_info["part"]
+        if not machines.restart(f"machine@{name}", part):
+            raise web.HTTPBadRequest(text="not a part name")
+        return web.json_response({"ok": True})
+
+    async def machine_rename(request: web.Request) -> web.Response:
+        """A name for the page; the key stays, so no part is re-keyed."""
+        data = await body(request)
+        name = request.match_info["name"]
+        if not machines.rename(f"machine@{name}", str(data.get("alias") or "")):
+            raise web.HTTPNotFound(text="no such machine")
+        return web.json_response({"machines": machines_view()})
+
+    async def machine_forget(request: web.Request) -> web.Response:
+        """Revoke the machine: its key, its parts' keys, and the card.
+
+        The keeper on that machine is not reached — the brain cannot knock.
+        It learns when its next report is refused and parks the parts.
+        """
+        pid = f"machine@{request.match_info['name']}"
+        for part_pid in [one for one, entry in registry.known.items()
+                         if entry.get("machine") == pid]:
+            registry.forget(part_pid)
+            auth.revoke(part_tokens, part_pid)
+            lent.forget(part_pid)
+            _drop_executor(part_pid)
+        auth.revoke(part_tokens, pid)
+        machines.forget(pid)
+        return web.json_response({"machines": machines_view()})
 
     async def register(request: web.Request) -> web.Response:
         """A part knocks; the person decides whether to trust it.
@@ -1717,7 +1755,10 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.post("/api/parts", register),
         web.post("/api/machine/mine/report", machine_report),
         web.get("/api/machines", machines_list),
+        web.put("/api/machines/{name}", machine_rename),
+        web.post("/api/machines/{name}/forget", machine_forget),
         web.post("/api/machines/{name}/parts/{part}", machine_part),
+        web.post("/api/machines/{name}/parts/{part}/restart", machine_restart),
         web.post("/api/bodies", register),  # the old name, still a part's knock
         web.post("/api/bodies/{id}/approve", approve),
         web.post("/api/bodies/{id}/reject", reject),

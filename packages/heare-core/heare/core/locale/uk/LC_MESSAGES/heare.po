@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-10 15:42+0200\n"
+"POT-Creation-Date: 2026-11-10 15:49+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -1384,6 +1384,15 @@ msgstr "на зв'язку"
 msgid "away"
 msgstr "не на зв'язку"
 
+msgid "rename"
+msgstr "перейменувати"
+
+msgid "forget"
+msgstr "забути"
+
+msgid "forget this machine? its parts stop being trusted"
+msgstr "забути цю машину? її частини більше не довірятимуться"
+
 msgid "load"
 msgstr "навантаження"
 
@@ -1395,6 +1404,9 @@ msgstr "востаннє чули"
 
 msgid "pending"
 msgstr "чекає"
+
+msgid "restart"
+msgstr "перезапустити"
 
 msgid "turn off"
 msgstr "вимкнути"

@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-10 15:42+0200\n"
+"POT-Creation-Date: 2026-11-10 15:49+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -1384,6 +1384,15 @@ msgstr ""
 msgid "away"
 msgstr ""
 
+msgid "rename"
+msgstr ""
+
+msgid "forget"
+msgstr ""
+
+msgid "forget this machine? its parts stop being trusted"
+msgstr ""
+
 msgid "load"
 msgstr ""
 
@@ -1394,6 +1403,9 @@ msgid "last seen"
 msgstr ""
 
 msgid "pending"
+msgstr ""
+
+msgid "restart"
 msgstr ""
 
 msgid "turn off"
