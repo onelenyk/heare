@@ -55,17 +55,17 @@ _FEELING = {
     "stopped": "task_done",
 }
 # A want is worth saying only when it presses harder than this; tiredness
-# raises the bar. The number lives here, not in the soul: the soul says what
+# raises the bar. The number lives here, not in attention: attention says what
 # presses, the engine says whether it may be said.
 SPEAK_THRESHOLD = 0.50
 TIRED_PENALTY = 0.45
 # More than three held remarks in one breath is a wall of text, not a remark.
 NEWS_PER_BREATH = 3
 
-# What the model reads when the soul brings something up. The work-result
+# What the model reads when attention brings something up. The work-result
 # prefix here made her say "the work is done" about a plan (10 November):
-# the soul carries a thing, it does not finish one.
-SOUL_PREFIX = (
+# attention carries a thing, it does not finish one.
+ON_MIND_PREFIX = (
     "[on your mind] Nothing is finished: this is a thing you have been "
     "carrying. Bring it up in one or two sentences, in the person's language, "
     "as your own thought — not as a report, and do not say it is done. "
@@ -276,7 +276,7 @@ class Engine:
         say(f"engine: held {want.verb} {want.thing_id} pressing {want.pressing:.2f}")
 
     def _forget_released(self, now: float) -> None:
-        """A want the soul let go takes its waiting remark with it.
+        """A want attention let go takes its waiting remark with it.
 
         Without this the cap only moved the backlog from ``soma.json`` into
         ``intents.json``: a released want's remark stayed held for its three
@@ -467,7 +467,7 @@ class Engine:
         reminder is exact words and costs no model call at all.
         """
         reminders = [i for i in intents if i.why == REMINDER]
-        soul = [i for i in intents if i.why == SOMA]
+        on_mind = [i for i in intents if i.why == SOMA]
         news = [i for i in intents if i.why not in (REMINDER, SOMA)]
         if reminders:
             self._speak(Message(
@@ -478,9 +478,9 @@ class Engine:
             lines = "\n".join(f"— {i.what}" for i in news)
             self._speak(Message(text=f"{RESULT_PREFIX}\n{lines}",
                                 channel="engine", person=False))
-        if soul:
-            lines = "\n".join(f"— {i.what}" for i in soul)
-            self._speak(Message(text=f"{SOUL_PREFIX}\n{lines}",
+        if on_mind:
+            lines = "\n".join(f"— {i.what}" for i in on_mind)
+            self._speak(Message(text=f"{ON_MIND_PREFIX}\n{lines}",
                                 channel="engine", person=False))
         now = self._now()
         if (self._last_spoke is not None and not self._answered
@@ -499,7 +499,7 @@ class Engine:
                     self._soma.spoke(reference)
                     self._last_soma_thing = reference
         say(f"engine: said {len(reminders)} reminder(s), {len(news)} news, "
-            f"{len(soul)} on the mind")
+            f"{len(on_mind)} on the mind")
         self._last_spoke = now
         self._ready_at = now + self._gap_s
         self._answered = False

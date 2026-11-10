@@ -21,11 +21,12 @@ HARD RULES:
 - **A part imports only the core and itself.** Two parts never import
   each other. `tests/heare/test_dependencies.py` enforces both; run it
   after any import change.
-- **A new inner life enters as a row in the soul's table, not as a
-  module.** `packages/heare-brain/heare/engine/soma.py` does not speak,
-  does not know the store, and hands the model one sentence; only
-  `engine/` imports it. `tests/heare/test_engine_soma_shape.py` holds
-  that edge.
+- **A new drive enters as a row in the attention table, not as a
+  module.** `packages/heare-brain/heare/engine/soma.py` is the attention
+  (the code name `soma` is historical); it does not speak, does not know
+  the store, and hands the model one sentence; only `engine/` imports it.
+  `tests/heare/test_engine_soma_shape.py` holds that edge. The soul is the
+  whole inner life — constitution, persona, memory, attention — not a file.
 - Import style: `from heare.core.conversation import Core` — always
   absolute, always the `heare.` prefix.
 
@@ -104,7 +105,7 @@ model — and are excluded by default.
 | Voice: hearing and speech | `packages/heare-voice/heare/voice.py`, `packages/heare-voice/heare/channels/voice/` |
 | Eyes: what is around | `packages/heare-eyes/heare/eyes.py`, `packages/heare-eyes/heare/surroundings/` |
 | Intents, reminders, moments, delivery | `packages/heare-brain/heare/engine/` |
-| What presses, and how much: the soul | `packages/heare-brain/heare/engine/soma.py`; `docs/product/soul.md` |
+| What presses, and how much: attention (`soma`) | `packages/heare-brain/heare/engine/soma.py`; `docs/product/soul.md` |
 | Machines: what a keeper has, what it should run | `packages/heare-brain/heare/api/machines.py`, `packages/heare-keeper/heare/report.py`; `docs/product/machines.md` |
 | What the model sees: persona, laws, turn budget | `packages/heare-brain/heare/prompt/` |
 | What the model can call: recall, delegate, remind | `packages/heare-brain/heare/tools/` |

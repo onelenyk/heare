@@ -1,6 +1,6 @@
 """The three states agree: what presses, the things it binds, and the notes.
 
-The soul keeps wants on disk, the store keeps intents on disk, and the engine
+Attention keeps wants on disk, the store keeps intents on disk, and the engine
 holds one from the other. Three writers, two files — so the agreement between
 them is said here once, and checked after every step and across a restart.
 """

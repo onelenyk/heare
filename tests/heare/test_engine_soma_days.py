@@ -119,7 +119,7 @@ def test_a_working_week_on_a_budget_of_one(tmp_path):
     assert 3 <= measured["soma_delivered"] <= 15
     assert measured["min_energy"] >= 0.30
     assert measured["still_held_soma"] <= HELD_AT_MOST
-    assert measured["wants_end"] <= HELD_AT_MOST, "the soul carried more than a dozen things"
+    assert measured["wants_end"] <= HELD_AT_MOST, "attention carried more than a dozen things"
 
 
 def test_a_working_week_on_a_budget_of_three(tmp_path):

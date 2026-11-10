@@ -1,7 +1,7 @@
-"""A plan said out loud: the soul catches it and brings it back later.
+"""A plan said out loud: attention catches it and brings it back later.
 
 The smallest live wire: the person says «завтра треба подзвонити мамі» in
-conversation, the words are theirs, and the soul holds them. No model call,
+conversation, the words are theirs, and attention holds them. No model call,
 no new event in the core — the detector is handed to the engine by the
 assembler, the way the core is handed its language.
 """
@@ -60,7 +60,7 @@ def test_small_talk_is_not_a_plan():
     assert en.open_loop("nice weather") is None
 
 
-def test_a_plan_becomes_a_thing_the_soul_holds(tmp_path):
+def test_a_plan_becomes_a_thing_attention_holds(tmp_path):
     store, said, motor, clock = engine(tmp_path)
     motor.note(heard("завтра треба подзвонити мамі"))
 

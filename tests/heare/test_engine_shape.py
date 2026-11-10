@@ -1,7 +1,7 @@
-"""The engine's room, kept like the core's and the soul's.
+"""The engine's room, kept like the core's and attention's.
 
 Policy (may it be said), timing (the gap, the moments), delivery framing,
-and the soul's adapter share one class. The budget is not a style rule: it
+and attention's adapter share one class. The budget is not a style rule: it
 says when the class stops being a room. When the clock gains a planner the
 split is due — not before.
 """

@@ -1,9 +1,11 @@
-"""The soul: what presses, and how much; the engine decides when to say it.
+"""Attention: what presses, and how much; the engine decides when to say it.
 
-A want is bound to a thing and keeps pushing long after the event that made
-it is gone. Nothing here speaks, knows the store, or reaches the network.
+The code calls it ``soma`` (a historical name, Greek for body); the docs call
+it attention. A want is bound to a thing and keeps pushing long after the
+event that made it is gone. Nothing here speaks, knows the store, or reaches
+the network.
 
-The old seven drives are gone; the soul wants in verbs — ``finish``,
+The old seven drives are gone; attention wants in verbs — ``finish``,
 ``find out``, ``fix``, ``reach``, ``keep word``, ``rest`` — all one root:
 on the person's side. A verb enters with its event, not before: today only
 ``finish`` has a producer, and the table below holds exactly the rows the
@@ -42,7 +44,7 @@ VERB = {
 THING_KINDS = {"task", "person", "project", "promise", "place", "self"}
 
 # event kind -> (verb, care_delta, pressing_delta). One row per thing the
-# engine actually feeds; a verb with no producer is a word, not a soul. The
+# engine actually feeds; a verb with no producer is a word, not a drive. The
 # other twelve rows waited without a producer until 10 November and were
 # cut: a row is added with its event and its test, one at a time.
 APPRAISE = {
@@ -61,7 +63,7 @@ PRESS_REGROW_PER_S = 0.0003
 # half-life. Without it care only grows: after a week of remarks the mood
 # line said "heavy" forever while nothing could be raised any more.
 FADE_HALF_LIFE_S = 3 * 24 * 3600.0
-# A dozen open loops is what a person carries; more is a list, not a soul.
+# A dozen open loops is what a person carries; more is a list, not attention.
 # A week of work left 123 wants pressing at 1.0 and the prompt showed the
 # three oldest forever (10 November).
 HELD_AT_MOST = 12
@@ -99,13 +101,15 @@ class Want:
     pressing: float = 0.0
     said: int = 0
     carried: bool = False
-    # When it began, on the soul's own clock: the tie-break between wants
+    # When it began, on attention's own clock: the tie-break between wants
     # that press equally hard, so the newest is raised, not the oldest.
     born: float = 0.0
 
 
 @dataclass
 class Soma:
+    """The attention state. The class name is the code's; docs say attention."""
+
     scale: float = 1.0
     t: float = 0.0
     things: list[Thing] = field(default_factory=list)

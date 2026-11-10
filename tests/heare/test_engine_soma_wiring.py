@@ -147,18 +147,18 @@ def test_the_person_answering_narrows_the_gap(tmp_path):
     assert motor._gap_s < gap
 
 
-def test_a_soul_remark_is_not_a_work_result(tmp_path):
+def test_an_attention_remark_is_not_a_work_result(tmp_path):
     from heare.core.conversation import RESULT_PREFIX
-    from heare.engine.engine import SOUL_PREFIX
+    from heare.engine.engine import ON_MIND_PREFIX
 
     store, said, motor, clock = engine(tmp_path, soma=Soma())
     motor.note(event("failed"))
     clock.go(3600)
     motor.note(tick())
-    soul = [message for message in said if SOUL_PREFIX in message.text]
-    assert soul, "the soul's remark was never said"
-    assert RESULT_PREFIX not in soul[0].text
-    assert "зроби сайт" in soul[0].text
+    on_mind = [message for message in said if ON_MIND_PREFIX in message.text]
+    assert on_mind, "attention's remark was never said"
+    assert RESULT_PREFIX not in on_mind[0].text
+    assert "зроби сайт" in on_mind[0].text
 
 
 def test_dropping_by_hand_is_not_speaking(tmp_path):

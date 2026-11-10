@@ -283,7 +283,7 @@ def tokens(text: str) -> list[str]:
 
 
 # A plan the person says out loud and will not do in this conversation:
-# «завтра треба подзвонити мамі», «нагадай про лікаря». The soul keeps it
+# «завтра треба подзвонити мамі», «нагадай про лікаря». Attention keeps it
 # and brings it back later; a question to the assistant is not a plan.
 #
 # A time word alone is not a plan: «завтра буде дощ» is a forecast. And a
