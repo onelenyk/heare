@@ -9,6 +9,7 @@ such event is a piece of work ending.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import time
 from datetime import datetime, timedelta
@@ -32,6 +33,8 @@ TICK_S = 30.0
 # How often the body is written down. Losing a minute of pressure costs
 # nothing; writing on every event would cost a file write per event.
 SOMA_SAVE_S = 60.0
+# A plan said out loud is worth holding for days, not forever.
+SOMA_HOLD_S = 3 * 24 * 3600.0
 
 # A finished piece of work is worth telling for this long, then it is stale.
 WORK_NEWS_S = 2 * 3600
@@ -90,7 +93,8 @@ class Engine:
                  quiet: tuple[str, str] = ("22:00", "08:00"),
                  daily_limit: int = 1,
                  soma: Soma | None = None,
-                 soma_path: Path | None = None) -> None:
+                 soma_path: Path | None = None,
+                 open_loop: Any = None) -> None:
         self._intents = intents
         self._state = state
         self._speak = speak
@@ -118,6 +122,7 @@ class Engine:
         self._soma_saved_at: float | None = None
         self._last_soma_thing: str | None = None
         self._seen_running: set[int] = set()
+        self._open_loop = open_loop
         self._blocked = ""
         self._tired = False
         self._spent = False
@@ -128,11 +133,23 @@ class Engine:
         if kind == "heard":
             self._heard_at = self._now()
             self._the_person_spoke()
+            self._catch_plan(event)
         elif kind == "task":
             self._hold(event)
         self._deliver_due()
         # What ripens now is told at the next moment, not in the same breath.
         self._advance()
+
+    def _catch_plan(self, event: Any) -> None:
+        """A plan said out loud becomes something to hold, not a reply."""
+        if self._soma is None or self._open_loop is None:
+            return
+        phrase = self._open_loop(str(event.data.get("text") or ""))
+        if not phrase:
+            return
+        digest = hashlib.sha1(phrase.lower().encode("utf-8")).hexdigest()[:10]
+        self._soma.feed("plan_said", thing_id=f"plan:{digest}", kind="promise", label=phrase)
+        say(f"engine: caught a plan {phrase[:60]!r}")
 
     def _reference(self, data: Any) -> str:
         task_id = int(data.get("id"))
@@ -227,7 +244,7 @@ class Engine:
         weight = 3 if want.pressing >= 0.75 else 2 if want.pressing >= 0.4 else 1
         self._intents.hold(
             what=what, why=SOMA, weight=weight,
-            about=about, not_before=now,
+            about=about, not_before=now, until=now + SOMA_HOLD_S,
         )
         say(f"engine: held {want.verb} {want.thing_id} pressing {want.pressing:.2f}")
 

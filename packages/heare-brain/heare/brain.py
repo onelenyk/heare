@@ -187,6 +187,7 @@ class Brain:
             quiet=(self.settings.quiet_from, self.settings.quiet_to),
             daily_limit=int(self.settings.unsolicited_per_day),
             soma_path=self.settings.intents_path.with_name("soma.json"),
+            open_loop=lambda text: for_language(self.settings.language).open_loop(text),
         )
         self._review_lock = asyncio.Lock()
         self._consolidate_lock = asyncio.Lock()

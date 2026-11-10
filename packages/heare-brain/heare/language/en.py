@@ -257,6 +257,21 @@ def tokens(text: str) -> list[str]:
     return _WORD.findall((text or "").lower())
 
 
+_PLAN = re.compile(
+    r"\b(i\s+need\s+to|i\s+have\s+to|i'?ve\s+got\s+to|remind\s+me|don'?t\s+forget|"
+    r"i'?ll|i'?m\s+going\s+to|i\s+am\s+going\s+to|tomorrow|later\s+today)\b",
+    re.IGNORECASE | re.UNICODE,
+)
+
+
+def open_loop(text: str) -> str | None:
+    """The person's own plan, in their words; None when it is not one."""
+    said = (text or "").strip()
+    if not said or said.endswith("?"):
+        return None
+    return said[:200] if _PLAN.search(_SPACES.sub(" ", said).lower()) else None
+
+
 __all__ = [
     "INTERRUPT_HOLD_MS",
     "consent",
@@ -264,6 +279,7 @@ __all__ = [
     "is_backchannel",
     "is_halt",
     "is_stop_word",
+    "open_loop",
     "recall_cue",
 ]
 

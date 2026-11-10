@@ -44,6 +44,8 @@ APPRAISE = {
     "task_opened": ("finish", 0.30, 0.10),
     "task_done": ("finish", -0.90, 0.00),
     "task_failed": ("finish", 0.30, 0.60),
+    # Said out loud, to be done later: the only row fed by conversation.
+    "plan_said": ("finish", 0.35, 0.55),
     "correction": ("fix", 0.35, 0.20),
     "new_fact": ("find_out", 0.12, 0.10),
     "contradiction": ("find_out", 0.55, 0.40),

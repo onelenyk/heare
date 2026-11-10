@@ -282,6 +282,24 @@ def tokens(text: str) -> list[str]:
     return _WORD.findall((text or "").lower())
 
 
+# A plan the person says out loud and will not do in this conversation:
+# «завтра треба подзвонити мамі», «нагадай про лікаря». The soul keeps it
+# and brings it back later; a question to the assistant is not a plan.
+_PLAN = re.compile(
+    r"\b(треба|потрібно|не\s+забут\w*|нагадай\w*|планую|збираюс\w*|обіцяю|"
+    r"завтра|післязавтра|пізніше|наступного\s+тижня)\b",
+    re.IGNORECASE | re.UNICODE,
+)
+
+
+def open_loop(text: str) -> str | None:
+    """The person's own plan, in their words; None when it is not one."""
+    said = (text or "").strip()
+    if not said or said.endswith("?"):
+        return None
+    return said[:200] if _PLAN.search(_SPACES.sub(" ", said).lower()) else None
+
+
 from heare.language.promises import claims_done, promises_work  # noqa: E402
 
-__all__ += ["claims_done", "promises_work", "tokens"]
+__all__ += ["claims_done", "promises_work", "tokens", "open_loop"]
