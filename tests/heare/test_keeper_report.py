@@ -34,3 +34,9 @@ def test_a_name_this_machine_does_not_know_is_ignored(tmp_path):
     folder.mkdir()
     assert report.apply(folder, {"teleporter": True, "voice": "yes"}) == []
     assert not machine.running(folder)
+
+
+def test_the_report_backs_off_when_the_brain_is_away():
+    assert report.wait_after(0) == report.EVERY_S
+    assert report.wait_after(1) == 2 * report.EVERY_S
+    assert report.wait_after(20) == report.BACKOFF_MAX_S

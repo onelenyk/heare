@@ -28,7 +28,15 @@ logger = logging.getLogger("heare.keeper.report")
 # The page's switch is not a keystroke: half a minute is soon enough, and a
 # machine that was asleep catches up on its next word.
 EVERY_S = 30.0
+# A brain that is away, or has forgotten this machine, is asked less often:
+# a refused report every half minute is a busy loop, not a heartbeat.
+BACKOFF_MAX_S = 5 * 60.0
 TIMEOUT = httpx.Timeout(15.0, connect=5.0)
+
+
+def wait_after(failures: int) -> float:
+    """How long to wait after this many refusals in a row."""
+    return min(EVERY_S * (2 ** max(0, failures)), BACKOFF_MAX_S)
 
 
 def _sysctl(name: str) -> int | None:
@@ -131,14 +139,17 @@ class Report:
         self._on_restart = on_restart
 
     async def run(self) -> None:
+        failures = 0
         while True:
             try:
-                await self.once()
+                taken = await self.once()
             except (httpx.HTTPError, OSError, ValueError) as exc:
                 logger.debug("the brain did not take the report: %s", exc)
-            await asyncio.sleep(EVERY_S)
+                taken = False
+            failures = 0 if taken else failures + 1
+            await asyncio.sleep(wait_after(failures))
 
-    async def once(self) -> None:
+    async def once(self) -> bool:
         data = describe(self.folder)
         data["name"] = self.settings.host
         async with httpx.AsyncClient(timeout=TIMEOUT) as brain:
@@ -147,7 +158,7 @@ class Report:
                 headers={"X-Heare-Token": self.settings.secret}, json=data)
         if answer.status_code >= 400:
             logger.debug("the brain did not take the report: %s", answer.status_code)
-            return
+            return False
         body = answer.json() if answer.headers.get("Content-Type", "").startswith("application/json") else {}
         apply(self.folder, (body or {}).get("desired"))
         again = (body or {}).get("restart")
@@ -155,3 +166,4 @@ class Report:
             for name in again:
                 if isinstance(name, str) and name in machine.PARTS:
                     self._on_restart(name)
+        return True
