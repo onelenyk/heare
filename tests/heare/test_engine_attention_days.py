@@ -1,4 +1,4 @@
-"""The bench for the soma: seven simulated days of a working person.
+"""The bench for the attention: seven simulated days of a working person.
 
 This is the base measurement that every later change is compared against.
 It simulates days, not real time: the clock is a number, advanced a minute
@@ -10,7 +10,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass, field
 
-from heare.engine import Soma, Engine, Intents
+from heare.engine import Attention, Engine, Intents
 
 
 @dataclass
@@ -51,10 +51,10 @@ def simulate(tmp_path, *, days: int = 7, daily_limit: int, seed: int = 7) -> dic
     clock = Clock()
     said: list = []
     store = Intents(tmp_path / "intents.json")
-    soma = Soma()
+    attention = Attention()
     state = FakeState()
     engine = Engine(store, speak=said.append, now=clock, quiet=("00:00", "00:00"),
-                    daily_limit=daily_limit, soma=soma, state=state)
+                    daily_limit=daily_limit, attention=attention, state=state)
 
     rng = random.Random(seed)
     end = clock() + days * 86400
@@ -89,58 +89,58 @@ def simulate(tmp_path, *, days: int = 7, daily_limit: int, seed: int = 7) -> dic
             next_event += rng.randint(600, 5400)
         clock.go(60)
         engine.note(Ev("tick"))
-        min_energy = min(min_energy, soma.energy)
-        if soma.energy < 0.15:
+        min_energy = min(min_energy, attention.energy)
+        if attention.energy < 0.15:
             low_energy_ticks += 1
         max_held = max(max_held, len(
             [i for i in store.alive(clock()) if i.about.startswith("soma:")]))
 
     delivered = [i for i in store._by_id.values() if i.status == "delivered"]
     return {
-        "soma_delivered": len([i for i in delivered if i.why == "soma"]),
+        "attention_delivered": len([i for i in delivered if i.why == "soma"]),
         "all_delivered": len(delivered),
-        "still_held_soma": len(
+        "still_held_attention": len(
             [i for i in store.alive(clock()) if i.about.startswith("soma:")]),
-        "max_held_soma": max_held,
-        "wants_end": len(soma.wants),
-        "things_end": len(soma.things),
-        "trace_end": len(soma.trace),
-        "energy_end": round(soma.energy, 3),
+        "max_held_attention": max_held,
+        "wants_end": len(attention.wants),
+        "things_end": len(attention.things),
+        "trace_end": len(attention.trace),
+        "energy_end": round(attention.energy, 3),
         "min_energy": round(min_energy, 3),
         "hours_below_0_15": round(low_energy_ticks / 60, 1),
     }
 
 
 def test_a_working_week_on_a_budget_of_one(tmp_path):
-    from heare.engine.soma import HELD_AT_MOST
+    from heare.engine.attention import HELD_AT_MOST
 
     measured = simulate(tmp_path, daily_limit=1)
     print("daily_limit=1", measured)
-    assert 3 <= measured["soma_delivered"] <= 15
+    assert 3 <= measured["attention_delivered"] <= 15
     assert measured["min_energy"] >= 0.30
-    assert measured["still_held_soma"] <= HELD_AT_MOST
+    assert measured["still_held_attention"] <= HELD_AT_MOST
     assert measured["wants_end"] <= HELD_AT_MOST, "attention carried more than a dozen things"
 
 
 def test_a_working_week_on_a_budget_of_three(tmp_path):
-    from heare.engine.soma import HELD_AT_MOST
+    from heare.engine.attention import HELD_AT_MOST
 
     measured = simulate(tmp_path, daily_limit=3)
     print("daily_limit=3", measured)
-    assert measured["soma_delivered"] > 15
+    assert measured["attention_delivered"] > 15
     assert measured["min_energy"] >= 0.05
     assert measured["wants_end"] <= HELD_AT_MOST
 
 
 def test_a_working_week_with_no_budget(tmp_path):
-    from heare.engine.soma import HELD_AT_MOST
+    from heare.engine.attention import HELD_AT_MOST
 
     measured = simulate(tmp_path, daily_limit=99)
     print("daily_limit=99", measured)
     # The list of wants is capped now, so fewer distinct things can be
     # raised than before (352 on 9 November, 107 with the cap): still far
     # past any budget, and the energy still dies.
-    assert measured["soma_delivered"] > 80
+    assert measured["attention_delivered"] > 80
     assert measured["min_energy"] < 0.10
     assert measured["hours_below_0_15"] > 24
     assert measured["wants_end"] <= HELD_AT_MOST

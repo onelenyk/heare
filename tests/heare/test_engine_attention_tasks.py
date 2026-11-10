@@ -1,10 +1,10 @@
-"""Work that is still running is what the soma keeps."""
+"""Work that is still running is what the attention keeps."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from heare.engine import Soma, Engine, Intents
+from heare.engine import Attention, Engine, Intents
 from heare.engine.intent import ref
 
 REF = ref(1000.0, 1)
@@ -52,16 +52,16 @@ class Clock:
         self.moment += seconds
 
 
-def engine(tmp_path, *, state=None, soma=None):
+def engine(tmp_path, *, state=None, attention=None):
     store = Intents(tmp_path / "intents.json")
     said: list = []
     clock = Clock()
     motor = Engine(store, speak=said.append, now=clock, quiet=("00:00", "00:00"),
-                   daily_limit=0, soma=soma if soma is not None else Soma(), state=state)
+                   daily_limit=0, attention=attention if attention is not None else Attention(), state=state)
     return store, said, motor, clock
 
 
-def soma_intents(store, clock):
+def attention_intents(store, clock):
     return [i for i in store.alive(clock()) if i.about.startswith("soma:")]
 
 
@@ -69,19 +69,19 @@ def test_a_running_task_becomes_a_thing_left_open(tmp_path):
     state = State({1: Task(1, "зроби сайт")})
     store, _, motor, clock = engine(tmp_path, state=state)
     motor.note(Ev("tick", {}))
-    soma = motor._soma
-    assert [w for w in soma.wants if w.verb == "finish" and w.thing_id == REF]
+    attention = motor._attention
+    assert [w for w in attention.wants if w.verb == "finish" and w.thing_id == REF]
 
 
 def test_the_same_running_task_is_not_opened_twice(tmp_path):
     state = State({1: Task(1, "зроби сайт")})
     _, _, motor, clock = engine(tmp_path, state=state)
     motor.note(Ev("tick", {}))
-    before = next(w for w in motor._soma.wants if w.thing_id == REF).care
+    before = next(w for w in motor._attention.wants if w.thing_id == REF).care
     clock.go(600)
     motor.note(Ev("tick", {}))
     motor.note(Ev("tick", {}))
-    after = next(w for w in motor._soma.wants if w.thing_id == REF).care
+    after = next(w for w in motor._attention.wants if w.thing_id == REF).care
     assert after < before + 0.05
 
 
@@ -91,9 +91,9 @@ def test_a_running_task_turns_into_an_intent_when_it_is_left_alone(tmp_path):
     motor.note(Ev("tick", {}))
     clock.go(3 * 3600)
     motor.note(Ev("tick", {}))
-    soma = soma_intents(store, clock)
-    assert soma
-    assert soma[0].what == "зроби сайт"
+    attention = attention_intents(store, clock)
+    assert attention
+    assert attention[0].what == "зроби сайт"
 
 
 def test_finishing_the_task_closes_it(tmp_path):
@@ -105,7 +105,7 @@ def test_finishing_the_task_closes_it(tmp_path):
     motor.note(ended(1, "done"))
     clock.go(7200)
     motor.note(Ev("tick", {}))
-    assert not [i for i in soma_intents(store, clock) if i.what == "зроби сайт"]
+    assert not [i for i in attention_intents(store, clock) if i.what == "зроби сайт"]
 
 
 def test_stopping_the_task_closes_it_too(tmp_path):
@@ -117,7 +117,7 @@ def test_stopping_the_task_closes_it_too(tmp_path):
     motor.note(ended(1, "stopped"))
     clock.go(7200)
     motor.note(Ev("tick", {}))
-    assert not [i for i in soma_intents(store, clock) if i.what == "зроби сайт"]
+    assert not [i for i in attention_intents(store, clock) if i.what == "зроби сайт"]
 
 
 def test_a_failed_task_keeps_pressing(tmp_path):
@@ -129,10 +129,10 @@ def test_a_failed_task_keeps_pressing(tmp_path):
     motor.note(ended(1, "failed"))
     clock.go(3600)
     motor.note(Ev("tick", {}))
-    assert soma_intents(store, clock)
+    assert attention_intents(store, clock)
 
 
-def test_nothing_is_watched_without_a_soma(tmp_path):
+def test_nothing_is_watched_without_a_attention(tmp_path):
     state = State({1: Task(1, "зроби сайт")})
     store = Intents(tmp_path / "intents.json")
     clock = Clock()
@@ -146,15 +146,15 @@ def test_nothing_is_watched_without_a_soma(tmp_path):
 
 def test_a_restart_does_not_open_the_same_work_twice(tmp_path):
     state = State({1: Task(1, "зроби сайт")})
-    path = tmp_path / "soma.json"
+    path = tmp_path / "attention.json"
     clock = Clock()
-    first = Engine(Intents(tmp_path / "intents.json"), now=clock, state=state, soma_path=path)
+    first = Engine(Intents(tmp_path / "intents.json"), now=clock, state=state, attention_path=path)
     first.note(Ev("tick", {}))
-    before = next(w for w in first._soma.wants if w.verb == "finish")
+    before = next(w for w in first._attention.wants if w.verb == "finish")
 
-    second = Engine(Intents(tmp_path / "intents-2.json"), now=clock, state=state, soma_path=path)
+    second = Engine(Intents(tmp_path / "intents-2.json"), now=clock, state=state, attention_path=path)
     second.note(Ev("tick", {}))
-    again = next(w for w in second._soma.wants if w.verb == "finish")
+    again = next(w for w in second._attention.wants if w.verb == "finish")
 
     assert (again.care, again.pressing) == (before.care, before.pressing)
 
@@ -162,5 +162,5 @@ def test_a_restart_does_not_open_the_same_work_twice(tmp_path):
 def test_no_state_no_watching(tmp_path):
     store, _, motor, clock = engine(tmp_path, state=None)
     motor.note(Ev("tick", {}))
-    assert motor._soma is not None
-    assert not [w for w in motor._soma.wants if w.verb == "finish"]
+    assert motor._attention is not None
+    assert not [w for w in motor._attention.wants if w.verb == "finish"]

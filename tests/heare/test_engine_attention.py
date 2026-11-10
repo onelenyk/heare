@@ -1,15 +1,15 @@
-"""The soma: wants that grow, hold, and let go."""
+"""The attention: wants that grow, hold, and let go."""
 
 from __future__ import annotations
 
-from heare.engine.soma import Soma
+from heare.engine.attention import Attention
 
 
-def soma() -> Soma:
-    return Soma()
+def attention() -> Attention:
+    return Attention()
 
 
-def run(w: Soma, seconds: float, step: float = 1.0) -> None:
+def run(w: Attention, seconds: float, step: float = 1.0) -> None:
     left = seconds
     while left > 0:
         piece = min(step, left)
@@ -18,7 +18,7 @@ def run(w: Soma, seconds: float, step: float = 1.0) -> None:
 
 
 def test_time_alone_makes_a_want_grow():
-    w = soma()
+    w = attention()
     w.feed("task_opened", thing_id="7", kind="task", label="сайт")
     before = w.wants[0].care
     run(w, 3600)
@@ -26,7 +26,7 @@ def test_time_alone_makes_a_want_grow():
 
 
 def test_a_failure_presses_at_once():
-    w = soma()
+    w = attention()
     w.feed("task_failed", thing_id="7", kind="task", label="сайт")
     hot = w.hottest()
     assert hot is not None and hot.pressing >= 0.5
@@ -34,7 +34,7 @@ def test_a_failure_presses_at_once():
 
 
 def test_an_opened_task_presses_only_when_it_has_grown():
-    w = soma()
+    w = attention()
     w.feed("task_opened", thing_id="7", kind="task", label="сайт")
     assert w.hottest().pressing < 0.5
     run(w, 3 * 3600)
@@ -42,7 +42,7 @@ def test_an_opened_task_presses_only_when_it_has_grown():
 
 
 def test_two_tasks_bind_to_their_own_things():
-    w = soma()
+    w = attention()
     w.feed("task_opened", thing_id="a", kind="task", label="a")
     w.feed("task_opened", thing_id="b", kind="task", label="b")
     finishes = [x for x in w.wants if x.verb == "finish"]
@@ -51,7 +51,7 @@ def test_two_tasks_bind_to_their_own_things():
 
 
 def test_done_closes_one_thing_and_leaves_a_trace():
-    w = soma()
+    w = attention()
     w.feed("task_opened", thing_id="a", kind="task", label="a")
     w.feed("task_opened", thing_id="b", kind="task", label="b")
     run(w, 3 * 3600)
@@ -63,21 +63,21 @@ def test_done_closes_one_thing_and_leaves_a_trace():
 
 
 def test_without_events_nothing_is_bound():
-    w = soma()
+    w = attention()
     run(w, 7200)
     assert w.wants == []
     assert w.things == []
 
 
 def test_a_finished_task_is_remembered():
-    w = soma()
+    w = attention()
     w.feed("task_failed", thing_id="7", kind="task", label="сайт")
     w.feed("task_done", thing_id="7", kind="task", label="сайт")
     assert any(t.id == "7" and t.state == "finished" for t in w.things)
 
 
 def test_engage_hands_the_burden_over():
-    w = soma()
+    w = attention()
     w.feed("task_failed", thing_id="7", kind="task", label="сайт")
     before = w.wants[0].care
     w.engage("7")
@@ -87,7 +87,7 @@ def test_engage_hands_the_burden_over():
 
 
 def test_ignored_leaves_her_alone_with_it():
-    w = soma()
+    w = attention()
     w.feed("task_failed", thing_id="7", kind="task", label="сайт")
     w.spoke("7")
     assert w.wants[0].said == 1
@@ -98,7 +98,7 @@ def test_ignored_leaves_her_alone_with_it():
 
 
 def test_spoke_resets_pressing_and_costs_energy():
-    w = soma()
+    w = attention()
     w.feed("task_failed", thing_id="7", kind="task", label="сайт")
     w.spoke("7")
     assert w.wants[0].pressing == 0.0
@@ -107,7 +107,7 @@ def test_spoke_resets_pressing_and_costs_energy():
 
 
 def test_a_reused_id_gets_its_own_label():
-    w = soma()
+    w = attention()
     w.feed("task_opened", thing_id="1", kind="task", label="old")
     w.feed("task_done", thing_id="1", kind="task", label="old")
     w.feed("task_opened", thing_id="1", kind="task", label="new")
@@ -117,7 +117,7 @@ def test_a_reused_id_gets_its_own_label():
 
 
 def test_a_carried_want_does_not_re_press_on_time():
-    w = soma()
+    w = attention()
     w.feed("task_failed", thing_id="7", kind="task", label="сайт")
     w.spoke("7")
     w.engage("7")
@@ -126,7 +126,7 @@ def test_a_carried_want_does_not_re_press_on_time():
 
 
 def test_the_state_is_english_without_numbers():
-    w = soma()
+    w = attention()
     w.feed("task_failed", thing_id="heare", kind="task", label="міграція heare")
     run(w, 7200)
     text = w.state()
@@ -137,7 +137,7 @@ def test_the_state_is_english_without_numbers():
 
 
 def test_what_she_has_said_fades_instead_of_growing():
-    w = soma()
+    w = attention()
     w.feed("task_failed", thing_id="7", kind="task", label="сайт")
     w.spoke("7")
     heard = w.wants[0].care
@@ -146,7 +146,7 @@ def test_what_she_has_said_fades_instead_of_growing():
 
 
 def test_a_spoken_want_is_forgotten_in_a_fortnight():
-    w = soma()
+    w = attention()
     w.feed("task_failed", thing_id="7", kind="task", label="сайт")
     w.spoke("7")
     run(w, 14 * 24 * 3600)
@@ -154,7 +154,7 @@ def test_a_spoken_want_is_forgotten_in_a_fortnight():
 
 
 def test_what_the_person_took_over_fades_too():
-    w = soma()
+    w = attention()
     w.feed("task_failed", thing_id="7", kind="task", label="сайт")
     w.engage("7")
     run(w, 14 * 24 * 3600)
@@ -162,7 +162,7 @@ def test_what_the_person_took_over_fades_too():
 
 
 def test_an_unheard_want_still_grows():
-    w = soma()
+    w = attention()
     w.feed("task_opened", thing_id="7", kind="task", label="сайт")
     before = w.wants[0].care
     run(w, 24 * 3600)
@@ -170,7 +170,7 @@ def test_an_unheard_want_still_grows():
 
 
 def test_the_mood_lets_go_of_what_she_said():
-    w = soma()
+    w = attention()
     for n in range(1, 11):
         w.feed("task_failed", thing_id=str(n), kind="task", label=f"справа {n}")
     assert "heavy" in w.state(), "ten unheard failures weigh on her"
@@ -182,9 +182,9 @@ def test_the_mood_lets_go_of_what_she_said():
 
 
 def test_the_list_of_wants_is_bounded():
-    from heare.engine.soma import HELD_AT_MOST
+    from heare.engine.attention import HELD_AT_MOST
 
-    w = soma()
+    w = attention()
     for n in range(HELD_AT_MOST + 8):
         w.feed("task_failed", thing_id=str(n), kind="task", label=f"справа {n}")
         run(w, 5 * 3600, step=600)
@@ -195,7 +195,7 @@ def test_the_list_of_wants_is_bounded():
 
 
 def test_age_is_discounted_in_the_ranking():
-    w = soma()
+    w = attention()
     w.feed("task_failed", thing_id="old", kind="task", label="старе")
     run(w, 6 * 24 * 3600, step=3600)
     w.feed("task_failed", thing_id="new", kind="task", label="нове")
@@ -204,7 +204,7 @@ def test_age_is_discounted_in_the_ranking():
 
 
 def test_letting_one_go_by_hand_costs_no_energy():
-    w = soma()
+    w = attention()
     w.feed("task_failed", thing_id="7", kind="task", label="сайт")
     before = w.energy
     w.spoke("7", spent=False)
@@ -215,7 +215,7 @@ def test_letting_one_go_by_hand_costs_no_energy():
 def test_the_table_holds_only_what_has_a_producer():
     """A row is a decision, not a vocabulary: each one has an event that
     feeds it. Twelve rows without a producer were cut on 10 November."""
-    from heare.engine.soma import APPRAISE
+    from heare.engine.attention import APPRAISE
 
     assert set(APPRAISE) == {
         "task_opened", "task_done", "task_failed", "plan_said",
@@ -223,9 +223,9 @@ def test_the_table_holds_only_what_has_a_producer():
 
 
 def test_a_thing_that_stopped_mattering_is_let_go():
-    from heare.engine.soma import HELD_AT_MOST
+    from heare.engine.attention import HELD_AT_MOST
 
-    w = soma()
+    w = attention()
     w.feed("task_opened", thing_id="ancient", kind="task", label="старе")
     run(w, 10 * 24 * 3600, step=3600)
     for n in range(HELD_AT_MOST + 1):
@@ -235,7 +235,7 @@ def test_a_thing_that_stopped_mattering_is_let_go():
 
 
 def test_the_trace_keeps_the_last_fifty():
-    w = soma()
+    w = attention()
     for n in range(60):
         w.feed("task_opened", thing_id=str(n), kind="task", label=f"зроблено {n}")
         w.feed("task_done", thing_id=str(n), kind="task", label=f"зроблено {n}")

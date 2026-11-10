@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from heare.engine import Engine, Intents, Soma
+from heare.engine import Engine, Intents, Attention
 from heare.language import en, uk
 
 
@@ -36,7 +36,7 @@ def engine(tmp_path, *, loop=uk.open_loop, daily_limit=1):
     said: list = []
     clock = Clock()
     motor = Engine(store, speak=said.append, now=clock, quiet=("00:00", "00:00"),
-                   daily_limit=daily_limit, soma=Soma(), open_loop=loop)
+                   daily_limit=daily_limit, attention=Attention(), open_loop=loop)
     return store, said, motor, clock
 
 
@@ -64,7 +64,7 @@ def test_a_plan_becomes_a_thing_attention_holds(tmp_path):
     store, said, motor, clock = engine(tmp_path)
     motor.note(heard("завтра треба подзвонити мамі"))
 
-    want = next(w for w in motor._soma.wants if w.verb == "finish")
+    want = next(w for w in motor._attention.wants if w.verb == "finish")
     assert want.care > 0 and want.pressing >= 0.5
     assert store.alive(clock()) == [], "a plan is not brought back in the same breath"
     clock.go(11 * 60)
@@ -77,13 +77,13 @@ def test_the_same_plan_twice_is_one_thing(tmp_path):
     store, said, motor, clock = engine(tmp_path, daily_limit=0)
     motor.note(heard("треба подзвонити мамі"))
     motor.note(heard("Треба подзвонити мамі"))
-    assert len([w for w in motor._soma.wants if w.verb == "finish"]) == 1
+    assert len([w for w in motor._attention.wants if w.verb == "finish"]) == 1
 
 
 def test_without_a_detector_nothing_is_caught(tmp_path):
     store, said, motor, clock = engine(tmp_path, loop=None)
     motor.note(heard("завтра треба подзвонити мамі"))
-    assert not [w for w in motor._soma.wants if w.verb == "finish"]
+    assert not [w for w in motor._attention.wants if w.verb == "finish"]
 
 
 def test_the_engine_does_not_hear_its_own_remark(tmp_path):
@@ -93,7 +93,7 @@ def test_the_engine_does_not_hear_its_own_remark(tmp_path):
         "text": "Нагадування: завтра треба подзвонити мамі",
         "channel": "engine", "person": False,
     }))
-    assert not [w for w in motor._soma.wants if w.verb == "finish"]
+    assert not [w for w in motor._attention.wants if w.verb == "finish"]
     assert said == []
 
 
@@ -105,7 +105,7 @@ def test_a_work_result_is_not_a_plan(tmp_path):
         "text": f"{RESULT_PREFIX}\n— завтра треба подзвонити мамі",
         "channel": "engine", "person": False,
     }))
-    assert not [w for w in motor._soma.wants if w.verb == "finish"]
+    assert not [w for w in motor._attention.wants if w.verb == "finish"]
 
 
 def test_a_negated_need_is_not_a_plan():

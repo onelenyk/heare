@@ -10,9 +10,9 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass, field
 
-from heare.engine import Engine, Intents, Soma
-from heare.engine.intent import SOMA, tagged
-from heare.engine.soma import HELD_AT_MOST
+from heare.engine import Engine, Intents, Attention
+from heare.engine.intent import ATTENTION, tagged
+from heare.engine.attention import HELD_AT_MOST
 from heare.language import uk
 
 
@@ -50,14 +50,14 @@ class Clock:
         self.moment += seconds
 
 
-def problems(soma: Soma, intents: Intents, now: float) -> list[str]:
+def problems(attention: Attention, intents: Intents, now: float) -> list[str]:
     """Every way the three could disagree, named one by one."""
     found: list[str] = []
-    if len(soma.wants) > HELD_AT_MOST:
-        found.append(f"{len(soma.wants)} wants, more than {HELD_AT_MOST}")
+    if len(attention.wants) > HELD_AT_MOST:
+        found.append(f"{len(attention.wants)} wants, more than {HELD_AT_MOST}")
     seen: set[tuple[str, str]] = set()
-    for want in soma.wants:
-        thing = soma.thing(want.thing_id)
+    for want in attention.wants:
+        thing = attention.thing(want.thing_id)
         if thing is None:
             found.append(f"a want on a thing that is gone: {want.verb} {want.thing_id}")
             continue
@@ -70,16 +70,16 @@ def problems(soma: Soma, intents: Intents, now: float) -> list[str]:
             found.append(f"a want out of range: {want.verb} {want.thing_id}")
         if want.said < 0:
             found.append(f"said below zero: {want.verb} {want.thing_id}")
-    if soma.last_spoken is not None and soma.thing(soma.last_spoken) is None:
-        found.append(f"last_spoken on a thing that is gone: {soma.last_spoken}")
+    if attention.last_spoken is not None and attention.thing(attention.last_spoken) is None:
+        found.append(f"last_spoken on a thing that is gone: {attention.last_spoken}")
 
     abouts: list[str] = []
     for intent in intents.alive(now):
-        reference = tagged(intent.about, SOMA)
+        reference = tagged(intent.about, ATTENTION)
         if reference is None:
             continue
         abouts.append(intent.about)
-        thing = soma.thing(reference)
+        thing = attention.thing(reference)
         if thing is None or thing.state != "alive":
             found.append(f"a held remark for a thing that is gone: {intent.about}")
     if len(abouts) != len(set(abouts)):
@@ -90,11 +90,11 @@ def problems(soma: Soma, intents: Intents, now: float) -> list[str]:
 def simulate(tmp_path, *, days: int = 3, limit: int = 3, seed: int = 11):
     clock = Clock()
     store = Intents(tmp_path / "intents.json")
-    soma = Soma()
+    attention = Attention()
     state = State()
     motor = Engine(
         store, speak=lambda message: None, now=clock, quiet=("00:00", "00:00"),
-        daily_limit=limit, soma=soma, state=state, open_loop=uk.open_loop,
+        daily_limit=limit, attention=attention, state=state, open_loop=uk.open_loop,
     )
     rng = random.Random(seed)
     end = clock() + days * 86400
@@ -126,13 +126,13 @@ def simulate(tmp_path, *, days: int = 3, limit: int = 3, seed: int = 11):
                     "person": True, "channel": "voice", "text": "треба подзвонити мамі",
                 }))
             next_event += rng.randint(600, 5400)
-            found = problems(soma, store, clock())
+            found = problems(attention, store, clock())
             assert not found, found
         clock.go(60)
         motor.note(Ev("tick"))
-        found = problems(soma, store, clock())
+        found = problems(attention, store, clock())
         assert not found, found
-    return soma, store, clock, motor
+    return attention, store, clock, motor
 
 
 def test_three_days_keep_the_agreement(tmp_path):
@@ -144,11 +144,11 @@ def test_a_week_with_no_budget_keeps_the_agreement(tmp_path):
 
 
 def test_a_restart_keeps_the_agreement(tmp_path):
-    soma, store, clock, _ = simulate(tmp_path, days=2)
-    path = tmp_path / "soma.json"
-    soma.save(path)
+    attention, store, clock, _ = simulate(tmp_path, days=2)
+    path = tmp_path / "attention.json"
+    attention.save(path)
 
-    again = Soma.load(path)
+    again = Attention.load(path)
     found = problems(again, Intents(tmp_path / "intents.json"), clock())
     assert not found, found
 
@@ -156,17 +156,17 @@ def test_a_restart_keeps_the_agreement(tmp_path):
 def test_a_released_want_leaves_no_remark(tmp_path):
     clock = Clock()
     store = Intents(tmp_path / "intents.json")
-    soma = Soma()
+    attention = Attention()
     state = State()
     motor = Engine(
         store, speak=lambda message: None, now=clock, quiet=("00:00", "00:00"),
-        daily_limit=0, soma=soma, state=state,
+        daily_limit=0, attention=attention, state=state,
     )
     for n in range(HELD_AT_MOST + 6):
         state.tasks[n] = Task(n, f"task {n}")
         motor.note(Ev("task", {"id": n, "request": f"task {n}", "status": "running"}))
         clock.go(3600)
         motor.note(Ev("tick"))
-        found = problems(soma, store, clock())
+        found = problems(attention, store, clock())
         assert not found, found
-    assert [i for i in store.alive(clock()) if i.why == SOMA], "a held remark is still there"
+    assert [i for i in store.alive(clock()) if i.why == ATTENTION], "a held remark is still there"

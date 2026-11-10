@@ -1,10 +1,10 @@
-"""What presses inside reaches the prompt, and only when there is a soma."""
+"""What presses inside reaches the prompt, and only when there is a attention."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from heare.engine import Soma, Engine, Intents
+from heare.engine import Attention, Engine, Intents
 from heare.prompt import persona
 
 
@@ -29,20 +29,20 @@ class Clock:
         self.moment += seconds
 
 
-def engine(tmp_path, *, soma=None):
+def engine(tmp_path, *, attention=None):
     clock = Clock()
     motor = Engine(Intents(tmp_path / "intents.json"), speak=lambda m: None, now=clock,
-                   quiet=("00:00", "00:00"), daily_limit=0, soma=soma)
+                   quiet=("00:00", "00:00"), daily_limit=0, attention=attention)
     return motor, clock
 
 
-def test_without_a_soma_there_is_nothing_to_say_about_inside(tmp_path):
+def test_without_a_attention_there_is_nothing_to_say_about_inside(tmp_path):
     motor, _ = engine(tmp_path)
     assert motor.mood() == ""
 
 
-async def test_with_a_soma_the_prompt_says_what_presses(tmp_path):
-    motor, clock = engine(tmp_path, soma=Soma())
+async def test_with_a_attention_the_prompt_says_what_presses(tmp_path):
+    motor, clock = engine(tmp_path, attention=Attention())
     motor.note(event())
     clock.go(3600)
     text = await persona.prompt(mood=motor.mood)
@@ -61,7 +61,7 @@ async def test_an_empty_mood_adds_nothing():
 
 
 async def test_the_inside_line_carries_no_numbers(tmp_path):
-    motor, clock = engine(tmp_path, soma=Soma())
+    motor, clock = engine(tmp_path, attention=Attention())
     motor.note(event())
     clock.go(3600)
     inside = motor.mood()
@@ -70,11 +70,11 @@ async def test_the_inside_line_carries_no_numbers(tmp_path):
 
 
 def test_the_inside_line_shows_what_presses_first():
-    soma = Soma()
+    attention = Attention()
     for i in range(1, 4):
-        soma.feed("task_opened", thing_id=f"cold{i}", kind="task", label=f"cold {i}")
-        want = soma._want("finish", f"cold{i}")
+        attention.feed("task_opened", thing_id=f"cold{i}", kind="task", label=f"cold {i}")
+        want = attention._want("finish", f"cold{i}")
         want.care, want.pressing, want.said = 0.9, 0.0, 3
-    soma.feed("task_failed", thing_id="hot", kind="task", label="the hot one")
-    inside = soma.state()
+    attention.feed("task_failed", thing_id="hot", kind="task", label="the hot one")
+    inside = attention.state()
     assert inside.index("the hot one") < inside.index("cold 1")

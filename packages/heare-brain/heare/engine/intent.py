@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 # are named here once instead of typed as strings in two files.
 # The intent kind for a remark from attention. The string stays "soma" so
 # stores and pages written before the name changed still agree.
-SOMA = "soma"
+ATTENTION = "soma"
 REMINDER = "reminder"
 TASK_DONE = "task_done"
 TASK_FAILED = "task_failed"

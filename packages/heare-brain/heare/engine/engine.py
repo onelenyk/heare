@@ -19,8 +19,8 @@ from typing import Any
 from heare.core import Message
 from heare.core.conversation import RESULT_PREFIX
 from heare.core.i18n import _
-from heare.engine.intent import ANSWERS, REMINDER, SOMA, Intent, ref, tag, tagged
-from heare.engine.soma import Soma, Want
+from heare.engine.intent import ANSWERS, REMINDER, ATTENTION, Intent, ref, tag, tagged
+from heare.engine.attention import Attention, Want
 from heare.engine.store import Intents
 from heare.logs import say
 
@@ -32,9 +32,9 @@ TICK_S = 30.0
 
 # How often the body is written down. Losing a minute of pressure costs
 # nothing; writing on every event would cost a file write per event.
-SOMA_SAVE_S = 60.0
+ATTENTION_SAVE_S = 60.0
 # A plan said out loud is worth holding for days, not forever.
-SOMA_HOLD_S = 3 * 24 * 3600.0
+ATTENTION_HOLD_S = 3 * 24 * 3600.0
 # It is also not brought back in the same conversation: ten minutes of talk
 # is enough for the person to have moved on (10 November).
 PLAN_MOMENT_S = 10 * 60.0
@@ -105,8 +105,8 @@ class Engine:
                  tick: float = TICK_S, now=time.time,
                  quiet: tuple[str, str] = ("22:00", "08:00"),
                  daily_limit: int = 1,
-                 soma: Soma | None = None,
-                 soma_path: Path | None = None,
+                 attention: Attention | None = None,
+                 attention_path: Path | None = None,
                  open_loop: Any = None) -> None:
         self._intents = intents
         self._state = state
@@ -124,16 +124,23 @@ class Engine:
             # Equal ends are not a window, not a day-long silence.
             self._quiet_from = self._quiet_to = None
         self._daily_limit = max(0, int(daily_limit))
-        # Without a soma the engine reacts to events on the spot. With one it
+        # Without attention the engine reacts to events on the spot. With one it
         # lets a need grow first, so the intent survives the event that made it.
-        self._soma_path = Path(soma_path) if soma_path is not None else None
-        if soma is None and self._soma_path is not None:
-            # A restart wakes the same soma up instead of growing a new one.
-            soma = Soma.load(self._soma_path)
-        self._soma = soma
-        self._soma_at = self._now() if soma is not None else None
-        self._soma_saved_at: float | None = None
-        self._last_soma_thing: str | None = None
+        self._attention_path = Path(attention_path) if attention_path is not None else None
+        if attention is None and self._attention_path is not None:
+            # A restart wakes the same attention up instead of growing a new one.
+            # Before the rename the file was ``soma.json``; read it once, then
+            # write the new name, so a live brain keeps its wants.
+            path = self._attention_path
+            if not path.exists():
+                legacy = path.with_name("soma.json")
+                if legacy.exists():
+                    path = legacy
+            attention = Attention.load(path)
+        self._attention = attention
+        self._attention_at = self._now() if attention is not None else None
+        self._attention_saved_at: float | None = None
+        self._last_attention_thing: str | None = None
         self._seen_running: set[int] = set()
         self._open_loop = open_loop
         self._blocked = ""
@@ -159,13 +166,13 @@ class Engine:
 
     def _catch_plan(self, event: Any) -> None:
         """A plan said out loud becomes something to hold, not a reply."""
-        if self._soma is None or self._open_loop is None:
+        if self._attention is None or self._open_loop is None:
             return
         phrase = self._open_loop(str(event.data.get("text") or ""))
         if not phrase:
             return
         digest = hashlib.sha1(phrase.lower().encode("utf-8")).hexdigest()[:10]
-        self._soma.feed("plan_said", thing_id=f"plan:{digest}", kind="promise", label=phrase)
+        self._attention.feed("plan_said", thing_id=f"plan:{digest}", kind="promise", label=phrase)
         say(f"engine: caught a plan {phrase[:60]!r}")
 
     def _reference(self, data: Any) -> str:
@@ -181,11 +188,11 @@ class Engine:
         status = str(data.get("status") or "")
         news = str(data.get("news") or "").strip()
         reference = self._reference(data)
-        if self._soma is not None:
+        if self._attention is not None:
             feeling = _FEELING.get(status)
             if feeling:
                 label = str(data.get("request") or news)[:200]
-                self._soma.feed(feeling, thing_id=reference, kind="task", label=label)
+                self._attention.feed(feeling, thing_id=reference, kind="task", label=label)
                 if status in ("done", "stopped"):
                     self._retire(reference)
         why = _WORTH_TELLING.get(status)
@@ -198,25 +205,25 @@ class Engine:
         say(f"engine: held {why} {reference}")
 
     def _advance(self) -> None:
-        """Let the soma feel time pass, and write down what has ripened."""
-        if self._soma is None:
+        """Let the attention feel time pass, and write down what has ripened."""
+        if self._attention is None:
             return
         now = self._now()
-        if self._soma_at is not None and now > self._soma_at:
-            self._soma.tick(now - self._soma_at)
-        self._soma_at = now
+        if self._attention_at is not None and now > self._attention_at:
+            self._attention.tick(now - self._attention_at)
+        self._attention_at = now
         # A want the cap just let go takes its remark with it now, not at
         # the next delivery: the three states agree after every step.
         self._forget_released(now)
         self._watch_tasks()
-        self._hold_from_soma(now)
-        self._save_soma(now)
+        self._hold_from_attention(now)
+        self._save_attention(now)
         self._energy()
 
     def _retire(self, reference: str) -> None:
         """A closed task takes its waiting remark with it."""
         now = self._now()
-        about = tag(SOMA, reference)
+        about = tag(ATTENTION, reference)
         for intent in self._intents.alive(now):
             if intent.about == about:
                 # Not "delivered": it was never said, and a delivered mark
@@ -224,8 +231,8 @@ class Engine:
                 self._intents.done(intent, status="dropped", at=now)
 
     def _watch_tasks(self) -> None:
-        """A task that is running is a thing left open; the soma keeps it."""
-        if self._soma is None or self._state is None:
+        """A task that is running is a thing left open; the attention keeps it."""
+        if self._attention is None or self._state is None:
             return
         tasks = getattr(self._state, "tasks", None)
         if not isinstance(tasks, dict):
@@ -236,67 +243,67 @@ class Engine:
             if task.id in self._seen_running:
                 continue
             self._seen_running.add(task.id)
-            self._soma.feed(
+            self._attention.feed(
                 "task_opened", thing_id=ref(getattr(task, "started", None), task.id),
                 kind="task", label=str(task.request)[:200],
             )
 
     def _bar(self) -> float:
         """How hard a want must press to be worth saying; tiredness raises it."""
-        if self._soma is None:
+        if self._attention is None:
             return 0.0
-        return SPEAK_THRESHOLD + (1.0 - self._soma.energy) * TIRED_PENALTY
+        return SPEAK_THRESHOLD + (1.0 - self._attention.energy) * TIRED_PENALTY
 
     def _ripened(self) -> Want | None:
-        want = self._soma.hottest() if self._soma is not None else None
+        want = self._attention.hottest() if self._attention is not None else None
         if want is None or want.pressing < self._bar():
             return None
         return want
 
-    def _hold_from_soma(self, now: float) -> None:
+    def _hold_from_attention(self, now: float) -> None:
         """Turn what presses into an intent, if it is not held already."""
         want = self._ripened()
         if want is None:
             return
-        about = tag(SOMA, want.thing_id)
+        about = tag(ATTENTION, want.thing_id)
         # Due or still waiting: a plan held until its minute is not due
         # yet, and asking only for due notes held it on every tick.
         if self._intents.waiting(about):
             return
-        thing = self._soma.thing(want.thing_id)
+        thing = self._attention.thing(want.thing_id)
         what = thing.label if thing is not None and thing.label else want.thing_id
         weight = 3 if want.pressing >= 0.75 else 2 if want.pressing >= 0.4 else 1
         # A plan was said a breath ago; work failed while the person was
         # away. Only the plan waits for the talk to move on.
         soon = now + PLAN_MOMENT_S if thing is not None and thing.kind == "promise" else now
         self._intents.hold(
-            what=what, why=SOMA, weight=weight,
-            about=about, not_before=soon, until=now + SOMA_HOLD_S,
+            what=what, why=ATTENTION, weight=weight,
+            about=about, not_before=soon, until=now + ATTENTION_HOLD_S,
         )
         say(f"engine: held {want.verb} {want.thing_id} pressing {want.pressing:.2f}")
 
     def _forget_released(self, now: float) -> None:
         """A want attention let go takes its waiting remark with it.
 
-        Without this the cap only moved the backlog from ``soma.json`` into
+        Without this the cap only moved the backlog from ``attention.json`` into
         ``intents.json``: a released want's remark stayed held for its three
         days and the page showed work that had stopped mattering.
         """
-        if self._soma is None:
+        if self._attention is None:
             return
         for intent in self._intents.alive(now):
-            reference = tagged(intent.about, SOMA)
+            reference = tagged(intent.about, ATTENTION)
             if reference is None:
                 continue
-            thing = self._soma.thing(reference)
+            thing = self._attention.thing(reference)
             if thing is None or thing.state != "alive":
                 self._intents.done(intent, status="dropped", at=now)
 
     def _energy(self) -> None:
         """Say once when tiredness starts, and once when it has worn off."""
-        if self._soma is None:
+        if self._attention is None:
             return
-        energy = self._soma.energy
+        energy = self._attention.energy
         if energy < 0.1 and not self._spent:
             self._spent = self._tired = True
             say("engine: spent; the bar is high")
@@ -308,7 +315,7 @@ class Engine:
 
     def mood(self) -> str:
         """What presses, in the body's own words; empty when there is no body."""
-        return self._soma.state() if self._soma is not None else ""
+        return self._attention.state() if self._attention is not None else ""
 
     def held(self) -> list[Intent]:
         """What waits to be said, heaviest first — the page shows this list."""
@@ -331,22 +338,22 @@ class Engine:
         if intent is None or not intent.alive(self._now()):
             return False
         self._intents.done(intent, status="dropped")
-        if self._soma is not None and intent.why == SOMA:
-            reference = tagged(intent.about, SOMA)
+        if self._attention is not None and intent.why == ATTENTION:
+            reference = tagged(intent.about, ATTENTION)
             if reference is not None:
                 # Heard, not spoken: letting one go by hand costs no energy.
-                self._soma.spoke(reference, spent=False)
+                self._attention.spoke(reference, spent=False)
         say(f"engine: dropped {intent_id} by hand")
         return True
 
-    def _save_soma(self, now: float) -> None:
+    def _save_attention(self, now: float) -> None:
         """Write the body down now and then, not on every event."""
-        if self._soma is None or self._soma_path is None:
+        if self._attention is None or self._attention_path is None:
             return
-        if self._soma_saved_at is not None and now - self._soma_saved_at < SOMA_SAVE_S:
+        if self._attention_saved_at is not None and now - self._attention_saved_at < ATTENTION_SAVE_S:
             return
-        self._soma.save(self._soma_path)
-        self._soma_saved_at = now
+        self._attention.save(self._attention_path)
+        self._attention_saved_at = now
 
     def _the_person_spoke(self) -> None:
         """Spoke right after a remark of mine: that remark was answered."""
@@ -356,9 +363,9 @@ class Engine:
             self._answered = True
             self._gap_s = max(MIN_GAP_S, self._gap_s * BOLDER)
             self._ready_at = self._last_spoke + self._gap_s
-            if self._soma is not None and self._last_soma_thing is not None:
-                self._soma.engage(self._last_soma_thing)
-                self._last_soma_thing = None
+            if self._attention is not None and self._last_attention_thing is not None:
+                self._attention.engage(self._last_attention_thing)
+                self._last_attention_thing = None
                 say("engine: answered; the gap narrows")
 
     def _fresh_until(self, now: float) -> float:
@@ -467,8 +474,8 @@ class Engine:
         reminder is exact words and costs no model call at all.
         """
         reminders = [i for i in intents if i.why == REMINDER]
-        on_mind = [i for i in intents if i.why == SOMA]
-        news = [i for i in intents if i.why not in (REMINDER, SOMA)]
+        on_mind = [i for i in intents if i.why == ATTENTION]
+        news = [i for i in intents if i.why not in (REMINDER, ATTENTION)]
         if reminders:
             self._speak(Message(
                 text=_("Reminder: {what}").format(what="; ".join(i.what for i in reminders)),
@@ -487,17 +494,17 @@ class Engine:
                 and now - self._last_spoke > ANSWERED_S):
             # The last remark went unanswered: wait longer before the next.
             self._gap_s = min(MAX_GAP_S, self._gap_s * SHYER)
-            if self._soma is not None and self._last_soma_thing is not None:
-                self._soma.ignored()
-                self._last_soma_thing = None
+            if self._attention is not None and self._last_attention_thing is not None:
+                self._attention.ignored()
+                self._last_attention_thing = None
                 say("engine: no answer; the gap widens")
         for intent in intents:
             self._intents.done(intent, at=now)
-            if self._soma is not None and intent.why == SOMA:
-                reference = tagged(intent.about, SOMA)
+            if self._attention is not None and intent.why == ATTENTION:
+                reference = tagged(intent.about, ATTENTION)
                 if reference is not None:
-                    self._soma.spoke(reference)
-                    self._last_soma_thing = reference
+                    self._attention.spoke(reference)
+                    self._last_attention_thing = reference
         say(f"engine: said {len(reminders)} reminder(s), {len(news)} news, "
             f"{len(on_mind)} on the mind")
         self._last_spoke = now

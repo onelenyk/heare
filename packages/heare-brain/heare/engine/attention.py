@@ -1,6 +1,6 @@
 """Attention: what presses, and how much; the engine decides when to say it.
 
-The code calls it ``soma`` (a historical name, Greek for body); the docs call
+The code calls it ``attention`` (a historical name, Greek for body); the docs call
 it attention. A want is bound to a thing and keeps pushing long after the
 event that made it is gone. Nothing here speaks, knows the store, or reaches
 the network.
@@ -107,7 +107,7 @@ class Want:
 
 
 @dataclass
-class Soma:
+class Attention:
     """The attention state. The class name is the code's; docs say attention."""
 
     scale: float = 1.0
@@ -290,18 +290,18 @@ class Soma:
         }
 
     @classmethod
-    def from_dict(cls, raw: object) -> Soma:
+    def from_dict(cls, raw: object) -> Attention:
         if not isinstance(raw, dict):
             return cls()
         version = raw.get("version")
         if version == VERSION:
-            soma = _from_v2(raw)
+            attention = _from_v2(raw)
         elif version in (None, 1):
-            soma = _from_v1(raw)
+            attention = _from_v1(raw)
         else:
             return cls()
-        soma._trim()
-        return soma
+        attention._trim()
+        return attention
 
     def save(self, path: Path) -> None:
         path = Path(path)
@@ -311,7 +311,7 @@ class Soma:
         temporary.replace(path)
 
     @classmethod
-    def load(cls, path: Path) -> Soma:
+    def load(cls, path: Path) -> Attention:
         target = Path(path)
         if not target.exists():
             older = target.with_name("body.json")
@@ -344,26 +344,26 @@ def _bool(value: object, default: bool = False) -> bool:
     return bool(value) if isinstance(value, bool) else default
 
 
-def _from_v2(raw: dict) -> Soma:
-    soma = Soma(scale=_number(raw.get("scale"), 1.0) or 1.0)
-    soma.t = _number(raw.get("t"))
-    soma.energy = _number(raw.get("energy"), ENERGY_START)
-    soma.last_spoken = raw.get("last_spoken") if isinstance(raw.get("last_spoken"), str) else None
+def _from_v2(raw: dict) -> Attention:
+    attention = Attention(scale=_number(raw.get("scale"), 1.0) or 1.0)
+    attention.t = _number(raw.get("t"))
+    attention.energy = _number(raw.get("energy"), ENERGY_START)
+    attention.last_spoken = raw.get("last_spoken") if isinstance(raw.get("last_spoken"), str) else None
     things = raw.get("things")
     if isinstance(things, list):
-        soma.things = [_thing(row) for row in things if isinstance(row, dict)]
+        attention.things = [_thing(row) for row in things if isinstance(row, dict)]
     wants = raw.get("wants")
     if isinstance(wants, list):
-        soma.wants = [_want(row, soma.t) for row in wants if isinstance(row, dict)]
+        attention.wants = [_want(row, attention.t) for row in wants if isinstance(row, dict)]
     trace = raw.get("trace")
     if isinstance(trace, list):
-        soma.trace = [t for t in trace if isinstance(t, str)]
-    return soma
+        attention.trace = [t for t in trace if isinstance(t, str)]
+    return attention
 
 
-def _from_v1(raw: dict) -> Soma:
-    soma = Soma(scale=_number(raw.get("scale"), 1.0) or 1.0)
-    soma.t = _number(raw.get("t"))
+def _from_v1(raw: dict) -> Attention:
+    attention = Attention(scale=_number(raw.get("scale"), 1.0) or 1.0)
+    attention.t = _number(raw.get("t"))
     needs = raw.get("needs")
     if isinstance(needs, list):
         for row in needs:
@@ -377,10 +377,10 @@ def _from_v1(raw: dict) -> Soma:
             if about == "self":
                 continue
             thing_id = about
-            soma._ensure_thing(thing_id, "task", _text(row.get("label"), about))
-            want = soma._ensure_want(verb, thing_id)
+            attention._ensure_thing(thing_id, "task", _text(row.get("label"), about))
+            want = attention._ensure_want(verb, thing_id)
             want.care = _number(row.get("level"))
-    return soma
+    return attention
 
 
 _DRIVE_TO_VERB = {

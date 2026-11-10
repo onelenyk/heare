@@ -1,11 +1,11 @@
-"""The engine with a soma: what the soma feeds, and how it becomes an intent."""
+"""The engine with a attention: what the attention feeds, and how it becomes an intent."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 from heare.engine import Engine, Intents
-from heare.engine.soma import Soma
+from heare.engine.attention import Attention
 
 
 @dataclass
@@ -35,51 +35,51 @@ class Clock:
         self.moment += seconds
 
 
-def engine(tmp_path, *, soma: Soma | None = None):
+def engine(tmp_path, *, attention: Attention | None = None):
     store = Intents(tmp_path / "intents.json")
     said: list = []
     clock = Clock()
     motor = Engine(
         store, speak=said.append, now=clock,
-        quiet=("00:00", "00:00"), daily_limit=99, soma=soma,
+        quiet=("00:00", "00:00"), daily_limit=99, attention=attention,
     )
     return store, said, motor, clock
 
 
-def soma_intents(store, clock):
+def attention_intents(store, clock):
     return [i for i in store.alive(clock()) if i.about.startswith("soma:")]
 
 
-def test_without_a_soma_the_result_is_said_at_once(tmp_path):
+def test_without_a_attention_the_result_is_said_at_once(tmp_path):
     _, said, motor, _ = engine(tmp_path)
     motor.note(event("done"))
     assert len(said) == 1
 
 
-def test_with_a_soma_the_news_is_still_said_at_once(tmp_path):
-    _, said, motor, _ = engine(tmp_path, soma=Soma())
+def test_with_a_attention_the_news_is_still_said_at_once(tmp_path):
+    _, said, motor, _ = engine(tmp_path, attention=Attention())
     motor.note(event("done"))
     assert len(said) == 1
 
 
-def test_a_failure_makes_a_soma_intent(tmp_path):
-    store, _, motor, clock = engine(tmp_path, soma=Soma())
+def test_a_failure_makes_a_attention_intent(tmp_path):
+    store, _, motor, clock = engine(tmp_path, attention=Attention())
     motor.note(event("failed"))
     assert any(i.why == "soma" and i.about == "soma:7" for i in store._by_id.values())
-    soma = motor._soma
-    assert any(w.thing_id == "7" and w.care > 0 for w in soma.wants)
+    attention = motor._attention
+    assert any(w.thing_id == "7" and w.care > 0 for w in attention.wants)
 
 
 def test_a_finished_task_leaves_nothing_pressing(tmp_path):
-    store, _, motor, clock = engine(tmp_path, soma=Soma())
+    store, _, motor, clock = engine(tmp_path, attention=Attention())
     motor.note(event("done"))
     clock.go(3600)
     motor.note(tick())
-    assert soma_intents(store, clock) == []
+    assert attention_intents(store, clock) == []
 
 
 def test_the_same_need_is_not_held_twice(tmp_path):
-    store, _, motor, clock = engine(tmp_path, soma=Soma())
+    store, _, motor, clock = engine(tmp_path, attention=Attention())
     motor.note(event("failed"))
     clock.go(3600)
     motor.note(tick())
@@ -91,7 +91,7 @@ def test_the_same_need_is_not_held_twice(tmp_path):
 
 
 def test_speaking_does_not_make_an_intent(tmp_path):
-    store, _, motor, clock = engine(tmp_path, soma=Soma())
+    store, _, motor, clock = engine(tmp_path, attention=Attention())
     motor.note(Ev("heard", {}))
     clock.go(3600)
     motor.note(tick())
@@ -99,26 +99,26 @@ def test_speaking_does_not_make_an_intent(tmp_path):
 
 
 def test_a_failed_task_keeps_pressing_after_the_news_is_stale(tmp_path):
-    store, _, motor, clock = engine(tmp_path, soma=Soma())
+    store, _, motor, clock = engine(tmp_path, attention=Attention())
     motor.note(event("failed"))
     clock.go(3 * 3600)
     motor.note(tick())
     alive = store.alive(clock())
     assert [i for i in alive if i.why == "task_failed"] == []
-    soma = motor._soma
-    assert any(w.thing_id == "7" and w.care > 0.0 for w in soma.wants)
+    attention = motor._attention
+    assert any(w.thing_id == "7" and w.care > 0.0 for w in attention.wants)
 
 
 def test_the_weight_stays_inside_what_the_form_allows(tmp_path):
-    store, _, motor, clock = engine(tmp_path, soma=Soma())
+    store, _, motor, clock = engine(tmp_path, attention=Attention())
     motor.note(event("failed"))
-    somas = [i for i in store._by_id.values() if i.why == "soma"]
-    assert somas
-    assert 1 <= somas[0].weight <= 3
+    attentions = [i for i in store._by_id.values() if i.why == "soma"]
+    assert attentions
+    assert 1 <= attentions[0].weight <= 3
 
 
-def test_the_news_is_said_the_same_with_a_soma_and_without(tmp_path):
-    _, said_body, motor_body, _ = engine(tmp_path, soma=Soma())
+def test_the_news_is_said_the_same_with_a_attention_and_without(tmp_path):
+    _, said_body, motor_body, _ = engine(tmp_path, attention=Attention())
     motor_body.note(event("done"))
     _, said_plain, motor_plain, _ = engine(tmp_path)
     motor_plain.note(event("done"))
@@ -127,7 +127,7 @@ def test_the_news_is_said_the_same_with_a_soma_and_without(tmp_path):
 
 
 def test_its_own_remark_is_not_the_person_answering(tmp_path):
-    store, said, motor, clock = engine(tmp_path, soma=Soma())
+    store, said, motor, clock = engine(tmp_path, attention=Attention())
     motor.note(event("failed"))
     assert said, "the remark has to go out first"
     gap = motor._gap_s
@@ -138,7 +138,7 @@ def test_its_own_remark_is_not_the_person_answering(tmp_path):
 
 
 def test_the_person_answering_narrows_the_gap(tmp_path):
-    store, said, motor, clock = engine(tmp_path, soma=Soma())
+    store, said, motor, clock = engine(tmp_path, attention=Attention())
     motor.note(event("failed"))
     gap = motor._gap_s
     clock.go(60)
@@ -151,7 +151,7 @@ def test_an_attention_remark_is_not_a_work_result(tmp_path):
     from heare.core.conversation import RESULT_PREFIX
     from heare.engine.engine import ON_MIND_PREFIX
 
-    store, said, motor, clock = engine(tmp_path, soma=Soma())
+    store, said, motor, clock = engine(tmp_path, attention=Attention())
     motor.note(event("failed"))
     clock.go(3600)
     motor.note(tick())
@@ -162,10 +162,10 @@ def test_an_attention_remark_is_not_a_work_result(tmp_path):
 
 
 def test_dropping_by_hand_is_not_speaking(tmp_path):
-    store, said, motor, clock = engine(tmp_path, soma=Soma())
+    store, said, motor, clock = engine(tmp_path, attention=Attention())
     motor.note(event("failed"))
-    energy = motor._soma.energy
+    energy = motor._attention.energy
     held = [i for i in store.alive(clock()) if i.why == "soma"]
     assert held, "the want waits as an intent"
     assert motor.drop(held[0].id)
-    assert motor._soma.energy == energy, "a drop cost the energy of a remark"
+    assert motor._attention.energy == energy, "a drop cost the energy of a remark"

@@ -1,4 +1,4 @@
-"""The soma under the laws: it may ask, never insist, and never speak itself."""
+"""The attention under the laws: it may ask, never insist, and never speak itself."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from heare.engine import Engine, Intents
-from heare.engine.soma import Soma
+from heare.engine.attention import Attention
 
 
 @dataclass
@@ -43,47 +43,47 @@ class State:
         return self.present
 
 
-def engine(tmp_path, *, now: float = 1000.0, soma=None, state=None,
+def engine(tmp_path, *, now: float = 1000.0, attention=None, state=None,
            quiet=("00:00", "00:00"), daily_limit=99):
     store = Intents(tmp_path / "intents.json")
     said: list = []
     clock = Clock(now)
     motor = Engine(
         store, speak=said.append, now=clock, quiet=quiet,
-        daily_limit=daily_limit, soma=soma, state=state,
+        daily_limit=daily_limit, attention=attention, state=state,
     )
     return store, said, motor, clock
 
 
 def ripened(tmp_path, **over):
-    soma = over.pop("soma", Soma())
-    store, said, motor, clock = engine(tmp_path, soma=soma, **over)
+    attention = over.pop("attention", Attention())
+    store, said, motor, clock = engine(tmp_path, attention=attention, **over)
     motor.note(event())
     clock.go(3600)
     motor.note(tick())
-    return store, said, motor, clock, soma
+    return store, said, motor, clock, attention
 
 
-def soma_intents(store, clock):
+def attention_intents(store, clock):
     return [i for i in store.alive(clock()) if i.about.startswith("soma:")]
 
 
-def test_the_soma_never_speaks_itself():
-    soma = Soma()
-    soma.feed("task_failed", thing_id="task:7", kind="task", label="Сайт готовий.")
-    assert soma.spoke("task:7") is None
-    assert not hasattr(soma, "_speak")
-    assert not hasattr(soma, "speaker")
+def test_the_attention_never_speaks_itself():
+    attention = Attention()
+    attention.feed("task_failed", thing_id="task:7", kind="task", label="Сайт готовий.")
+    assert attention.spoke("task:7") is None
+    assert not hasattr(attention, "_speak")
+    assert not hasattr(attention, "speaker")
 
 
 def test_holding_and_ticking_says_nothing_on_its_own(tmp_path):
-    store, said, motor, clock = engine(tmp_path, soma=Soma())
+    store, said, motor, clock = engine(tmp_path, attention=Attention())
     motor.note(event())
     before = len(said)
     clock.go(3600)
     motor._advance()
     assert len(said) == before
-    assert soma_intents(store, clock) != []
+    assert attention_intents(store, clock) != []
 
 
 def test_the_person_mid_turn_is_not_interrupted(tmp_path):
@@ -91,7 +91,7 @@ def test_the_person_mid_turn_is_not_interrupted(tmp_path):
     motor.note(tick())
     clock.go(3600)
     motor.note(tick())
-    assert soma_intents(store, clock) != []
+    assert attention_intents(store, clock) != []
 
 
 def test_quiet_hours_hold_a_ripened_need(tmp_path):
@@ -100,11 +100,11 @@ def test_quiet_hours_hold_a_ripened_need(tmp_path):
         tmp_path, now=night, quiet=("22:00", "08:00")
     )
     motor.note(tick())
-    assert soma_intents(store, clock) != []
+    assert attention_intents(store, clock) != []
 
 
-def test_the_daily_budget_limits_the_soma(tmp_path):
-    store, said, motor, clock = engine(tmp_path, soma=Soma(), daily_limit=1)
+def test_the_daily_budget_limits_the_attention(tmp_path):
+    store, said, motor, clock = engine(tmp_path, attention=Attention(), daily_limit=1)
     motor.note(event())
     clock.go(3600)
     motor.note(tick())
@@ -118,33 +118,33 @@ def test_the_daily_budget_limits_the_soma(tmp_path):
 
 
 def test_a_spoken_want_does_not_re_press(tmp_path):
-    soma = Soma()
-    soma.feed("task_failed", thing_id="task:7", kind="task", label="Сайт готовий.")
-    assert soma.hottest().pressing >= 0.5
-    soma.spoke("task:7")
-    assert soma.hottest().pressing < 0.5  # she said her piece; time alone won't re-raise
-    soma.tick(3 * 3600)
-    assert soma.hottest().pressing < 0.5  # habituation holds
+    attention = Attention()
+    attention.feed("task_failed", thing_id="task:7", kind="task", label="Сайт готовий.")
+    assert attention.hottest().pressing >= 0.5
+    attention.spoke("task:7")
+    assert attention.hottest().pressing < 0.5  # she said her piece; time alone won't re-raise
+    attention.tick(3 * 3600)
+    assert attention.hottest().pressing < 0.5  # habituation holds
 
 
 def test_tiredness_raises_the_bar(tmp_path):
-    _, _, motor, _, soma = ripened(tmp_path)
+    _, _, motor, _, attention = ripened(tmp_path)
     rested = motor._bar()
-    soma.energy = 0.2
+    attention.energy = 0.2
     assert motor._bar() > rested
 
 
-def test_the_soma_does_not_name_the_person():
-    soma = Soma()
-    soma.feed("task_failed", thing_id="task:7", kind="task", label="Сайт готовий.")
-    soma.tick(3600)
-    text = soma.state().lower()
+def test_the_attention_does_not_name_the_person():
+    attention = Attention()
+    attention.feed("task_failed", thing_id="task:7", kind="task", label="Сайт готовий.")
+    attention.tick(3600)
+    text = attention.state().lower()
     assert "owner" not in text
     assert "task:7" not in text
 
 
-def test_the_soma_cannot_reach_the_store_or_the_speaker():
-    soma = Soma()
-    assert not hasattr(soma, "_intents")
-    assert not hasattr(soma, "store")
-    assert not hasattr(soma, "_speak")
+def test_the_attention_cannot_reach_the_store_or_the_speaker():
+    attention = Attention()
+    assert not hasattr(attention, "_intents")
+    assert not hasattr(attention, "store")
+    assert not hasattr(attention, "_speak")

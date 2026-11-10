@@ -5,14 +5,14 @@ stream of events and the snapshot of state, keeps intents, and puts
 messages into the same quiet lane results already arrive on. The design is
 in ``docs/engine.md``.
 
-For now only the intent — step D1 — and the soma that gives it a reason to wait.
+For now only the intent — step D1 — and the attention that gives it a reason to wait.
 """
 
 from __future__ import annotations
 
 from heare.engine.engine import Engine
 from heare.engine.intent import Intent
-from heare.engine.soma import Soma
+from heare.engine.attention import Attention
 from heare.engine.store import Intents
 
-__all__ = ["Soma", "Engine", "Intent", "Intents"]
+__all__ = ["Attention", "Engine", "Intent", "Intents"]
