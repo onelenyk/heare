@@ -69,8 +69,8 @@ android {
         applicationId = "dev.onelenyk.heare"
         minSdk = 30
         targetSdk = 36
-        versionCode = 911
-        versionName = "0.9.11"
+        versionCode = 912
+        versionName = "0.9.12"
         // Pixel phones and watches are arm64; the other three cost 100 MB.
         ndk { abiFilters += "arm64-v8a" }
     }
