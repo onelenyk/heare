@@ -5,7 +5,9 @@ it is gone. Nothing here speaks, knows the store, or reaches the network.
 
 The old seven drives are gone; the soul wants in verbs — ``finish``,
 ``find out``, ``fix``, ``reach``, ``keep word``, ``rest`` — all one root:
-on the person's side.
+on the person's side. A verb enters with its event, not before: today only
+``finish`` has a producer, and the table below holds exactly the rows the
+engine feeds (10 November).
 
 A want carries four numbers:
   care     — how much the thing matters (grows with time)
@@ -15,9 +17,9 @@ A want carries four numbers:
   carried  — the person took it over, so time stops pressing
 
 Energy is a state, not a verdict: the engine reads it and raises its own
-bar to speak; tiredness never forbids speech here. Things are never
-deleted — a finished task is remembered as a trace of good done against
-entropy.
+bar to speak; tiredness never forbids speech here. A finished task is
+remembered as a trace; a thing that stopped mattering is let go, and the
+trace keeps the last fifty names, so the file has a size.
 
 The model never sees numbers from here — only a sentence about what presses.
 """
@@ -39,31 +41,20 @@ VERB = {
 
 THING_KINDS = {"task", "person", "project", "promise", "place", "self"}
 
-# event kind -> (verb, care_delta, pressing_delta)
+# event kind -> (verb, care_delta, pressing_delta). One row per thing the
+# engine actually feeds; a verb with no producer is a word, not a soul. The
+# other twelve rows waited without a producer until 10 November and were
+# cut: a row is added with its event and its test, one at a time.
 APPRAISE = {
     "task_opened": ("finish", 0.30, 0.10),
     "task_done": ("finish", -0.90, 0.00),
     "task_failed": ("finish", 0.30, 0.60),
     # Said out loud, to be done later: the only row fed by conversation.
     "plan_said": ("finish", 0.35, 0.55),
-    "correction": ("fix", 0.35, 0.20),
-    "new_fact": ("find_out", 0.12, 0.10),
-    "contradiction": ("find_out", 0.55, 0.40),
-    "question_asked": ("find_out", 0.30, 0.20),
-    "interrupted": ("reach", 0.40, 0.30),
-    "permission_denied": ("keep_word", 0.25, 0.20),
-    "silence_long": ("reach", 0.25, 0.20),
-    "miss": ("reach", 0.25, 0.40),
-    "promise": ("keep_word", 0.35, 0.35),
-    "spoke": ("reach", -0.60, 0.00),
-    "worked": ("rest", 0.05, 0.00),
-    "rested": ("rest", -0.45, 0.00),
-    "hungry": ("rest", 0.20, 0.10),
-    "burnout": ("rest", 0.50, 0.30),
 }
 
 DONE_EVENTS = {"task_done"}
-SHOCK_EVENTS = {"task_failed", "correction", "contradiction", "interrupted"}
+SHOCK_EVENTS = {"task_failed"}
 
 PRESS_REGROW_PER_S = 0.0003
 # A want already said, or taken over by the person, stops mattering at this
@@ -78,6 +69,9 @@ HELD_AT_MOST = 12
 # oldest and a full list never lets a new failure in. What is fresh counts.
 RELEVANCE_HALF_LIFE_S = 2 * 24 * 3600.0
 HABIT = [1.0, 0.35, 0.12, 0.05, 0.02]
+# The trace is what the model reads when it says «you have finished …»; a
+# thing is kept while its name is still in it.
+TRACE_KEPT = 50
 ENGAGE_KEEP = 0.5
 ENERGY_START = 1.0
 SPEAK_COST = 0.30
@@ -196,6 +190,11 @@ class Soma:
         for thing in self.things:
             if thing.state == "alive" and not any(w.thing_id == thing.id for w in self.wants):
                 thing.state = "released"
+        self.trace = self.trace[-TRACE_KEPT:]
+        self.things = [
+            thing for thing in self.things
+            if thing.state == "alive" or thing.label in self.trace
+        ]
 
     def hottest(self) -> Want | None:
         """What presses hardest and freshest; the engine decides whether it is enough."""

@@ -35,6 +35,9 @@ TICK_S = 30.0
 SOMA_SAVE_S = 60.0
 # A plan said out loud is worth holding for days, not forever.
 SOMA_HOLD_S = 3 * 24 * 3600.0
+# It is also not brought back in the same conversation: ten minutes of talk
+# is enough for the person to have moved on (10 November).
+PLAN_MOMENT_S = 10 * 60.0
 
 # A finished piece of work is worth telling for this long, then it is stale.
 WORK_NEWS_S = 2 * 3600
@@ -258,9 +261,12 @@ class Engine:
         thing = self._soma.thing(want.thing_id)
         what = thing.label if thing is not None and thing.label else want.thing_id
         weight = 3 if want.pressing >= 0.75 else 2 if want.pressing >= 0.4 else 1
+        # A plan was said a breath ago; work failed while the person was
+        # away. Only the plan waits for the talk to move on.
+        soon = now + PLAN_MOMENT_S if thing is not None and thing.kind == "promise" else now
         self._intents.hold(
             what=what, why=SOMA, weight=weight,
-            about=about, not_before=now, until=now + SOMA_HOLD_S,
+            about=about, not_before=soon, until=now + SOMA_HOLD_S,
         )
         say(f"engine: held {want.verb} {want.thing_id} pressing {want.pressing:.2f}")
 

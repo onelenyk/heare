@@ -69,7 +69,7 @@ def test_without_events_nothing_is_bound():
     assert w.things == []
 
 
-def test_things_are_never_deleted():
+def test_a_finished_task_is_remembered():
     w = soma()
     w.feed("task_failed", thing_id="7", kind="task", label="сайт")
     w.feed("task_done", thing_id="7", kind="task", label="сайт")
@@ -189,8 +189,7 @@ def test_the_list_of_wants_is_bounded():
         w.feed("task_failed", thing_id=str(n), kind="task", label=f"справа {n}")
         run(w, 5 * 3600, step=600)
     assert len(w.wants) == HELD_AT_MOST
-    oldest = w.thing("0")
-    assert oldest is not None and oldest.state == "released"
+    assert w.thing("0") is None, "a released thing stayed in the file"
     newest = w.thing(str(HELD_AT_MOST + 7))
     assert newest is not None and newest.state == "alive"
 
@@ -211,3 +210,37 @@ def test_letting_one_go_by_hand_costs_no_energy():
     w.spoke("7", spent=False)
     assert w.energy == before
     assert w.wants[0].said == 1
+
+
+def test_the_table_holds_only_what_has_a_producer():
+    """A row is a decision, not a vocabulary: each one has an event that
+    feeds it. Twelve rows without a producer were cut on 10 November."""
+    from heare.engine.soma import APPRAISE
+
+    assert set(APPRAISE) == {
+        "task_opened", "task_done", "task_failed", "plan_said",
+    }
+
+
+def test_a_thing_that_stopped_mattering_is_let_go():
+    from heare.engine.soma import HELD_AT_MOST
+
+    w = soma()
+    w.feed("task_opened", thing_id="ancient", kind="task", label="старе")
+    run(w, 10 * 24 * 3600, step=3600)
+    for n in range(HELD_AT_MOST + 1):
+        w.feed("task_opened", thing_id=f"n{n}", kind="task", label=f"нове {n}")
+        run(w, 3600, step=600)
+    assert w.thing("ancient") is None, "a released thing stayed in the file"
+
+
+def test_the_trace_keeps_the_last_fifty():
+    w = soma()
+    for n in range(60):
+        w.feed("task_opened", thing_id=str(n), kind="task", label=f"зроблено {n}")
+        w.feed("task_done", thing_id=str(n), kind="task", label=f"зроблено {n}")
+        run(w, 600, step=600)
+    assert len(w.trace) == 50
+    assert "зроблено 59" in w.trace
+    assert "зроблено 0" not in w.trace
+    assert len(w.things) <= 50

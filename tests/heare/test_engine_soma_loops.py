@@ -66,6 +66,8 @@ def test_a_plan_becomes_a_thing_the_soul_holds(tmp_path):
 
     want = next(w for w in motor._soma.wants if w.verb == "finish")
     assert want.care > 0 and want.pressing >= 0.5
+    assert store.alive(clock()) == [], "a plan is not brought back in the same breath"
+    clock.go(11 * 60)
     held = [i for i in store.alive(clock()) if i.what == "завтра треба подзвонити мамі"]
     assert held, "the plan waits as an intent"
     assert "завтра треба подзвонити мамі" in motor.mood()
