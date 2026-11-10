@@ -97,6 +97,7 @@
   .task:first-child { border-top:0; padding-top:0; }
   .task p { font-family:var(--sans); font-size:13px; overflow-wrap:anywhere; }
   .task small { color:var(--soft); }
+  .task .acts { display:flex; gap:6px; }
   .tsteps { margin-top:2px; font:10.5px var(--mono); line-height:1.5; color:var(--soft); }
   .mini { padding:3px 9px; border:1px solid var(--line); border-radius:6px; background:transparent; cursor:pointer; font-size:11.5px; }
   .mini:hover { border-color:var(--accent); }
@@ -621,6 +622,7 @@
         <section class="widget" id="hold" hidden>
           <div class="label" data-t>On my mind</div>
           <div id="ask"></div>
+          <div id="intents"></div>
           <div id="tasks"></div>
         </section>
 
@@ -1086,9 +1088,33 @@ function noteTask(e) {
   entry.steps = entry.steps.slice(-3);
 }
 
+let held = [], holding = {live: [], permission: null, question: null};
+const holdShow = () => { $("hold").hidden = !holding.live.length && !holding.permission && !holding.question && !held.length; };
+function drawIntents() {
+  const words = {soma: tr("unfinished"), reminder: tr("a reminder"),
+                 task_done: tr("done"), task_failed: tr("failed")};
+  $("intents").replaceChildren(...held.map(i => {
+    const row = el("div", "task"), what = el("div");
+    what.append(el("p", "", i.what));
+    const dots = "●".repeat(i.weight) + "○".repeat(Math.max(0, 3 - i.weight));
+    what.append(el("small", "", [words[i.why] || "", dots].filter(Boolean).join(" · ")));
+    const now = el("button", "mini yes", tr("say now"));
+    now.onclick = () => api(`intents/${i.id}/now`, {method: "POST"}).then(heldNow);
+    const no = el("button", "mini", tr("not now"));
+    no.onclick = () => api(`intents/${i.id}/drop`, {method: "POST"}).then(heldNow);
+    const acts = el("div", "acts"); acts.append(now, no);
+    row.append(what, acts);
+    return row;
+  }));
+  holdShow();
+}
+const heldNow = () => api("intents")
+  .then(r => { held = r.intents || []; drawIntents(); })
+  .catch(() => {});
+
 function tasks(list, permission, question) {
   const live = list.filter(t => t.status === "running" || Date.now() / 1000 - (t.ended || 0) < 180);
-  $("hold").hidden = !live.length && !permission && !question;
+  holding = {live, permission, question}; holdShow();
   $("tasks").replaceChildren(...(live.length ? live.reverse().map(t => {
     const row = el("div", "task"), what = el("div");
     what.append(el("p", "", t.request));
@@ -1831,6 +1857,7 @@ const refresh = () => api("state").then(s => {
   born = s.session.started;
   state = s; phase = s.phase; voice = voiceOf(s);
   show(); vitals(s); tasks(s.tasks, s.permission, s.question); parts(s.bodies);
+  heldNow();
   mindSummary();
 });
 

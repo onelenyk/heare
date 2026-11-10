@@ -122,6 +122,9 @@ REMOTE_WINDOW_ALLOWED: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("GET", re.compile(r"^/api/heard$")),
     ("GET", re.compile(r"^/api/heard/[^/]+\.wav$")),
     ("GET", re.compile(r"^/api/features$")),
+    ("GET", re.compile(r"^/api/intents$")),
+    ("POST", re.compile(r"^/api/intents/\d+/now$")),
+    ("POST", re.compile(r"^/api/intents/\d+/drop$")),
     ("POST", re.compile(r"^/api/stop$")),
     ("POST", re.compile(r"^/api/tasks/\d+/stop$")),
     ("POST", re.compile(r"^/api/permission/\d+$")),
@@ -363,7 +366,7 @@ class Seen:
 
 def build(core: Core, settings: Any, vitals: Any = None,
           make_executor: Any = None, *, mind: Any = None,
-          features: Any = None,
+          features: Any = None, engine: Any = None,
           show_bodies: Callable[[Seen], None] | None = None) -> web.Application:
     """vitals: () -> dict of what the app knows and the core does not —
     which model is answering, and whether it is the one that was chosen.
@@ -1393,6 +1396,28 @@ def build(core: Core, settings: Any, vitals: Any = None,
                         id=intent_id)
         return web.json_response({"ok": True})
 
+    async def intents_held(request: web.Request) -> web.Response:
+        if engine is None:
+            return web.json_response({"intents": []})
+        return web.json_response({"intents": [
+            {"id": intent.id, "what": intent.what, "why": intent.why,
+             "weight": intent.weight, "made": intent.made,
+             "not_before": intent.not_before}
+            for intent in engine.held()
+        ]})
+
+    async def intent_say(request: web.Request) -> web.Response:
+        intent_id = int(request.match_info["id"])
+        if engine is None or not engine.say_now(intent_id):
+            raise web.HTTPNotFound(text="no such intent")
+        return web.json_response({"ok": True})
+
+    async def intent_drop(request: web.Request) -> web.Response:
+        intent_id = int(request.match_info["id"])
+        if engine is None or not engine.drop(intent_id):
+            raise web.HTTPNotFound(text="no such intent")
+        return web.json_response({"ok": True})
+
     async def save_profile(request: web.Request) -> web.Response:
         data = await body(request)
         try:
@@ -1721,6 +1746,9 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.post("/api/mind/sources/{name}/undo", source_undo),
         web.post("/api/mind/facts/{id:\\d+}/reject", reject_fact),
         web.post("/api/mind/reminders/{id:\\d+}/cancel", cancel_reminder),
+        web.get("/api/intents", intents_held),
+        web.post("/api/intents/{id:\\d+}/now", intent_say),
+        web.post("/api/intents/{id:\\d+}/drop", intent_drop),
         web.put("/api/mind/profile", save_profile),
         web.get("/api/screens", list_screens),
         web.put("/api/screens/{name}", save_screen),
@@ -1757,7 +1785,7 @@ def _status_view(event: Event) -> dict:
 
 async def serve(core: Core, settings: Any, vitals: Any = None,
                 make_executor: Any = None, *, mind: Any = None,
-                features: Any = None,
+                features: Any = None, engine: Any = None,
                 show_bodies: Callable[[Seen], None] | None = None) -> web.AppRunner:
     """Start the API, on this machine only unless ``api_host`` says else.
     Returns the runner to stop it.
@@ -1772,7 +1800,8 @@ async def serve(core: Core, settings: Any, vitals: Any = None,
     core.add_output(Canvas(Path(settings.canvas_file), core.state.emit))
     runner = web.AppRunner(build(core, settings, vitals,
                                  make_executor=make_executor, mind=mind,
-                                 features=features, show_bodies=show_bodies))
+                                 features=features, engine=engine,
+                                 show_bodies=show_bodies))
     await runner.setup()
     host = str(settings.api_host or "127.0.0.1")
     await web.TCPSite(runner, host, int(settings.api_port)).start()

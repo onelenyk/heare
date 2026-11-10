@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-09 21:50+0200\n"
+"POT-Creation-Date: 2026-11-10 10:57+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -698,13 +698,25 @@ msgstr ""
 msgid "{last} s · median {mid} s"
 msgstr ""
 
-msgid "working"
+msgid "unfinished"
+msgstr ""
+
+msgid "a reminder"
 msgstr ""
 
 msgid "done"
 msgstr ""
 
 msgid "failed"
+msgstr ""
+
+msgid "say now"
+msgstr ""
+
+msgid "not now"
+msgstr ""
+
+msgid "working"
 msgstr ""
 
 msgid "stopped"

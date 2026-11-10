@@ -303,6 +303,7 @@ class Brain:
                 lambda: list(self.core.executors.values()),
                 lambda: self.core.state.tasks),
             mind=self.mind, features=self.features,
+            engine=self.engine,
             show_bodies=lambda skilled: setattr(self, "bodies", skilled),
         )
         logs.say(_("the brain is at {url}").format(url=f"http://127.0.0.1:{self.settings.api_port}/"))

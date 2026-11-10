@@ -228,11 +228,11 @@ async def open_room(*, memory: bool = True, slow: float = 0.0, **core_kw) -> Roo
         has_executors=lambda: bool(core.executors), reminders=intents,
     ))
     room = Room(core, model, line, page, notebook)
-    room.extra["intents"] = intents
-    # Delivery is the engine's now: a scenario that expects a result to come
+    room.extra["intents"] = intents    # Delivery is the engine's now: a scenario that expects a result to come
     # back needs the engine running, exactly as the app runs it.
     motor = Engine(intents, state=core.state, speak=core.hear, gap=0.0,
                    quiet=("00:00", "00:00"), daily_limit=99)
+    room.extra["engine"] = motor
     room._run = asyncio.create_task(core.run())
     room._motor = asyncio.create_task(motor.run())
     await asyncio.sleep(0.01)

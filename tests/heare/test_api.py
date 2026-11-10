@@ -7,6 +7,7 @@ import json
 import logging
 import re
 import socket
+import time
 from importlib import metadata
 from pathlib import Path
 
@@ -46,6 +47,7 @@ async def _open(tmp_path, *, facts=None, intents=None, memory_dir=None,
         mind = Mind(facts, intents, settings, journal=journal, memory=memory)
     client = TestClient(TestServer(
         build(room.core, settings, mind=mind, features=features,
+              engine=room.extra.get("engine"),
               make_executor=make_executor)))
     await client.start_server()
     token = (tmp_path / "token").read_text()
@@ -1090,6 +1092,9 @@ def test_a_remote_window_keeps_the_pult_and_not_the_powers():
         ("GET", "/api/heard"),
         ("GET", "/api/heard/turn-1.wav"),
         ("GET", "/api/features"),
+        ("GET", "/api/intents"),
+        ("POST", "/api/intents/12/now"),
+        ("POST", "/api/intents/12/drop"),
         ("POST", "/api/stop"),
         ("POST", "/api/tasks/12/stop"),
         ("POST", "/api/permission/12"),
@@ -2795,4 +2800,31 @@ async def test_a_machine_asks_only_for_its_own_update_and_nothing_else(tmp_path)
     # The owner's button is not the machine's to press.
     pressed = await client.post("/api/update/machine", headers=machine, json={"machine": "machine@mac"})
     assert pressed.status == 403
+    await _close(room, client)
+
+
+async def test_what_the_engine_holds_is_shown_and_can_be_said_or_dropped(tmp_path):
+    room, client, auth, _ = await _open(tmp_path)
+    store = room.extra["intents"]
+    held = store.hold("Сайт готовий.", why="task_done", weight=2,
+                      about="task:t", until=time.time() + 3600)
+    listed = await (await client.get("/api/intents", headers=auth)).json()
+    assert [(i["what"], i["why"], i["weight"]) for i in listed["intents"]] == [
+        ("Сайт готовий.", "task_done", 2)]
+
+    room.model.will_say("Сайт готовий.")
+    said = await client.post(f"/api/intents/{held.id}/now", headers=auth)
+    assert await said.json() == {"ok": True}
+    await room.until(lambda: room.page.said)
+    assert "Сайт готовий." in room.page.said[-1]
+
+    other = store.hold("Онови залежності.", why="task_failed", weight=2,
+                       about="task:t2", until=time.time() + 3600)
+    dropped = await client.post(f"/api/intents/{other.id}/drop", headers=auth)
+    assert await dropped.json() == {"ok": True}
+    assert await (await client.get("/api/intents", headers=auth)).json() == {
+        "intents": []}
+
+    missing = await client.post("/api/intents/9999/drop", headers=auth)
+    assert missing.status == 404
     await _close(room, client)
