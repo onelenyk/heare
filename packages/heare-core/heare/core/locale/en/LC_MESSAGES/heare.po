@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-10 15:49+0200\n"
+"POT-Creation-Date: 2026-11-10 16:44+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -910,13 +910,7 @@ msgstr ""
 msgid "served by the brain"
 msgstr ""
 
-msgid "Remote · connected to the brain"
-msgstr ""
-
 msgid "no part is connected"
-msgstr ""
-
-msgid "no host"
 msgstr ""
 
 msgid "no part is connected now"
@@ -1414,7 +1408,7 @@ msgstr ""
 msgid "turn on"
 msgstr ""
 
-msgid "it has not reported yet"
+msgid "Windows and other parts"
 msgstr ""
 
 #, python-brace-format
@@ -1522,9 +1516,6 @@ msgstr ""
 msgid "On my mind"
 msgstr ""
 
-msgid "Machines"
-msgstr ""
-
 msgid "Controls"
 msgstr ""
 
@@ -1534,7 +1525,10 @@ msgstr ""
 msgid "Stop everything?"
 msgstr ""
 
-msgid "the brain's registry"
+msgid "Machines"
+msgstr ""
+
+msgid "what runs where"
 msgstr ""
 
 msgid "Screen"
@@ -2499,5 +2493,17 @@ msgstr ""
 #~ msgstr ""
 
 #~ msgid "the brain forgot this phone"
+#~ msgstr ""
+
+#~ msgid "Remote · connected to the brain"
+#~ msgstr ""
+
+#~ msgid "no host"
+#~ msgstr ""
+
+#~ msgid "it has not reported yet"
+#~ msgstr ""
+
+#~ msgid "the brain's registry"
 #~ msgstr ""
 

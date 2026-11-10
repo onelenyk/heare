@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-10 15:49+0200\n"
+"POT-Creation-Date: 2026-11-10 16:44+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -910,14 +910,8 @@ msgstr "Сторінка"
 msgid "served by the brain"
 msgstr "її віддає мозок"
 
-msgid "Remote · connected to the brain"
-msgstr "Віддалені · під'єднані до мозку"
-
 msgid "no part is connected"
 msgstr "жодна частина не під'єднана"
-
-msgid "no host"
-msgstr "без хоста"
 
 msgid "no part is connected now"
 msgstr "жодна частина не на зв'язку"
@@ -1414,8 +1408,8 @@ msgstr "вимкнути"
 msgid "turn on"
 msgstr "увімкнути"
 
-msgid "it has not reported yet"
-msgstr "ще не звітувала"
+msgid "Windows and other parts"
+msgstr "Вікна та інші частини"
 
 #, python-brace-format
 msgid "failure: {why}"
@@ -1530,9 +1524,6 @@ msgstr "Відкрити памʼять"
 msgid "On my mind"
 msgstr "Тримаю в голові"
 
-msgid "Machines"
-msgstr "Машини"
-
 msgid "Controls"
 msgstr "Керування"
 
@@ -1542,8 +1533,11 @@ msgstr "■ Стоп"
 msgid "Stop everything?"
 msgstr "Зупинити все?"
 
-msgid "the brain's registry"
-msgstr "реєстр мозку"
+msgid "Machines"
+msgstr "Машини"
+
+msgid "what runs where"
+msgstr "що де працює"
 
 msgid "Screen"
 msgstr "Екран"
@@ -2505,4 +2499,16 @@ msgstr "я перестав чути {s} секунд тому — схоже, �
 
 #~ msgid "the brain forgot this phone"
 #~ msgstr "мозок забув цей телефон"
+
+#~ msgid "Remote · connected to the brain"
+#~ msgstr "Віддалені · під'єднані до мозку"
+
+#~ msgid "no host"
+#~ msgstr "без хоста"
+
+#~ msgid "it has not reported yet"
+#~ msgstr "ще не звітувала"
+
+#~ msgid "the brain's registry"
+#~ msgstr "реєстр мозку"
 

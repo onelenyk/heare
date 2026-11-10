@@ -215,25 +215,30 @@
   .pchip .part-controls, .pchip .keys { display:flex; gap:10px; margin:0; }
   .pchip .swrow { width:auto; font-size:11px; color:var(--soft); gap:7px; }
   .pchip .swrow .sw { transform:scale(.85); }
-  /* Machines: one card each, the keeper's whole catalogue with switches.
-     Desired and actual are drawn apart: a wish the keeper has not carried
-     out yet reads «pending», not «done». */
-  #machines .machine { padding:9px 0; border-top:1px solid var(--line); }
-  #machines .machine:first-child { border-top:0; padding-top:0; }
-  #machines .mtop { display:flex; align-items:center; gap:7px; min-width:0; }
-  #machines .mname { font-weight:600; font-size:12.5px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  #machines .mdot { flex:none; width:7px; height:7px; border-radius:50%; background:var(--soft); }
-  #machines .mdot.on { background:#5cc47a; }
-  #machines .mstate { margin-left:auto; color:var(--soft); font-size:10.5px; white-space:nowrap; }
-  #machines .mmeta { margin-top:2px; color:var(--soft); font:10px/1.45 var(--mono); overflow-wrap:anywhere; }
-  #machines .mpart { display:flex; align-items:center; gap:6px; margin-top:6px; font-size:11.5px; min-width:0; }
-  #machines .mpart .mlabel { font-weight:500; white-space:nowrap; }
-  #machines .mpart small { min-width:0; color:var(--soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  #machines .mpart.pending small { color:var(--warn); }
-  #machines .mpart .msend { margin-left:auto; flex:none; accent-color:var(--accent); }
-  #machines .mactions { display:flex; gap:3px; flex:none; }
-  #machines .mact { padding:0 5px; line-height:1.5; font-size:11px; }
-  #machines .mrename { min-width:0; width:100%; padding:1px 4px; border:1px solid var(--accent); border-radius:5px; background:var(--bg); color:var(--ink); font:600 12px var(--sans); }
+  /* Machines: the left list is the fleet — one card per machine, its parts
+     merged into rows (the keeper's state and the registry's), and the
+     switches. The cards on the strip are the inspector, not a copy of it. */
+  #bodies .machine { border:1px solid var(--line); background:var(--card); border-radius:14px; padding:10px 12px; margin-bottom:9px; }
+  #bodies .mtop { display:flex; align-items:center; gap:7px; min-width:0; }
+  #bodies .mdot { flex:none; width:7px; height:7px; border-radius:50%; background:var(--soft); }
+  #bodies .mdot.on { background:#5cc47a; }
+  #bodies .mdot.warn { background:var(--warn); }
+  #bodies .mname { font-weight:600; font-size:12.5px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #bodies .mstate { margin-left:auto; color:var(--soft); font-size:10.5px; white-space:nowrap; }
+  #bodies .mmeta { margin-top:2px; color:var(--soft); font:10px/1.45 var(--mono); overflow-wrap:anywhere; }
+  #bodies .mactions { display:flex; gap:3px; flex:none; }
+  #bodies .mact { padding:0 5px; line-height:1.5; font-size:11px; }
+  #bodies .mrename { min-width:0; width:100%; padding:1px 4px; border:1px solid var(--accent); border-radius:5px; background:var(--bg); color:var(--ink); font:600 12px var(--sans); }
+  #bodies .mrow { display:flex; align-items:center; gap:7px; margin-top:6px; padding:3px 4px; border-radius:7px; font-size:11.5px; min-width:0; cursor:pointer; }
+  #bodies .mrow:hover { background:var(--card-2); }
+  #bodies .mrow .name { font-weight:500; white-space:nowrap; }
+  #bodies .mrow .state { min-width:0; color:var(--soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #bodies .mrow.pending .state { color:var(--warn); }
+  #bodies .mrow .state.why { color:var(--bad); }
+  #bodies .mrow .end { margin-left:auto; display:flex; align-items:center; gap:5px; flex:none; }
+  #bodies .sw { width:13px; height:13px; accent-color:var(--accent); margin:0; cursor:pointer; }
+  #bodies .sw[disabled] { opacity:.35; cursor:default; }
+  #bodies .pin { font:10px var(--mono); color:var(--soft); }
 
   /* The drawer: a part's settings across the strip, its tongue under the card. */
   .pdrawer { grid-column:1 / -1; position:relative; border:1px solid var(--accent); border-radius:16px; background:var(--card); padding:12px 16px 14px; min-width:0; }
@@ -646,11 +651,6 @@
           <div id="tasks"></div>
         </section>
 
-        <section class="widget" id="machines-widget" hidden>
-          <div class="label" data-t>Machines</div>
-          <div id="machines"></div>
-        </section>
-
         <section class="widget">
           <div class="label" data-t>Controls</div>
           <div class="keys">
@@ -660,7 +660,7 @@
         </section>
       </div>
 
-      <div class="band"><b data-t>Parts</b><span data-t>the brain's registry</span></div>
+      <div class="band"><b data-t>Machines</b><span data-t>what runs where</span></div>
 
       <div id="bodies"><p class="empty" data-t>no part is connected</p></div>
     </aside>
@@ -1613,29 +1613,14 @@ function builtIn() {
 }
 
 function parts(map) {
-  const box = $("bodies"), grid = $("partwidgets"), all = Object.entries(map || {});
+  const grid = $("partwidgets"), all = Object.entries(map || {});
+  drawFleet(all);
   if (!all.length) {
-    box.replaceChildren(...builtIn(), el("div", "place", tr("Remote · connected to the brain")), el("p", "empty", tr("no part is connected")));
     grid.replaceChildren(el("p", "empty", tr("no part is connected")));
     $("partchips").replaceChildren();
     $("partfold").replaceChildren();
     return;
   }
-  const groups = new Map();
-  for (const [pid, b] of all) {
-    const host = String(b.host || "").trim() || tr("no host");
-    if (!groups.has(host)) groups.set(host, []);
-    groups.get(host).push([pid, b]);
-  }
-  const first = ([, list]) => Math.min(...list.map(([, b]) => PART_ORDER[b.state] ?? 9));
-  const frag = document.createDocumentFragment();
-  frag.append(...builtIn(), el("div", "place", tr("Remote · connected to the brain")));
-  for (const [host, list] of [...groups].sort((a, b) => first(a) - first(b))) {
-    frag.append(el("div", "host", host));
-    list.sort((a, b) => (PART_ORDER[a[1].state] ?? 9) - (PART_ORDER[b[1].state] ?? 9));
-    for (const [pid, b] of list) frag.append(partRow(pid, b));
-  }
-  box.replaceChildren(frag);
   const ordered = [...all].sort((a, b) => placeOf(...a) - placeOf(...b));
   const big = ordered.filter(([pid, b]) => !isChip(pid, b));
   if (drawerPid && !big.some(([pid]) => pid === drawerPid)) drawerPid = null;
@@ -3124,120 +3109,191 @@ async function loadMachines() {
   try {
     const answer = await api("machines");
     machineList = answer.machines || [];
-    drawMachines();
+    parts(state && state.bodies);
   } catch (_) {}
 }
 
-function drawMachines() {
-  const box = $("machines");
-  $("machines-widget").hidden = !machineList.length;
-  box.replaceChildren(...machineList.map(machine => {
-    const card = el("div", "machine");
-    const top = el("div", "mtop");
-    top.append(el("span", "mdot" + (machine.state === "online" ? " on" : "")));
-    const name = el("b", "mname", machine.alias || machine.name);
-    name.title = machine.pid;
-    top.append(name, el("span", "mstate", machine.state === "online" ? tr("online") : tr("away")));
+/* The machine's own line: who it is, whether it is here, and the three
+   things one may do to it — name it, forget it, update it. */
+function machineTop(machine) {
+  const top = el("div", "mtop");
+  top.append(el("span", "mdot" + (machine.state === "online" ? " on" : "")));
+  const name = el("b", "mname", machine.alias || machine.name);
+  name.title = machine.pid;
+  top.append(name, el("span", "mstate", machine.state === "online" ? tr("online") : tr("away")));
 
-    const actions = el("span", "mactions");
-    const pencil = el("button", "mini mact", "✎");
-    pencil.type = "button"; pencil.title = tr("rename");
-    pencil.onclick = () => {
-      const field = el("input", "mrename");
-      field.value = machine.alias || machine.name;
-      top.replaceChild(field, name); field.focus(); field.select();
-      let done = false;
-      const save = () => {
-        if (done) return; done = true;
-        machineRename(machine.name, field.value.trim()).then(loadMachines).catch(loadMachines);
-      };
-      field.onkeydown = ev => {
-        if (ev.key === "Enter") save();
-        if (ev.key === "Escape") { done = true; loadMachines(); }
-      };
-      field.onblur = save;
+  const actions = el("span", "mactions");
+  const pencil = el("button", "mini mact", "✎");
+  pencil.type = "button"; pencil.title = tr("rename");
+  pencil.onclick = () => {
+    const field = el("input", "mrename");
+    field.value = machine.alias || machine.name;
+    top.replaceChild(field, name); field.focus(); field.select();
+    let done = false;
+    const save = () => {
+      if (done) return; done = true;
+      machineRename(machine.name, field.value.trim()).then(loadMachines).catch(loadMachines);
     };
-    actions.append(pencil);
-    if (machine.keyed) {
-      const drop = el("button", "mini mact", "✕");
-      drop.type = "button"; drop.title = tr("forget");
-      // Two presses, not a browser dialog: the app's window swallows those.
-      // The first says what it will do; the second, within a breath, does it.
-      drop.onclick = () => {
-        if (drop.dataset.armed !== "1") {
-          drop.dataset.armed = "1";
-          drop.textContent = "✕?";
-          drop.title = tr("forget this machine? its parts stop being trusted");
-          setTimeout(() => {
-            if (drop.isConnected) { drop.dataset.armed = "0"; drop.textContent = "✕"; }
-          }, 4000);
-          return;
-        }
-        machineForget(machine.name).then(loadMachines).catch(loadMachines);
-      };
-      actions.append(drop);
-    }
-    top.append(actions);
-    card.append(top);
+    field.onkeydown = ev => {
+      if (ev.key === "Enter") save();
+      if (ev.key === "Escape") { done = true; loadMachines(); }
+    };
+    field.onblur = save;
+  };
+  actions.append(pencil);
 
-    const load = machine.load && machine.load.length ? `${tr("load")} ${machine.load[0]}` : "";
-    const first = [machine.version ? "v" + machine.version : "", machine.platform, load]
-      .filter(Boolean).join(" · ");
-    if (first) card.append(el("div", "mmeta", first));
-
-    const free = machine.disk_free != null ? `${(machine.disk_free / 1e9).toFixed(1)} GB ${tr("free")}` : "";
-    const ram = machine.mem_total && machine.mem_free != null
-      ? `RAM ${(machine.mem_free / 1e9).toFixed(1)}/${(machine.mem_total / 1e9).toFixed(0)} GB ${tr("free")}`
-      : "";
-    const second = [free, ram].filter(Boolean).join(" · ");
-    if (second) card.append(el("div", "mmeta", second));
-
-    if (machine.seen) {
-      card.append(el("div", "mmeta",
-        `${tr("last seen")} ${new Date(machine.seen * 1000).toLocaleTimeString(LOCALE, {hour: "2-digit", minute: "2-digit"})}`));
-    }
-
-    const latest = updateState && updateState.latest;
-    if (latest && machine.reported && machine.version && machine.version !== latest) {
-      const up = el("button", "mini yes", tr("Update"));
-      up.type = "button";
-      up.onclick = () => {
-        up.disabled = true;
-        api("update/machine", {
-          method: "POST", body: {machine: machine.brain ? "machine@brain" : machine.pid},
-        }).catch(() => { up.disabled = false; });
-      };
-      card.append(up);
-    }
-
-    for (const part of machine.parts || []) {
-      const row = el("div", "mpart");
-      const pending = part.desired !== null && part.desired !== undefined && part.desired !== part.on;
-      if (pending) row.classList.add("pending");
-      row.append(el("span", "mlabel", tr(part.label || part.name)));
-      row.append(el("small", "", pending ? tr("pending")
-        : part.state === "unwell" && part.why ? part.why
-        : part.on ? tr("on") : tr("off")));
-      if (machine.reported && part.on) {
-        const again = el("button", "mini mact", "↻");
-        again.type = "button"; again.title = tr("restart");
-        again.onclick = () => machineRestart(machine.name, part.name).catch(() => {});
-        row.append(again);
+  if (machine.keyed) {
+    const drop = el("button", "mini mact", "✕");
+    drop.type = "button"; drop.title = tr("forget");
+    // Two presses, not a browser dialog: the app's window swallows those.
+    drop.onclick = () => {
+      if (drop.dataset.armed !== "1") {
+        drop.dataset.armed = "1";
+        drop.textContent = "✕?";
+        drop.title = tr("forget this machine? its parts stop being trusted");
+        setTimeout(() => {
+          if (drop.isConnected) { drop.dataset.armed = "0"; drop.textContent = "✕"; }
+        }, 4000);
+        return;
       }
-      const sw = el("input", "msend");
-      sw.type = "checkbox";
-      sw.checked = !!part.on;
-      sw.disabled = !machine.reported;
-      sw.title = part.on ? tr("turn off") : tr("turn on");
-      sw.onchange = () => machineTurn(machine.name, part.name, sw.checked)
-        .then(loadMachines)
-        .catch(() => { sw.checked = !sw.checked; });
-      row.append(sw);
-      card.append(row);
+      machineForget(machine.name).then(loadMachines).catch(loadMachines);
+    };
+    actions.append(drop);
+  }
+
+  const latest = updateState && updateState.latest;
+  if (latest && machine.reported && machine.version && machine.version !== latest) {
+    const up = el("button", "mini yes mact", tr("Update"));
+    up.type = "button";
+    up.onclick = () => {
+      up.disabled = true;
+      api("update/machine", {
+        method: "POST", body: {machine: machine.brain ? "machine@brain" : machine.pid},
+      }).catch(() => { up.disabled = false; });
+    };
+    actions.append(up);
+  }
+  top.append(actions);
+  return top;
+}
+
+function machineCard(machine) {
+  const card = el("div", "machine");
+  card.append(machineTop(machine));
+  const load = machine.load && machine.load.length ? `${tr("load")} ${machine.load[0]}` : "";
+  const first = [machine.version ? "v" + machine.version : "", machine.platform, load]
+    .filter(Boolean).join(" · ");
+  if (first) card.append(el("div", "mmeta", first));
+  const free = machine.disk_free != null ? `${(machine.disk_free / 1e9).toFixed(1)} GB ${tr("free")}` : "";
+  const ram = machine.mem_total && machine.mem_free != null
+    ? `RAM ${(machine.mem_free / 1e9).toFixed(1)}/${(machine.mem_total / 1e9).toFixed(0)} GB ${tr("free")}`
+    : "";
+  const second = [free, ram].filter(Boolean).join(" · ");
+  if (second) card.append(el("div", "mmeta", second));
+  if (machine.seen) {
+    card.append(el("div", "mmeta",
+      `${tr("last seen")} ${new Date(machine.seen * 1000).toLocaleTimeString(LOCALE, {hour: "2-digit", minute: "2-digit"})}`));
+  }
+  return card;
+}
+
+/* One part on one machine: the keeper's state, the registry's state, and
+   the one action that fits it — approve, switch, or just show why it is
+   off. The card on the strip is where its settings live. */
+function machineRow(machine, part, entries) {
+  const row = el("div", "mrow");
+  const pending = entries.find(([, b]) => b.state === "pending");
+  const desired = part.desired !== null && part.desired !== undefined && part.desired !== part.on;
+  const bad = part.state === "unwell";
+  if (pending || desired) row.classList.add("pending");
+  row.append(el("span", "mdot" + (pending || desired || bad ? " warn" : part.on ? " on" : "")));
+  row.append(el("span", "name", PART_LABEL[part.channel] || tr(part.label || part.name)));
+  if (entries.length > 1) row.append(el("span", "pin", "×" + entries.length));
+  const label = pending ? PART_STATE.pending
+    : desired ? tr("pending")
+    : bad && part.why ? part.why
+    : part.on ? tr("on") : tr("off");
+  row.append(el("span", "state" + (bad && part.why ? " why" : ""), label));
+
+  const end = el("span", "end");
+  if (pending) {
+    const yes = el("button", "mini yes", "✓");
+    const no = el("button", "mini no", "✗");
+    yes.type = "button"; yes.title = tr("Approve");
+    no.type = "button"; no.title = tr("No");
+    yes.onclick = ev => { ev.stopPropagation(); partCall(pending[0], "approve", yes); };
+    no.onclick = ev => { ev.stopPropagation(); partCall(pending[0], "reject", no); };
+    end.append(yes, no);
+  } else {
+    if (machine.reported && part.on) {
+      const again = el("button", "mini mact", "↻");
+      again.type = "button"; again.title = tr("restart");
+      again.onclick = ev => {
+        ev.stopPropagation();
+        machineRestart(machine.name, part.name).catch(() => {});
+      };
+      end.append(again);
     }
-    if (!machine.reported) card.append(el("div", "mmeta", tr("it has not reported yet")));
-    return card;
-  }));
+    const sw = el("input", "sw");
+    sw.type = "checkbox"; sw.checked = !!part.on; sw.disabled = !machine.reported;
+    sw.title = part.on ? tr("turn off") : tr("turn on");
+    sw.onclick = ev => ev.stopPropagation();
+    sw.onchange = () => machineTurn(machine.name, part.name, sw.checked)
+      .then(loadMachines)
+      .catch(() => { sw.checked = !sw.checked; });
+    end.append(sw);
+  }
+  row.append(end);
+  if (entries.length) {
+    row.title = entries.map(([pid]) => pid).join(" · ");
+    row.onclick = () => openPart(entries[0][0]);
+  }
+  return row;
+}
+
+/* The fleet: built-in first, then one card per machine with its parts, then
+   whatever has no machine (windows and the rest). */
+function drawFleet(all) {
+  const box = $("bodies");
+  if (typingIn(box)) return;
+  const byPid = new Map(all), used = new Set();
+  const frag = document.createDocumentFragment();
+  frag.append(...builtIn());
+  for (const machine of machineList) {
+    const card = machineCard(machine);
+    for (const part of machine.parts || []) {
+      const entries = (part.pids || []).map(pid => [pid, byPid.get(pid)]).filter(([, b]) => b);
+      for (const [pid] of entries) used.add(pid);
+      card.append(machineRow(machine, part, entries));
+    }
+    for (const [pid, b] of all) {
+      if (used.has(pid) || pid.startsWith("window@")) continue;
+      const belongs = (b.machine || (b.host ? `machine@${b.host}` : "")) === machine.pid;
+      if (belongs) { card.append(partRow(pid, b)); used.add(pid); }
+    }
+    frag.append(card);
+  }
+  const rest = all.filter(([pid]) => !used.has(pid));
+  if (rest.length) {
+    frag.append(el("div", "place", tr("Windows and other parts")));
+    for (const [pid, b] of rest) frag.append(partRow(pid, b));
+  }
+  if (!machineList.length && !rest.length)
+    frag.append(el("p", "empty", tr("no part is connected")));
+  box.replaceChildren(frag);
+}
+
+/* A row points at its card: the list is the fleet, the strip the inspector. */
+function openPart(pid) {
+  drawerPid = pid;
+  parts(state && state.bodies);
+  requestAnimationFrame(() => {
+    const card = document.querySelector(`#partcol [data-pid="${CSS.escape(pid)}"]`);
+    if (!card) return;
+    card.scrollIntoView({behavior: "smooth", block: "nearest"});
+    card.classList.add("lit");
+    setTimeout(() => card.classList.remove("lit"), 1600);
+  });
 }
 
 /* ── live ── */
