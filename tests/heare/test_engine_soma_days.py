@@ -112,23 +112,35 @@ def simulate(tmp_path, *, days: int = 7, daily_limit: int, seed: int = 7) -> dic
 
 
 def test_a_working_week_on_a_budget_of_one(tmp_path):
+    from heare.engine.soma import HELD_AT_MOST
+
     measured = simulate(tmp_path, daily_limit=1)
     print("daily_limit=1", measured)
     assert 3 <= measured["soma_delivered"] <= 15
     assert measured["min_energy"] >= 0.30
-    assert measured["still_held_soma"] <= 5
+    assert measured["still_held_soma"] <= HELD_AT_MOST
+    assert measured["wants_end"] <= HELD_AT_MOST, "the soul carried more than a dozen things"
 
 
 def test_a_working_week_on_a_budget_of_three(tmp_path):
+    from heare.engine.soma import HELD_AT_MOST
+
     measured = simulate(tmp_path, daily_limit=3)
     print("daily_limit=3", measured)
     assert measured["soma_delivered"] > 15
     assert measured["min_energy"] >= 0.05
+    assert measured["wants_end"] <= HELD_AT_MOST
 
 
 def test_a_working_week_with_no_budget(tmp_path):
+    from heare.engine.soma import HELD_AT_MOST
+
     measured = simulate(tmp_path, daily_limit=99)
     print("daily_limit=99", measured)
-    assert measured["soma_delivered"] > 150
+    # The list of wants is capped now, so fewer distinct things can be
+    # raised than before (352 on 9 November, 107 with the cap): still far
+    # past any budget, and the energy still dies.
+    assert measured["soma_delivered"] > 80
     assert measured["min_energy"] < 0.10
     assert measured["hours_below_0_15"] > 24
+    assert measured["wants_end"] <= HELD_AT_MOST

@@ -285,9 +285,12 @@ def tokens(text: str) -> list[str]:
 # A plan the person says out loud and will not do in this conversation:
 # «завтра треба подзвонити мамі», «нагадай про лікаря». The soul keeps it
 # and brings it back later; a question to the assistant is not a plan.
+#
+# A time word alone is not a plan: «завтра буде дощ» is a forecast. And a
+# negated need is the opposite of one: «не треба цього робити» was caught
+# as a task on 10 November. Only the verb of intent counts.
 _PLAN = re.compile(
-    r"\b(треба|потрібно|не\s+забут\w*|нагадай\w*|планую|збираюс\w*|обіцяю|"
-    r"завтра|післязавтра|пізніше|наступного\s+тижня)\b",
+    r"(?<!не )\b(треба|потрібно|не\s+забут\w*|нагадай\w*|планую|збираюс\w*|обіцяю)\b",
     re.IGNORECASE | re.UNICODE,
 )
 

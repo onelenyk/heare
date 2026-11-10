@@ -59,6 +59,16 @@ TIRED_PENALTY = 0.45
 # More than three held remarks in one breath is a wall of text, not a remark.
 NEWS_PER_BREATH = 3
 
+# What the model reads when the soul brings something up. The work-result
+# prefix here made her say "the work is done" about a plan (10 November):
+# the soul carries a thing, it does not finish one.
+SOUL_PREFIX = (
+    "[on your mind] Nothing is finished: this is a thing you have been "
+    "carrying. Bring it up in one or two sentences, in the person's language, "
+    "as your own thought — not as a report, and do not say it is done. "
+    "What presses:"
+)
+
 # The least it says two things in a row. It grows bolder when the person
 # answers and waits longer when nobody does — trust, earned and lost.
 BASE_GAP_S = 4 * 60.0
@@ -130,7 +140,11 @@ class Engine:
     def note(self, event: Any) -> None:
         """One event from the core: hold what it means, then deliver what is due."""
         kind = getattr(event, "kind", "")
-        if kind == "heard":
+        # Only the person's own words count. The engine's remark comes back
+        # as heard too, and without this it counted as the person answering
+        # its own remark: the gap only narrowed, and a want was «carried»
+        # before anyone had heard it.
+        if kind == "heard" and event.data.get("person", True):
             self._heard_at = self._now()
             self._the_person_spoke()
             self._catch_plan(event)
@@ -199,7 +213,9 @@ class Engine:
         about = tag(SOMA, reference)
         for intent in self._intents.alive(now):
             if intent.about == about:
-                self._intents.done(intent, at=now)
+                # Not "delivered": it was never said, and a delivered mark
+                # would eat the daily budget and the page's count.
+                self._intents.done(intent, status="dropped", at=now)
 
     def _watch_tasks(self) -> None:
         """A task that is running is a thing left open; the soma keeps it."""
@@ -248,6 +264,23 @@ class Engine:
         )
         say(f"engine: held {want.verb} {want.thing_id} pressing {want.pressing:.2f}")
 
+    def _forget_released(self, now: float) -> None:
+        """A want the soul let go takes its waiting remark with it.
+
+        Without this the cap only moved the backlog from ``soma.json`` into
+        ``intents.json``: a released want's remark stayed held for its three
+        days and the page showed work that had stopped mattering.
+        """
+        if self._soma is None:
+            return
+        for intent in self._intents.alive(now):
+            reference = tagged(intent.about, SOMA)
+            if reference is None:
+                continue
+            thing = self._soma.thing(reference)
+            if thing is None or thing.state != "alive":
+                self._intents.done(intent, status="dropped", at=now)
+
     def _energy(self) -> None:
         """Say once when tiredness starts, and once when it has worn off."""
         if self._soma is None:
@@ -290,7 +323,8 @@ class Engine:
         if self._soma is not None and intent.why == SOMA:
             reference = tagged(intent.about, SOMA)
             if reference is not None:
-                self._soma.spoke(reference)
+                # Heard, not spoken: letting one go by hand costs no energy.
+                self._soma.spoke(reference, spent=False)
         say(f"engine: dropped {intent_id} by hand")
         return True
 
@@ -357,6 +391,8 @@ class Engine:
         if self._speak is None:
             return
         now = self._now()
+        self._forget_released(now)
+        self._intents.forget(now)
         held = self._intents.alive(now)
         # The result of work the person asked for is the answer to them, not
         # news they did not ask for: no daily budget, no quiet hours, and no
@@ -420,7 +456,8 @@ class Engine:
         reminder is exact words and costs no model call at all.
         """
         reminders = [i for i in intents if i.why == REMINDER]
-        news = [i for i in intents if i.why != REMINDER]
+        soul = [i for i in intents if i.why == SOMA]
+        news = [i for i in intents if i.why not in (REMINDER, SOMA)]
         if reminders:
             self._speak(Message(
                 text=_("Reminder: {what}").format(what="; ".join(i.what for i in reminders)),
@@ -429,6 +466,10 @@ class Engine:
         if news:
             lines = "\n".join(f"— {i.what}" for i in news)
             self._speak(Message(text=f"{RESULT_PREFIX}\n{lines}",
+                                channel="engine", person=False))
+        if soul:
+            lines = "\n".join(f"— {i.what}" for i in soul)
+            self._speak(Message(text=f"{SOUL_PREFIX}\n{lines}",
                                 channel="engine", person=False))
         now = self._now()
         if (self._last_spoke is not None and not self._answered
@@ -446,7 +487,8 @@ class Engine:
                 if reference is not None:
                     self._soma.spoke(reference)
                     self._last_soma_thing = reference
-        say(f"engine: said {len(reminders)} reminder(s), {len(news)} news")
+        say(f"engine: said {len(reminders)} reminder(s), {len(news)} news, "
+            f"{len(soul)} on the mind")
         self._last_spoke = now
         self._ready_at = now + self._gap_s
         self._answered = False

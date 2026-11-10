@@ -121,3 +121,15 @@ def test_cancel_refuses_unknown_non_reminder_and_done(tmp_path):
     assert notes.cancel(work.id, why="reminder") is False
     assert notes.cancel(delivered.id) is False
     assert notes.cancel(reminder.id) is True
+
+
+def test_what_can_no_longer_be_said_is_not_kept(tmp_path):
+    path = tmp_path / "intents.json"
+    notes = Intents(path)
+    notes.hold("старе", "soma", 1, until=50.0)
+    notes.hold("живе", "soma", 1, until=500.0)
+    notes.done(notes.hold("зайве", "soma", 1), status="dropped")
+
+    notes.forget(now=100.0)
+    rows = json.loads(path.read_text(encoding="utf-8"))
+    assert [row["what"] for row in rows] == ["живе"]

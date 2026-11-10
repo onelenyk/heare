@@ -66,6 +66,17 @@ DONE_EVENTS = {"task_done"}
 SHOCK_EVENTS = {"task_failed", "correction", "contradiction", "interrupted"}
 
 PRESS_REGROW_PER_S = 0.0003
+# A want already said, or taken over by the person, stops mattering at this
+# half-life. Without it care only grows: after a week of remarks the mood
+# line said "heavy" forever while nothing could be raised any more.
+FADE_HALF_LIFE_S = 3 * 24 * 3600.0
+# A dozen open loops is what a person carries; more is a list, not a soul.
+# A week of work left 123 wants pressing at 1.0 and the prompt showed the
+# three oldest forever (10 November).
+HELD_AT_MOST = 12
+# Age is not urgency: pressing saturates at 1.0, so a raw sort raises the
+# oldest and a full list never lets a new failure in. What is fresh counts.
+RELEVANCE_HALF_LIFE_S = 2 * 24 * 3600.0
 HABIT = [1.0, 0.35, 0.12, 0.05, 0.02]
 ENGAGE_KEEP = 0.5
 ENERGY_START = 1.0
@@ -94,6 +105,9 @@ class Want:
     pressing: float = 0.0
     said: int = 0
     carried: bool = False
+    # When it began, on the soul's own clock: the tie-break between wants
+    # that press equally hard, so the newest is raised, not the oldest.
+    born: float = 0.0
 
 
 @dataclass
@@ -135,7 +149,7 @@ class Soma:
     def _ensure_want(self, verb: str, thing_id: str) -> Want:
         want = self._want(verb, thing_id)
         if want is None:
-            want = Want(verb=verb, thing_id=thing_id)
+            want = Want(verb=verb, thing_id=thing_id, born=self.t)
             self.wants.append(want)
         return want
 
@@ -161,7 +175,12 @@ class Soma:
         step = seconds * self.scale
         self.t += step
         for want in self.wants:
-            want.care = _clamp(want.care + VERB[want.verb]["rise"] * step * (1.0 - want.care), 0.0, 1.0)
+            if want.carried or want.said:
+                # Heard, or in the person's hands: it fades instead of
+                # growing. A want nobody has heard yet keeps rising.
+                want.care *= 0.5 ** (step / FADE_HALF_LIFE_S)
+            else:
+                want.care = _clamp(want.care + VERB[want.verb]["rise"] * step * (1.0 - want.care), 0.0, 1.0)
             if want.carried:
                 continue
             target = want.care * _habit(want.said)
@@ -169,20 +188,32 @@ class Soma:
                 want.pressing = min(target, want.pressing + PRESS_REGROW_PER_S * step * (target - want.pressing))
         self.energy = min(1.0, self.energy + REST_PER_S * step)
         self.wants = [w for w in self.wants if w.care >= DROP_BELOW]
+        if len(self.wants) > HELD_AT_MOST:
+            # Everything else is let go: the thing stays as released, with
+            # no trace — it was not done, it stopped mattering.
+            self.wants.sort(key=self._rank, reverse=True)
+            del self.wants[HELD_AT_MOST:]
         for thing in self.things:
             if thing.state == "alive" and not any(w.thing_id == thing.id for w in self.wants):
                 thing.state = "released"
 
     def hottest(self) -> Want | None:
-        """The want that presses hardest; the engine decides whether it is enough."""
-        best: Want | None = None
-        for want in self.wants:
-            if best is None or want.pressing > best.pressing:
-                best = want
-        return best
+        """What presses hardest and freshest; the engine decides whether it is enough."""
+        return max(self.wants, key=self._rank, default=None)
 
-    def spoke(self, thing_id: str) -> None:
-        self.energy = max(0.0, self.energy - SPEAK_COST)
+    def _rank(self, want: Want) -> tuple[float, float]:
+        """What is raised first: pressing, discounted by age, newest on a tie.
+        Pressing saturates at 1.0, so without the discount the oldest always
+        wins and a full list is frozen (10 November)."""
+        age = max(0.0, self.t - want.born)
+        fresh = 0.5 ** (age / RELEVANCE_HALF_LIFE_S)
+        return (want.pressing * fresh, want.born)
+
+    def spoke(self, thing_id: str, *, spent: bool = True) -> None:
+        """It has been heard: pressing falls to zero. Only a remark she
+        actually made costs energy — letting one go by hand is not speaking."""
+        if spent:
+            self.energy = max(0.0, self.energy - SPEAK_COST)
         for want in self.wants:
             if want.thing_id == thing_id:
                 want.pressing = 0.0
@@ -215,7 +246,7 @@ class Soma:
 
     def state(self) -> str:
         lines: list[str] = []
-        ranked = sorted(self.wants, key=lambda w: w.pressing, reverse=True)[:3]
+        ranked = sorted(self.wants, key=self._rank, reverse=True)[:3]
         for want in ranked:
             word = VERB[want.verb]["word"]
             thing = self._thing(want.thing_id)
@@ -306,7 +337,7 @@ def _from_v2(raw: dict) -> Soma:
         soma.things = [_thing(row) for row in things if isinstance(row, dict)]
     wants = raw.get("wants")
     if isinstance(wants, list):
-        soma.wants = [_want(row) for row in wants if isinstance(row, dict)]
+        soma.wants = [_want(row, soma.t) for row in wants if isinstance(row, dict)]
     trace = raw.get("trace")
     if isinstance(trace, list):
         soma.trace = [t for t in trace if isinstance(t, str)]
@@ -355,14 +386,20 @@ def _thing(row: dict) -> Thing:
     return Thing(**known)
 
 
-def _want(row: dict) -> Want:
-    known = {k: v for k, v in row.items() if k in {"verb", "thing_id", "care", "pressing", "said", "carried"}}
+def _want(row: dict, now: float) -> Want:
+    known = {
+        k: v for k, v in row.items()
+        if k in {"verb", "thing_id", "care", "pressing", "said", "carried", "born"}
+    }
     known["verb"] = _text(known.get("verb"))
     known["thing_id"] = _text(known.get("thing_id"))
     known["care"] = _number(known.get("care"))
     known["pressing"] = _number(known.get("pressing"))
     known["said"] = known.get("said") if isinstance(known.get("said"), int) else 0
     known["carried"] = _bool(known.get("carried"))
+    # A file written before ``born`` existed starts every want at "now":
+    # beginning-of-time would age them all into irrelevance at once.
+    known["born"] = _number(known.get("born"), now)
     return Want(**known)
 
 
@@ -376,8 +413,18 @@ def _heat(urgency: float) -> str:
     return "badly"
 
 
+def _presses(want: Want) -> float:
+    """What a want still weighs on the mood: only what it can still raise.
+
+    A remark already made, or work the person has taken over, stays in the
+    list but no longer presses; counting its raw care is what made the mood
+    "heavy" over things she had stopped raising.
+    """
+    return 0.0 if want.carried else want.care * _habit(want.said)
+
+
 def _mood(wants: list[Want], has_trace: bool) -> str:
-    level = _clamp(sum(want.care for want in wants) / 3.0, 0.0, 1.0)
+    level = _clamp(sum(_presses(want) for want in wants) / 3.0, 0.0, 1.0)
     valence = _clamp(0.45 - level * 0.9 + (0.1 if has_trace else 0.0), -1.0, 1.0)
     if valence < -0.4:
         return "heavy"

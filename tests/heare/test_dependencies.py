@@ -52,7 +52,10 @@ LEAVES = {"heare.keys", "heare.laws", "heare.model.providers", "heare.hand", "he
 # 9 November 2026 for the executor's own id and machine: the pid is who does
 # the work, the channel only says what kind of hands it is — and for the
 # origin machine of the utterance and the hand the model named on the Task.
-CORE_LINES = 1631
+# On 10 November 2026 for ``person`` on the heard event: the engine's own
+# remark comes back as heard, and without the flag it counted as the person
+# answering — the gap only ever narrowed and a want was «carried» at once.
+CORE_LINES = 1634
 
 
 def _imports(path: Path) -> set[str]:

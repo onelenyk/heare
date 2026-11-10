@@ -124,3 +124,48 @@ def test_the_news_is_said_the_same_with_a_soma_and_without(tmp_path):
     motor_plain.note(event("done"))
     assert len(said_body) == len(said_plain) == 1
     assert said_body[0].text == said_plain[0].text
+
+
+def test_its_own_remark_is_not_the_person_answering(tmp_path):
+    store, said, motor, clock = engine(tmp_path, soma=Soma())
+    motor.note(event("failed"))
+    assert said, "the remark has to go out first"
+    gap = motor._gap_s
+    clock.go(60)
+    motor.note(Ev("heard", {"text": said[0].text, "channel": "engine", "person": False}))
+    assert motor._answered is False, "the engine counted its own echo as an answer"
+    assert motor._gap_s == gap, "the gap narrowed on its own echo"
+
+
+def test_the_person_answering_narrows_the_gap(tmp_path):
+    store, said, motor, clock = engine(tmp_path, soma=Soma())
+    motor.note(event("failed"))
+    gap = motor._gap_s
+    clock.go(60)
+    motor.note(Ev("heard", {"text": "дякую", "channel": "voice", "person": True}))
+    assert motor._answered is True
+    assert motor._gap_s < gap
+
+
+def test_a_soul_remark_is_not_a_work_result(tmp_path):
+    from heare.core.conversation import RESULT_PREFIX
+    from heare.engine.engine import SOUL_PREFIX
+
+    store, said, motor, clock = engine(tmp_path, soma=Soma())
+    motor.note(event("failed"))
+    clock.go(3600)
+    motor.note(tick())
+    soul = [message for message in said if SOUL_PREFIX in message.text]
+    assert soul, "the soul's remark was never said"
+    assert RESULT_PREFIX not in soul[0].text
+    assert "зроби сайт" in soul[0].text
+
+
+def test_dropping_by_hand_is_not_speaking(tmp_path):
+    store, said, motor, clock = engine(tmp_path, soma=Soma())
+    motor.note(event("failed"))
+    energy = motor._soma.energy
+    held = [i for i in store.alive(clock()) if i.why == "soma"]
+    assert held, "the want waits as an intent"
+    assert motor.drop(held[0].id)
+    assert motor._soma.energy == energy, "a drop cost the energy of a remark"

@@ -465,7 +465,10 @@ class Core:
                 return
         self._last_channel = message.reply_on or message.channel
         if message.addressed:
-            self.state.emit("heard", text=message.text, channel=message.channel)
+            # ``person`` says whose words these are: the engine's own remark
+            # comes back as heard, and must not count as the person answering.
+            self.state.emit("heard", text=message.text, channel=message.channel,
+                            person=message.person)
 
         if self._question is not None and self._spoken is not None:
             if self.words.is_halt(message.text, self.names):

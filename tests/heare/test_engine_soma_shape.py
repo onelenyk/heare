@@ -21,8 +21,11 @@ ENGINE = PACKAGES / "heare-brain" / "heare" / "engine"
 SOMA = ENGINE / "soma.py"
 
 # Room to finish a thought, not to grow a wing. Raised deliberately, with a
-# reason in the commit, the way CORE_LINES is.
-SOMA_LINES = 420
+# reason in the commit, the way CORE_LINES is. 10 November 2026: +20 for
+# forgetting (a said or carried want fades) and the mood that follows it;
+# +20 more for the bounded list — a dozen wants, ranked by pressing and
+# age, and a drop that costs no energy.
+SOMA_LINES = 460
 
 # The engine's whole conversation with the soul. ``feed`` and ``tick`` are
 # what happens; ``spoke``, ``engage``, ``ignored`` are how the person

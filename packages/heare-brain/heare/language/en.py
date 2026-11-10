@@ -257,9 +257,11 @@ def tokens(text: str) -> list[str]:
     return _WORD.findall((text or "").lower())
 
 
+# Only the verb of intent. «I'll» and «tomorrow» alone caught everything:
+# «I'll be there in five», «tomorrow it will rain» (10 November).
 _PLAN = re.compile(
     r"\b(i\s+need\s+to|i\s+have\s+to|i'?ve\s+got\s+to|remind\s+me|don'?t\s+forget|"
-    r"i'?ll|i'?m\s+going\s+to|i\s+am\s+going\s+to|tomorrow|later\s+today)\b",
+    r"i'?m\s+going\s+to|i\s+am\s+going\s+to)\b",
     re.IGNORECASE | re.UNICODE,
 )
 

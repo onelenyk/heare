@@ -117,6 +117,21 @@ class Intents:
             intent.delivered_at = at
         self._save()
 
+    def forget(self, now: float) -> None:
+        """Rows that can no longer say anything: a held note past its
+        ``until``, and one already dropped. Delivered rows stay — they are
+        the day's count. Without this the file grew with every note ever
+        held, and every save rewrote all of them."""
+        keep = {
+            intent.id: intent for intent in self._by_id.values()
+            if intent.status != "dropped"
+            and not (intent.status == "held"
+                     and intent.until is not None and intent.until <= now)
+        }
+        if len(keep) != len(self._by_id):
+            self._by_id = keep
+            self._save()
+
     def news_delivered(self, now: float) -> int:
         """How many unsolicited news intents were told on this local day."""
         day = datetime.fromtimestamp(now).date()

@@ -82,3 +82,41 @@ def test_without_a_detector_nothing_is_caught(tmp_path):
     store, said, motor, clock = engine(tmp_path, loop=None)
     motor.note(heard("завтра треба подзвонити мамі"))
     assert not [w for w in motor._soma.wants if w.verb == "finish"]
+
+
+def test_the_engine_does_not_hear_its_own_remark(tmp_path):
+    """The delivery comes back as ``heard``; it is not the person speaking."""
+    store, said, motor, clock = engine(tmp_path)
+    motor.note(Ev("heard", {
+        "text": "Нагадування: завтра треба подзвонити мамі",
+        "channel": "engine", "person": False,
+    }))
+    assert not [w for w in motor._soma.wants if w.verb == "finish"]
+    assert said == []
+
+
+def test_a_work_result_is_not_a_plan(tmp_path):
+    from heare.core.conversation import RESULT_PREFIX
+
+    store, said, motor, clock = engine(tmp_path)
+    motor.note(Ev("heard", {
+        "text": f"{RESULT_PREFIX}\n— завтра треба подзвонити мамі",
+        "channel": "engine", "person": False,
+    }))
+    assert not [w for w in motor._soma.wants if w.verb == "finish"]
+
+
+def test_a_negated_need_is_not_a_plan():
+    assert uk.open_loop("не треба цього робити") is None
+    assert uk.open_loop("мені не потрібно нічого") is None
+
+
+def test_a_statement_about_tomorrow_is_not_a_plan():
+    assert uk.open_loop("завтра буде дощ") is None
+    assert uk.open_loop("завтра я на конференції") is None
+    assert en.open_loop("tomorrow it will rain") is None
+
+
+def test_a_plain_future_is_not_a_plan():
+    assert en.open_loop("I'll be there in five") is None
+    assert en.open_loop("it will be fine") is None
