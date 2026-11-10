@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-10 10:57+0200\n"
+"POT-Creation-Date: 2026-11-10 15:42+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -1378,6 +1378,33 @@ msgstr ""
 msgid "Copied"
 msgstr ""
 
+msgid "online"
+msgstr ""
+
+msgid "away"
+msgstr ""
+
+msgid "load"
+msgstr ""
+
+msgid "free"
+msgstr ""
+
+msgid "last seen"
+msgstr ""
+
+msgid "pending"
+msgstr ""
+
+msgid "turn off"
+msgstr ""
+
+msgid "turn on"
+msgstr ""
+
+msgid "it has not reported yet"
+msgstr ""
+
 #, python-brace-format
 msgid "failure: {why}"
 msgstr ""
@@ -1481,6 +1508,9 @@ msgid "Open memory"
 msgstr ""
 
 msgid "On my mind"
+msgstr ""
+
+msgid "Machines"
 msgstr ""
 
 msgid "Controls"

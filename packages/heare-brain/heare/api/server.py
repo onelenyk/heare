@@ -47,6 +47,7 @@ from heare.api import pair as codes
 from heare.api.grants import Grants
 from heare.api.heard import Recordings
 from heare.api import skills
+from heare.api.machines import Machines
 from heare.api.registry import Registry
 from heare.api.sessions import MAX_FILE_BYTES, Kept, Sessions
 from heare.hand import Gone
@@ -449,6 +450,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         if pid.startswith("machine@"):
             if (request.method, request.path) in (
                     ("POST", "/api/parts"), ("POST", "/api/bodies"),
+                    ("POST", "/api/machine/mine/report"),
                     ("GET", "/api/update/mine"),
                     ("POST", "/api/update/mine/failed")):
                 request["part"] = pid
@@ -649,6 +651,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         if found is not None and hasattr(found, "close"):
             found.close()
 
+    machines = Machines(Path(settings.parts_dir).parent / "machines.json")
     registry = Registry(
         Path(settings.parts_file), core.state.emit,
         on_executor if make_executor is not None else None,
@@ -786,6 +789,48 @@ def build(core: Core, settings: Any, vitals: Any = None,
         if (not window and "output" in forms and channel not in core.outputs
                 and not registry.executor_on(channel)):
             core.add_output(VoiceOut(core, channel))
+
+    async def machine_report(request: web.Request) -> web.Response:
+        """A keeper says what its machine has; the answer is what to run.
+
+        A machine's own key says which machine it is. The brain's own keeper
+        has the master key and no machine name of its own, so it says the
+        name in the body — it is the owner on the loopback, and a window is
+        not a machine.
+        """
+        data = await body(request)
+        given = str(request.get("part") or "")
+        if given and not given.startswith("machine@"):
+            raise web.HTTPForbidden(text="not a machine")
+        if not given:
+            if request.get("window"):
+                raise web.HTTPForbidden(text="a window is not a machine")
+            name = re.sub(r"[^A-Za-z0-9._-]", "", str(data.get("name") or ""))[:40]
+            if not name:
+                raise web.HTTPBadRequest(text="a machine needs a name")
+            given = f"machine@{name}"
+        return web.json_response({
+            "desired": machines.report(given, data, time.time()),
+        })
+
+    async def machines_list(request: web.Request) -> web.Response:
+        return web.json_response({
+            "machines": machines.view(registry.known, time.time()),
+        })
+
+    async def machine_part(request: web.Request) -> web.Response:
+        """The person's switch: what this machine should run from now on."""
+        name = request.match_info["name"]
+        part = request.match_info["part"]
+        data = await body(request)
+        on = data.get("on")
+        if not isinstance(on, bool):
+            raise web.HTTPBadRequest(text="on is true or false")
+        if not machines.desire(f"machine@{name}", part, on):
+            raise web.HTTPBadRequest(text="not a part name")
+        return web.json_response({
+            "machines": machines.view(registry.known, time.time()),
+        })
 
     async def register(request: web.Request) -> web.Response:
         """A part knocks; the person decides whether to trust it.
@@ -1670,6 +1715,9 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.post("/api/message", message),
         web.get("/health", health),
         web.post("/api/parts", register),
+        web.post("/api/machine/mine/report", machine_report),
+        web.get("/api/machines", machines_list),
+        web.post("/api/machines/{name}/parts/{part}", machine_part),
         web.post("/api/bodies", register),  # the old name, still a part's knock
         web.post("/api/bodies/{id}/approve", approve),
         web.post("/api/bodies/{id}/reject", reject),

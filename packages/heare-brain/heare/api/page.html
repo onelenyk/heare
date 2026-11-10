@@ -215,6 +215,23 @@
   .pchip .part-controls, .pchip .keys { display:flex; gap:10px; margin:0; }
   .pchip .swrow { width:auto; font-size:11px; color:var(--soft); gap:7px; }
   .pchip .swrow .sw { transform:scale(.85); }
+  /* Machines: one card each, the keeper's whole catalogue with switches.
+     Desired and actual are drawn apart: a wish the keeper has not carried
+     out yet reads «pending», not «done». */
+  #machines .machine { padding:9px 0; border-top:1px solid var(--line); }
+  #machines .machine:first-child { border-top:0; padding-top:0; }
+  #machines .mtop { display:flex; align-items:center; gap:7px; min-width:0; }
+  #machines .mname { font-weight:600; font-size:12.5px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #machines .mdot { flex:none; width:7px; height:7px; border-radius:50%; background:var(--soft); }
+  #machines .mdot.on { background:#5cc47a; }
+  #machines .mstate { margin-left:auto; color:var(--soft); font-size:10.5px; white-space:nowrap; }
+  #machines .mmeta { margin-top:2px; color:var(--soft); font:10px/1.45 var(--mono); overflow-wrap:anywhere; }
+  #machines .mpart { display:flex; align-items:center; gap:6px; margin-top:6px; font-size:11.5px; min-width:0; }
+  #machines .mpart .mlabel { font-weight:500; white-space:nowrap; }
+  #machines .mpart small { min-width:0; color:var(--soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #machines .mpart.pending small { color:var(--warn); }
+  #machines .mpart .msend { margin-left:auto; flex:none; accent-color:var(--accent); }
+
   /* The drawer: a part's settings across the strip, its tongue under the card. */
   .pdrawer { grid-column:1 / -1; position:relative; border:1px solid var(--accent); border-radius:16px; background:var(--card); padding:12px 16px 14px; min-width:0; }
   .pdrawer::before { content:""; position:absolute; top:-7px; left:calc(var(--tongue, 40px) - 6px); width:12px; height:12px; background:var(--card); border-left:1px solid var(--accent); border-top:1px solid var(--accent); transform:rotate(45deg); }
@@ -624,6 +641,11 @@
           <div id="ask"></div>
           <div id="intents"></div>
           <div id="tasks"></div>
+        </section>
+
+        <section class="widget" id="machines-widget" hidden>
+          <div class="label" data-t>Machines</div>
+          <div id="machines"></div>
         </section>
 
         <section class="widget">
@@ -3081,6 +3103,64 @@ let restoring = null;
 try { restoring = sessionStorage.getItem("heare-restoring"); sessionStorage.removeItem("heare-restoring"); } catch (_) {}
 if (restoring) { mindOpenDrawer(); mindShow("backups"); }
 
+/* ── machines ── */
+let machineList = [];
+const machineTurn = (name, part, on) => api(
+  `machines/${encodeURIComponent(name)}/parts/${encodeURIComponent(part)}`,
+  {method: "POST", body: {on}});
+
+async function loadMachines() {
+  try {
+    const answer = await api("machines");
+    machineList = answer.machines || [];
+    drawMachines();
+  } catch (_) {}
+}
+
+function drawMachines() {
+  const box = $("machines");
+  $("machines-widget").hidden = !machineList.length;
+  box.replaceChildren(...machineList.map(machine => {
+    const card = el("div", "machine");
+    const top = el("div", "mtop");
+    top.append(el("span", "mdot" + (machine.state === "online" ? " on" : "")),
+               el("b", "mname", machine.name),
+               el("span", "mstate", machine.state === "online" ? tr("online") : tr("away")));
+    card.append(top);
+    const load = machine.load && machine.load.length ? `${tr("load")} ${machine.load[0]}` : "";
+    const first = [machine.version ? "v" + machine.version : "", machine.platform, load]
+      .filter(Boolean).join(" · ");
+    if (first) card.append(el("div", "mmeta", first));
+    const free = machine.disk_free != null ? `${(machine.disk_free / 1e9).toFixed(1)} GB ${tr("free")}` : "";
+    const seen = machine.seen
+      ? `${tr("last seen")} ${new Date(machine.seen * 1000).toLocaleTimeString(LOCALE, {hour: "2-digit", minute: "2-digit"})}`
+      : "";
+    const second = [free, seen].filter(Boolean).join(" · ");
+    if (second) card.append(el("div", "mmeta", second));
+    for (const part of machine.parts || []) {
+      const row = el("div", "mpart");
+      const pending = part.desired !== null && part.desired !== undefined && part.desired !== part.on;
+      if (pending) row.classList.add("pending");
+      row.append(el("span", "mlabel", tr(part.label || part.name)));
+      row.append(el("small", "", pending ? tr("pending")
+        : part.state === "unwell" && part.why ? part.why
+        : part.on ? tr("on") : tr("off")));
+      const sw = el("input", "msend");
+      sw.type = "checkbox";
+      sw.checked = !!part.on;
+      sw.disabled = !machine.reported;
+      sw.title = part.on ? tr("turn off") : tr("turn on");
+      sw.onchange = () => machineTurn(machine.name, part.name, sw.checked)
+        .then(loadMachines)
+        .catch(() => { sw.checked = !sw.checked; });
+      row.append(sw);
+      card.append(row);
+    }
+    if (!machine.reported) card.append(el("div", "mmeta", tr("it has not reported yet")));
+    return card;
+  }));
+}
+
 /* ── live ── */
 const stream = new EventSource("/api/events");
 stream.onmessage = m => {
@@ -3114,5 +3194,6 @@ stream.onopen = () => { knock(); refresh(); };
 
 $("say").onsubmit = ev => { ev.preventDefault(); const text = $("text").value.trim(); if (!text && !pending.length) return; $("text").value = ""; ask(text); };
 refresh(); setInterval(refresh, 15000);
+loadMachines(); setInterval(loadMachines, 15000);
 </script>
 </html>

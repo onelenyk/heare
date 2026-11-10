@@ -1008,6 +1008,9 @@ LOCAL_ONLY = frozenset({
     ("GET", "/api/keys/asked"),
     ("POST", "/api/keys/answer"),
     ("POST", "/api/update/machine"),
+    ("POST", "/api/machine/mine/report"),
+    ("GET", "/api/machines"),
+    ("POST", "/api/machines/{name}/parts/{part}"),
     ("GET", "/api/update/mine"),
     ("POST", "/api/update/mine/failed"),
     ("POST", "/api/bodies/{id}/approve"),
@@ -2830,4 +2833,55 @@ async def test_what_the_engine_holds_is_shown_and_can_be_said_or_dropped(tmp_pat
 
     missing = await client.post("/api/intents/9999/drop", headers=auth)
     assert missing.status == 404
+    await _close(room, client)
+
+
+async def test_a_machine_reports_its_parts_and_learns_the_wish(tmp_path):
+    room, client, owner, settings = await _open(tmp_path)
+    token = authlib.issue(Path(settings.part_tokens_file), "machine@mac")
+    machine = {"X-Heare-Token": token}
+    body = {
+        "name": "mac", "version": "0.9.10", "platform": "darwin",
+        "load": [0.4, 0.5, 0.6], "disk_free": 32_000_000_000,
+        "disk_total": 500_000_000_000,
+        "parts": [{"name": "voice", "label": "Voice", "what": "listens and speaks",
+                   "channel": "voice", "on": True, "state": "running", "why": ""}],
+    }
+    reported = await client.post("/api/machine/mine/report", headers=machine, json=body)
+    assert reported.status == 200
+    assert await reported.json() == {"desired": {}}
+
+    listed = await client.get("/api/machines", headers=owner)
+    machines = (await listed.json())["machines"]
+    assert [one["name"] for one in machines] == ["mac"]
+    assert machines[0]["state"] == "online"
+    assert machines[0]["parts"][0]["label"] == "Voice"
+
+    turned = await client.post("/api/machines/mac/parts/voice",
+                               headers=owner, json={"on": False})
+    assert turned.status == 200
+    after = await turned.json()
+    assert after["machines"][0]["parts"][0]["desired"] is False
+    assert after["machines"][0]["parts"][0]["on"] is True, "the keeper has not said yet"
+
+    again = await client.post("/api/machine/mine/report", headers=machine, json=body)
+    assert await again.json() == {"desired": {"voice": False}}
+
+    # A machine's key reports and nothing else: the list is the person's.
+    denied = await client.get("/api/machines", headers=machine)
+    assert denied.status == 403
+    await _close(room, client)
+
+
+async def test_the_brain_s_own_keeper_reports_with_the_master_key(tmp_path):
+    room, client, owner, settings = await _open(tmp_path)
+    body = {"name": "this-mac", "version": "0.9.10", "platform": "darwin",
+            "parts": [{"name": "voice", "label": "Voice", "channel": "voice",
+                       "on": True, "state": "running", "why": ""}]}
+    answer = await client.post("/api/machine/mine/report", headers=owner, json=body)
+    assert answer.status == 200
+
+    listed = await client.get("/api/machines", headers=owner)
+    machines = (await listed.json())["machines"]
+    assert [one["name"] for one in machines] == ["this-mac"]
     await _close(room, client)

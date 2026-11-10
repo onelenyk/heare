@@ -25,6 +25,7 @@ from pathlib import Path
 
 from heare import layout, logs
 from heare import lifeline, machine, part
+from heare.report import Report
 from heare.config import HOME, Settings
 from heare.core.i18n import _
 from heare.setup import serve
@@ -366,9 +367,23 @@ async def kept(folder: Path, settings_path: Path | None = None) -> int:
     the parts were never asked to go. The keeper also holds the machine's
     single lock; a second one says who has it and leaves without spawning.
     """
+    config = Path(settings_path or _config_for(folder))
+    home = config.parent.parent
+    # The token files live beside the settings, not in the developer's home:
+    # a test's temporary machine must not borrow a real key.
+    settings = Settings(
+        path=config,
+        api_token_file=home / "settings" / "api_token",
+        machine_token_file=home / "machine" / "machine_token",
+        machine_name_file=home / "machine" / "machine_name",
+    )
     running = asyncio.create_task(Keeper(folder, settings_path).run())
     # Held here: a task nobody keeps a reference to may be collected.
-    taking = asyncio.create_task(Updating(Settings(), HOME).run())
+    taking = asyncio.create_task(Updating(settings, HOME).run())
+    # What this machine has, and what the person asked it to run. The
+    # keeper's own settings, not the developer's home: a test's temporary
+    # machine must not report to a brain that happens to run here.
+    reporting = asyncio.create_task(Report(settings, folder).run())
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, running.cancel)
@@ -378,6 +393,7 @@ async def kept(folder: Path, settings_path: Path | None = None) -> int:
         return 0
     finally:
         taking.cancel()
+        reporting.cancel()
 
 
 def _serve_form() -> None:

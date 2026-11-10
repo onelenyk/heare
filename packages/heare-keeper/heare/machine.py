@@ -189,7 +189,7 @@ def parts(folder: Path, bin_dir: Path | None = None) -> list[dict]:
     for p in PARTS.values():
         last = known.get(p.name) or {}
         listed.append({
-            "name": p.name, "label": p.label, "what": p.what,
+            "name": p.name, "label": p.label, "what": p.what, "channel": p.channel,
             "on": p.name in on, "why_not": why_not(p.name, bin_dir),
             "state": last.get("state") or ("on" if p.name in on else "off"),
             "why": last.get("why") or "",

@@ -304,6 +304,30 @@
   імені — питає людину, яку.
 - **Перехід** зі старих `acts` закрито 26.10: панель стукає скілами.
 
+## 7. Машина — бажаний стан і звіт
+
+Машина — не частина: це комп'ютер, на якому живе keeper. Вона ходить зі
+своїм ключем `machine@<ім'я>` і раз на 30 с каже, що має; відповідь — що
+вона має запустити.
+
+`POST /api/machine/mine/report` → `{desired: {part: bool}}`
+
+```json
+{"name": "mac", "version": "0.9.10", "platform": "darwin", "arch": "arm64",
+ "load": [0.4, 0.5, 0.6], "disk_free": 32000000000, "disk_total": 500000000000,
+ "parts": [{"name": "voice", "channel": "voice", "on": true, "state": "running"}]}
+```
+
+| Хто | Що може |
+|---|---|
+| машина (ключ `machine@…`) | лише звітувати; `GET /api/machines` — `403` |
+| keeper на машині мозку (мастер, loopback) | звітувати з `name` у тілі |
+| вікно | не машина; звіт — `403` |
+| власник | `GET /api/machines`, `POST /api/machines/{name}/parts/{part}` |
+
+Бажане зберігає мозок (`~/.heare/machine/machines.json`), маніфести — лише
+keeper. Деталі: [machines.md](machines.md).
+
 ## Вид і місце частини (рішення власника, 01.11)
 
 Вид частини (input, output, model, memory, executor) і її місце незалежні.
