@@ -373,6 +373,20 @@ async def _stop(child: asyncio.subprocess.Process, group: int | None = None) -> 
         await child.wait()
 
 
+def _settings(config: Path, home: Path) -> Settings:
+    """The token files live beside the settings, not in the developer's home:
+    a test's temporary machine must not borrow a real key. The master token is
+    ``machine/api_token`` — the brain's own keeper has no machine token, and
+    before this it looked for a file that the installer never writes.
+    """
+    return Settings(
+        path=config,
+        api_token_file=home / "machine" / "api_token",
+        machine_token_file=home / "machine" / "machine_token",
+        machine_name_file=home / "machine" / "machine_name",
+    )
+
+
 async def kept(folder: Path, settings_path: Path | None = None) -> int:
     """Keep the parts until told to stop, and take them along when stopping.
 
@@ -382,14 +396,7 @@ async def kept(folder: Path, settings_path: Path | None = None) -> int:
     """
     config = Path(settings_path or _config_for(folder))
     home = config.parent.parent
-    # The token files live beside the settings, not in the developer's home:
-    # a test's temporary machine must not borrow a real key.
-    settings = Settings(
-        path=config,
-        api_token_file=home / "settings" / "api_token",
-        machine_token_file=home / "machine" / "machine_token",
-        machine_name_file=home / "machine" / "machine_name",
-    )
+    settings = _settings(config, home)
     keeper = Keeper(folder, settings_path)
     running = asyncio.create_task(keeper.run())
     # Held here: a task nobody keeps a reference to may be collected.

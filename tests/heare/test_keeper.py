@@ -459,3 +459,14 @@ async def test_a_brain_that_refused_the_key_is_parked_not_looped(tmp_path, monke
 
     assert str(part.EXIT_REFUSED) in state["why"]
     assert marks.read_text().splitlines() == ["x"]
+
+
+def test_the_brain_keeper_finds_the_master_token(tmp_path):
+    home = tmp_path
+    (home / "machine").mkdir()
+    (home / "machine" / "api_token").write_text("master", encoding="utf-8")
+    (home / "settings").mkdir()
+    config = home / "settings" / "config.toml"
+    config.write_text("", encoding="utf-8")
+
+    assert keeper._settings(config, home).secret == "master"
