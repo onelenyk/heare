@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-11 14:09+0200\n"
+"POT-Creation-Date: 2026-11-11 15:25+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -1370,6 +1370,9 @@ msgid "could not get a code"
 msgstr ""
 
 msgid "Copied"
+msgstr ""
+
+msgid "brain"
 msgstr ""
 
 msgid "online"

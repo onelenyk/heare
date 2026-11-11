@@ -224,6 +224,7 @@
   #bodies .mdot.on { background:#5cc47a; }
   #bodies .mdot.warn { background:var(--warn); }
   #bodies .mname { font-weight:600; font-size:12.5px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #bodies .mbrain { margin-left:6px; padding:1px 5px; border-radius:999px; background:var(--accent); color:var(--accent-ink); font:600 9px/1.4 var(--sans); vertical-align:1px; }
   #bodies .mstate { margin-left:auto; color:var(--soft); font-size:10.5px; white-space:nowrap; }
   #bodies .mmeta { margin-top:2px; color:var(--soft); font:10px/1.45 var(--mono); overflow-wrap:anywhere; }
   #bodies .mactions { display:flex; gap:3px; flex:none; }
@@ -3119,6 +3120,7 @@ function machineTop(machine) {
   const top = el("div", "mtop");
   top.append(el("span", "mdot" + (machine.state === "online" ? " on" : "")));
   const name = el("b", "mname", machine.alias || machine.name);
+  if (machine.brain) name.append(el("span", "mbrain", tr("brain")));
   name.title = machine.pid;
   top.append(name, el("span", "mstate", machine.state === "online" ? tr("online") : tr("away")));
 
