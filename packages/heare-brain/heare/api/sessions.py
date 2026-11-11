@@ -38,8 +38,9 @@ def kind_of(name: str) -> str:
 
 
 class Sessions:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, emit=None) -> None:
         self.root = root
+        self._emit = emit
         root.mkdir(parents=True, exist_ok=True)
         self._index_file = root / "index.json"
         self._index: dict = {"active": "", "items": {}}
@@ -135,7 +136,16 @@ class Sessions:
         if unread:
             item["unread"] += 1
         self._save()
+        self._announce("add", session_id=session, message=message)
         return message
+
+    def _announce(self, op: str, **data: object) -> None:
+        if self._emit is None:
+            return
+        try:
+            self._emit("message", op=op, **data)
+        except Exception:
+            logger.exception("the message event failed")
 
     def read(self, session: str) -> list[dict]:
         """The messages, patches folded in. Old rows get their id, kind and
@@ -190,6 +200,7 @@ class Sessions:
         with self._log(session).open("a", encoding="utf-8") as log:
             log.write(json.dumps(row, ensure_ascii=False) + "\n")
         target.update(patch)
+        self._announce("patch", session_id=session, id=target["id"], patch=patch)
         return target
 
     def for_model(self, session: str) -> list[dict]:

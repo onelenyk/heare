@@ -50,6 +50,7 @@ from heare.api import skills
 from heare.api.machines import Machines
 from heare.api.registry import Registry
 from heare.api.sessions import MAX_FILE_BYTES, Kept, Sessions
+from heare.api.timeline import Timeline
 from heare.hand import Gone
 from heare.model.providers import PROVIDERS, check_key, list_models
 
@@ -381,10 +382,13 @@ def build(core: Core, settings: Any, vitals: Any = None,
     screens = Path(settings.screens_dir)
     recordings = Recordings(Path(settings.heard_dir))
     home = Path(settings.backups_dir).parent
-    sessions = Sessions(Path(settings.memory_dir) / "sessions")
+    sessions = Sessions(Path(settings.memory_dir) / "sessions", emit=core.state.emit)
     sessions.seed(core.history)
     if not sessions.active:
         sessions.open(sessions.listed()[0]["id"])
+    timeline = Timeline(sessions, emit=core.state.emit,
+                        canvas_file=Path(settings.canvas_file))
+    timeline.migrate_legacy()
     core.history.clear()
     core.hydrate(sessions.for_model(sessions.active))
     kept = Kept(core.memory, sessions) if core.memory is not None else None
@@ -600,6 +604,39 @@ def build(core: Core, settings: Any, vitals: Any = None,
 
     async def session_turns(request: web.Request) -> web.Response:
         return web.json_response(sessions.read(session_of(request)))
+
+    async def session_messages(request: web.Request) -> web.Response:
+        session = session_of(request)
+        messages = sessions.read(session)
+        kinds = request.query.get("kinds")
+        if kinds:
+            wanted = {name.strip() for name in kinds.split(",") if name.strip()}
+            messages = [m for m in messages if m["kind"] in wanted]
+        before = request.query.get("before")
+        if before and before.isdigit():
+            messages = messages[:int(before)]
+        limit = request.query.get("limit")
+        if limit and limit.isdigit():
+            messages = messages[-int(limit):]
+        return web.json_response({"session_id": session, "messages": messages,
+                                  "has_more": False})
+
+    async def session_message(request: web.Request) -> web.Response:
+        session = session_of(request)
+        found = sessions.message(session, int(request.match_info["n"]))
+        if found is None:
+            raise web.HTTPNotFound(text="no such message")
+        return web.json_response({"session_id": session, "message": found})
+
+    async def session_width(request: web.Request) -> web.Response:
+        session = session_of(request)
+        width = str((await body(request)).get("width", "s"))
+        if width not in ("s", "w"):
+            raise web.HTTPBadRequest(text="width is s or w")
+        found = sessions.patch(session, int(request.match_info["n"]), width=width)
+        if found is None:
+            raise web.HTTPNotFound(text="no such message")
+        return web.json_response({"message": found})
 
     async def session_upload(request: web.Request) -> web.Response:
         session = session_of(request)
@@ -1272,32 +1309,24 @@ def build(core: Core, settings: Any, vitals: Any = None,
         return web.json_response({"tasks_stopped": await core.halt()})
 
     async def canvas(request: web.Request) -> web.Response:
-        """What is drawn now: the widgets, and the canvas's own stylesheet."""
-        drawn = core.outputs.get("canvas")
-        return web.json_response(
-            drawn.view() if drawn is not None else {"blocks": [], "css": ""}
-        )
+        """The old canvas, now a view over html messages (one release)."""
+        return web.json_response(timeline.canvas_view())
 
     async def canvas_remove(request: web.Request) -> web.Response:
-        """The person closing a widget by hand."""
-        drawn = core.outputs.get("canvas")
+        """The person closing a widget by hand: withdrawn, not deleted."""
         name = str((await body(request)).get("id", ""))
-        return web.json_response({"removed": bool(drawn and drawn.remove(name))})
+        return web.json_response({"removed": timeline.canvas_remove(name)})
 
     async def canvas_put(request: web.Request) -> web.Response:
-        """The person redrawing a widget by hand. The same block the model
-        drew, put back in its place, so the drawing stays one drawing."""
-        drawn = core.outputs.get("canvas")
-        if drawn is None:
-            raise web.HTTPConflict(text="nothing is drawn here")
+        """The person redrawing a widget by hand, in its old place."""
         data = await body(request)
         try:
-            drawn.put(str(data.get("id", "")), str(data.get("html", "")))
+            view = timeline.canvas_put(str(data.get("id", "")), str(data.get("html", "")))
         except ValueError:
             raise web.HTTPBadRequest(
                 text="a block's name is lowercase latin letters, digits, dashes"
             ) from None
-        return web.json_response(drawn.view())
+        return web.json_response(view)
 
     async def machine(request: web.Request) -> web.Response:
         from heare.api import system
@@ -1772,6 +1801,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
             "Content-Type": "font/woff2", "Cache-Control": "max-age=604800"})
 
     app = web.Application(middlewares=[guard], client_max_size=MAX_FILE_BYTES)
+    app["timeline"] = timeline
     app.on_startup.append(follow_tasks)
     app.cleanup_ctx.append(asking_for_updates)
     app.add_routes([
@@ -1818,6 +1848,9 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.post("/api/sessions/{id}/rename", session_rename),
         web.delete("/api/sessions/{id}", session_delete),
         web.get("/api/sessions/{id}/turns", session_turns),
+        web.get("/api/sessions/{id}/messages", session_messages),
+        web.get("/api/sessions/{id}/messages/{n:\\d+}", session_message),
+        web.post("/api/sessions/{id}/messages/{n:\\d+}/width", session_width),
         web.post("/api/sessions/{id}/files", session_upload),
         web.get("/api/sessions/{id}/files/{file}", session_file),
         web.get("/api/context", context),
@@ -1914,15 +1947,14 @@ async def serve(core: Core, settings: Any, vitals: Any = None,
     Another host (a container's 0.0.0.0) opens nothing unguarded: every
     /api/ and /screens/ route asks for the master token or a paired key,
     the page carries no key, and pairing takes a one-time code."""
-    from heare.api.canvas import Canvas
-
     core.add_output(Screen(core))
     core.add_output(VoiceOut(core))
-    core.add_output(Canvas(Path(settings.canvas_file), core.state.emit))
-    runner = web.AppRunner(build(core, settings, vitals,
-                                 make_executor=make_executor, mind=mind,
-                                 features=features, engine=engine,
-                                 show_bodies=show_bodies))
+    app = build(core, settings, vitals,
+                make_executor=make_executor, mind=mind,
+                features=features, engine=engine,
+                show_bodies=show_bodies)
+    core.add_output(app["timeline"])
+    runner = web.AppRunner(app)
     await runner.setup()
     host = str(settings.api_host or "127.0.0.1")
     await web.TCPSite(runner, host, int(settings.api_port)).start()

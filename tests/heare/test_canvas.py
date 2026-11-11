@@ -208,3 +208,19 @@ def test_the_look_of_the_canvas_is_its_own_stylesheet(tmp_path):
     assert again.css == canvas.css and list(again.blocks) == ["clock"]
     again.clear()
     assert again.css == ""
+
+
+def test_the_old_canvas_migrates_once(tmp_path):
+    from heare.api.sessions import Sessions
+    from heare.api.timeline import Timeline
+
+    import json
+
+    canvas = tmp_path / "canvas.json"
+    canvas.write_text(json.dumps({"blocks": [["a", "<h2>План</h2>"]]}), encoding="utf-8")
+    sessions = Sessions(tmp_path / "s")
+    session = sessions.new()
+    timeline = Timeline(sessions, canvas_file=canvas)
+    assert timeline.migrate_legacy() == 1
+    assert sessions.read(session)[0]["kind"] == "html"
+    assert timeline.migrate_legacy() == 0

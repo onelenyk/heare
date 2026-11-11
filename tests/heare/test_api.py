@@ -49,6 +49,7 @@ async def _open(tmp_path, *, facts=None, intents=None, memory_dir=None,
         build(room.core, settings, mind=mind, features=features,
               engine=room.extra.get("engine"),
               make_executor=make_executor)))
+    room.core.add_output(client.app["timeline"])
     await client.start_server()
     token = (tmp_path / "token").read_text()
     return room, client, {"X-Heare-Token": token}, settings
@@ -680,12 +681,9 @@ async def test_asking_to_change_the_drawing_hands_the_model_what_is_drawn(tmp_pa
 
 
 async def test_the_machine_can_be_read_and_a_widget_closed_by_hand(tmp_path):
-    from heare.api.canvas import Canvas
-
     room, client, auth, _ = await _open(tmp_path)
-    canvas = Canvas(tmp_path / "canvas.json", room.core.state.emit)
-    room.core.add_output(canvas)
-    canvas.put("cpu", "<h3>Процесор</h3>")
+    timeline = client.app["timeline"]
+    timeline.canvas_put("cpu", "<h3>Процесор</h3>")
     machine = await (await client.get("/api/system", headers=auth)).json()
     assert machine["cpu"]["cores"] >= 1 and 0 <= machine["cpu"]["percent"] <= 100
     assert (await client.get("/api/system")).status == 401
@@ -693,21 +691,18 @@ async def test_the_machine_can_be_read_and_a_widget_closed_by_hand(tmp_path):
     assert drawn == {"blocks": [{"id": "cpu", "html": "<h3>Процесор</h3>", "size": "s"}], "css": ""}
     closed = await client.post("/api/canvas/remove", json={"id": "cpu"}, headers=auth)
     assert await closed.json() == {"removed": True}
-    assert canvas.blocks == {}
+    assert timeline.canvas_view()["blocks"] == []
     await _close(room, client)
 
 
 async def test_the_person_can_redraw_a_widget_by_hand(tmp_path):
-    from heare.api.canvas import Canvas
-
     room, client, auth, _ = await _open(tmp_path)
-    canvas = Canvas(tmp_path / "canvas.json", room.core.state.emit)
-    room.core.add_output(canvas)
-    canvas.put("doodle", "<h3>Щось інше</h3><svg><circle cx='10' cy='10' r='4'/></svg>")
+    timeline = client.app["timeline"]
+    timeline.canvas_put("doodle", "<h3>Щось інше</h3><svg><circle cx='10' cy='10' r='4'/></svg>")
     redrawn = "<h3>Щось інше</h3><svg><circle cx='30' cy='20' r='8'/></svg>"
     drawn = await client.post("/api/canvas/put", json={"id": "doodle", "html": redrawn}, headers=auth)
     assert drawn.status == 200
-    assert canvas.blocks["doodle"] == redrawn
+    assert timeline.canvas_view()["blocks"][0]["html"] == redrawn
     assert (await (await client.get("/api/canvas", headers=auth)).json())["blocks"][0]["html"] == redrawn
     bad = await client.post("/api/canvas/put", json={"id": "nope!", "html": "<p>x</p>"}, headers=auth)
     assert bad.status == 400
@@ -1049,6 +1044,9 @@ LOCAL_ONLY = frozenset({
     ("POST", "/api/sessions/{id}/rename"),
     ("DELETE", "/api/sessions/{id}"),
     ("GET", "/api/sessions/{id}/turns"),
+    ("GET", "/api/sessions/{id}/messages"),
+    ("GET", "/api/sessions/{id}/messages/{n}"),
+    ("POST", "/api/sessions/{id}/messages/{n}/width"),
     ("POST", "/api/sessions/{id}/files"),
     ("GET", "/api/sessions/{id}/files/{file}"),
     ("POST", "/api/skills/call"),
