@@ -315,8 +315,18 @@
 ```json
 {"name": "mac", "version": "0.9.10", "platform": "darwin", "arch": "arm64",
  "load": [0.4, 0.5, 0.6], "disk_free": 32000000000, "disk_total": 500000000000,
- "parts": [{"name": "voice", "channel": "voice", "on": true, "state": "running"}]}
+ "parts": [{"name": "voice", "channel": "voice", "on": true, "state": "running",
+            "why": "", "why_not": ""}]}
 ```
+
+`why` — чому частина впала (стан `unwell`); `why_not` — чому вона не може
+працювати на цій машині взагалі (лише на Mac, не встановлена). Сторінка
+показує `why_not` замість `on`/`off` і не пропонує перемикача.
+
+`POST /api/pair` `{code, kind: "machine", name}` — ключ машини. Ім'я машини
+унікальне на мозок: якщо `machine@<ім'я>` уже має ключ — `409`, і код
+лишається живим для іншого імені. Машина без імені — `400`. Забута машина
+звільняє своє ім'я.
 
 | Хто | Що може |
 |---|---|
@@ -324,11 +334,6 @@
 | keeper на машині мозку (мастер, loopback) | звітувати з `name` у тілі |
 | вікно | не машина; звіт — `403` |
 | власник | `GET /api/machines`, `POST /api/machines/{name}/parts/{part}`, `…/restart`, `PUT /api/machines/{name}`, `POST /api/machines/{name}/forget` |
-
-`POST /api/pair` `{code, kind: "machine", name}` — ключ машини. Ім'я машини
-унікальне на мозок: якщо `machine@<ім'я>` уже має ключ — `409`, і код
-лишається живим для іншого імені. Машина без імені — `400`. Забута машина
-звільняє своє ім'я.
 
 Бажане зберігає мозок (`~/.heare/machine/machines.json`), маніфести — лише
 keeper. Деталі: [machines.md](machines.md).

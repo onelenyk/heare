@@ -132,6 +132,20 @@ def test_a_forgotten_machine_leaves_no_card(tmp_path):
     assert not machines.forget("machine@mac")
 
 
+def test_a_part_that_cannot_run_here_keeps_its_reason(tmp_path):
+    machines = Machines(tmp_path / "machines.json")
+    data = report()
+    data["parts"] = [{"name": "eyes", "label": "Eyes", "channel": "eyes",
+                      "on": False, "state": "off", "why": "",
+                      "why_not": "only on a Mac"}]
+    machines.report("machine@mac", data, now=100.0)
+
+    part = machines.view({}, now=110.0)[0]["parts"][0]
+    assert part["on"] is False
+    assert part["why_not"] == "only on a Mac", \
+        "the page cannot say why a part is off if the reason is dropped"
+
+
 def test_a_paired_machine_is_listed_before_it_reports(tmp_path):
     machines = Machines(tmp_path / "machines.json").view(
         {}, now=0.0, paired=("machine@ghost",))

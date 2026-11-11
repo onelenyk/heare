@@ -47,6 +47,36 @@ def test_the_report_backs_off_when_the_brain_is_away():
     assert report.wait_after(20) == report.BACKOFF_MAX_S
 
 
+def test_the_report_says_why_a_part_cannot_run_at_all(tmp_path, monkeypatch):
+    folder = tmp_path / "parts"
+    folder.mkdir()
+    monkeypatch.setattr(machine, "why_not",
+                        lambda name, bin_dir=None: "only on a Mac" if name == "eyes" else None)
+    eyes = next(one for one in report.describe(folder)["parts"] if one["name"] == "eyes")
+    assert eyes["why_not"] == "only on a Mac" and eyes["on"] is False
+
+
+def test_a_wish_this_machine_cannot_grant_is_not_retried(tmp_path, monkeypatch):
+    folder = tmp_path / "parts"
+    folder.mkdir()
+    monkeypatch.setattr(machine, "why_not", lambda name, bin_dir=None: "only on a Mac")
+    assert report.apply(folder, {"eyes": True}) == []
+    assert not machine.running(folder)
+
+
+def test_a_part_that_cannot_be_turned_on_says_why(tmp_path, monkeypatch):
+    folder = tmp_path / "parts"
+    folder.mkdir()
+
+    def refuse(folder, name, on, bin_dir=None):
+        raise OSError("no room on this disk")
+
+    monkeypatch.setattr(machine, "why_not", lambda name, bin_dir=None: None)
+    monkeypatch.setattr(machine, "turn", refuse)
+    assert report.apply(folder, {"eyes": True}) == []
+    assert machine.health(folder)["eyes"]["why"] == "no room on this disk"
+
+
 @pytest.mark.parametrize("status,halted", [(401, True), (403, True), (503, False)])
 async def test_a_report_refused_for_its_key_says_the_machine_is_forgotten(
         tmp_path, monkeypatch, status, halted):

@@ -171,7 +171,7 @@ function parts() {
   const list = el("div");
   for (const p of machine.parts) {
     const row = el("div", "row"), what = el("div", "what"), sw = el("button", "sw" + (p.on ? " on" : ""));
-    what.append(el("b", "", tr(p.label)), el("small", "", p.why_not ? p.why_not : tr(p.what)));
+    what.append(el("b", "", tr(p.label)), el("small", "", p.why_not ? tr(p.why_not) : tr(p.what)));
     if (p.state === "unwell" && p.why) what.append(el("small", "bad", p.why));
     if (p.name === "hands" && !p.why_not) what.append(el("small", "", tr("The agent is opencode or Claude Code; the hands find it themselves, or say on their card what is missing.")));
     sw.type = "button"; sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", String(p.on));

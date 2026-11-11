@@ -3207,17 +3207,22 @@ function machineCard(machine) {
 function machineRow(machine, part, entries) {
   const row = el("div", "mrow");
   const pending = entries.find(([, b]) => b.state === "pending");
-  const desired = part.desired !== null && part.desired !== undefined && part.desired !== part.on;
+  // A part this machine cannot run at all: the keeper says why, and the
+  // wish is not shown as «pending» forever — its switch would lie.
+  const cannot = part.why_not ? tr(part.why_not) : "";
+  const desired = part.desired !== null && part.desired !== undefined
+    && part.desired !== part.on && !cannot;
   const bad = part.state === "unwell";
   if (pending || desired) row.classList.add("pending");
-  row.append(el("span", "mdot" + (pending || desired || bad ? " warn" : part.on ? " on" : "")));
+  row.append(el("span", "mdot" + (pending || desired || bad || cannot ? " warn" : part.on ? " on" : "")));
   row.append(el("span", "name", PART_LABEL[part.channel] || tr(part.label || part.name)));
   if (entries.length > 1) row.append(el("span", "pin", "×" + entries.length));
   const label = pending ? PART_STATE.pending
-    : desired ? tr("pending")
     : bad && part.why ? part.why
+    : cannot ? cannot
+    : desired ? tr("pending")
     : part.on ? tr("on") : tr("off");
-  row.append(el("span", "state" + (bad && part.why ? " why" : ""), label));
+  row.append(el("span", "state" + ((bad && part.why) || cannot ? " why" : ""), label));
 
   const end = el("span", "end");
   if (pending) {
@@ -3239,8 +3244,9 @@ function machineRow(machine, part, entries) {
       end.append(again);
     }
     const sw = el("input", "sw");
-    sw.type = "checkbox"; sw.checked = !!part.on; sw.disabled = !machine.reported;
-    sw.title = part.on ? tr("turn off") : tr("turn on");
+    sw.type = "checkbox"; sw.checked = !!part.on;
+    sw.disabled = !machine.reported || Boolean(cannot);
+    sw.title = cannot || (part.on ? tr("turn off") : tr("turn on"));
     sw.onclick = ev => ev.stopPropagation();
     sw.onchange = () => machineTurn(machine.name, part.name, sw.checked)
       .then(loadMachines)

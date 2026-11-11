@@ -63,6 +63,9 @@ def _part(row: object) -> dict | None:
         "on": bool(row.get("on")),
         "state": _text(row.get("state"), 40),
         "why": _text(row.get("why")),
+        # Why this machine cannot run the part at all (only on a Mac, not
+        # installed): said by the keeper, kept so the page can say it too.
+        "why_not": _text(row.get("why_not")),
     }
 
 
@@ -223,7 +226,7 @@ class Machines:
                     "what": _text(entry.get("about")),
                     "channel": channel, "on": True,
                     "state": str(entry.get("state") or ""), "why": "",
-                    "reported": False,
+                    "why_not": "", "reported": False,
                 }
                 machine["parts"].append(part)
             part["online"] = True

@@ -2970,3 +2970,19 @@ async def test_a_machine_name_is_kept_for_one_machine(tmp_path):
         "code": mint(), "kind": "machine", "name": "mac"})
     assert again.status == 200, "forgetting a machine frees its name"
     await _close(room, client)
+
+
+async def test_a_part_that_cannot_run_here_says_why_on_the_page(tmp_path):
+    room, client, owner, settings = await _open(tmp_path)
+    token = authlib.issue(Path(settings.part_tokens_file), "machine@mac")
+    body = {"name": "mac", "parts": [
+        {"name": "eyes", "label": "Eyes", "channel": "eyes", "on": False,
+         "state": "off", "why": "", "why_not": "only on a Mac"}]}
+    reported = await client.post("/api/machine/mine/report",
+                                 headers={"X-Heare-Token": token}, json=body)
+    assert reported.status == 200
+
+    machines = (await (await client.get("/api/machines", headers=owner)).json())["machines"]
+    part = machines[0]["parts"][0]
+    assert part["why_not"] == "only on a Mac" and part["on"] is False
+    await _close(room, client)

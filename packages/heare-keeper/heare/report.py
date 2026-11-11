@@ -97,7 +97,8 @@ def describe(folder: Path) -> dict:
         "parts": [
             {"name": one["name"], "label": one["label"], "what": one["what"],
              "channel": one["channel"], "on": bool(one["on"]),
-             "state": str(one["state"]), "why": str(one["why"])}
+             "state": str(one["state"]), "why": str(one["why"]),
+             "why_not": str(one.get("why_not") or "")}
             for one in machine.parts(folder)
         ],
     }
@@ -107,8 +108,10 @@ def apply(folder: Path, desired: object) -> list[str]:
     """Turn manifests to match the person's wish; the parts turned.
 
     A name this machine does not know is ignored — the brain may be newer
-    than the machine — and a part it cannot run is logged once, not retried
-    into a loop: the report will show it as off with the reason.
+    than the machine — and a part it cannot run is skipped with the reason
+    it already reported: retrying it every half minute would be a loop,
+    not an attempt. A part that cannot be turned on at all is recorded as
+    unwell, so the page shows why instead of «pending» forever.
     """
     if not isinstance(desired, dict):
         return []
@@ -119,11 +122,18 @@ def apply(folder: Path, desired: object) -> list[str]:
             continue
         if (name in running) == on:
             continue
+        if on and (reason := machine.why_not(name)):
+            logger.info("%s cannot run here: %s", name, reason)
+            continue
         try:
             machine.turn(folder, name, on)
         except (ValueError, OSError) as exc:
             logger.warning("could not turn %s %s: %s", name,
                            "on" if on else "off", exc)
+            try:
+                machine.remember(folder, name, "unwell", str(exc))
+            except OSError:
+                logger.exception("could not write the state of %s", name)
             continue
         turned.append(name)
         logger.warning("%s: %s by the person", name, "on" if on else "off")
