@@ -181,6 +181,8 @@ def test_plans_are_listed_and_two_are_merged(tmp_path):
     assert {plan["id"] for plan in motor.plans()} == {"plan:a", "plan:b"}
     store.hold("покдатки", ATTENTION, 2, about=tag(ATTENTION, "plan:b"))
 
-    assert motor.merge_plans("plan:a", "plan:b") is True
-    assert {plan["id"] for plan in motor.plans()} == {"plan:a"}
+    assert motor.merge_plans("plan:a", "plan:b", "податки до 19 листопада") is True
+    plans = motor.plans()
+    assert {plan["id"] for plan in plans} == {"plan:a"}
+    assert plans[0]["label"] == "податки до 19 листопада"
     assert not [i for i in store.alive(clock()) if i.about == tag(ATTENTION, "plan:b")]

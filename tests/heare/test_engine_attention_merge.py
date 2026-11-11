@@ -27,3 +27,11 @@ def test_merge_refuses_a_missing_same_or_finished_thing():
     assert attention.merge("plan:a", "plan:a") is False
     assert attention.merge("plan:a", "plan:missing") is False
     assert attention.merge("plan:missing", "plan:a") is False
+
+
+def test_merge_writes_the_label_it_is_given():
+    attention = Attention()
+    attention.feed("plan_said", thing_id="plan:a", kind="promise", label="покдатки")
+    attention.feed("plan_said", thing_id="plan:b", kind="promise", label="податки")
+    assert attention.merge("plan:a", "plan:b", "податки до 19 листопада") is True
+    assert attention.thing("plan:a").label == "податки до 19 листопада"

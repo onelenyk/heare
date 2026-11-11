@@ -227,6 +227,14 @@ _MERGE_PLANS = {
                     "type": "string",
                     "description": "The id of the entry to fold into it.",
                 },
+                "label": {
+                    "type": "string",
+                    "description": (
+                        "The label the merged entry should carry — the clearer "
+                        "wording, not a typo. Leave it out to keep the label of "
+                        "the entry you keep."
+                    ),
+                },
             },
             "required": ["keep", "drop"],
         },

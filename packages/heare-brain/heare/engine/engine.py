@@ -335,9 +335,9 @@ class Engine:
                 }
         return sorted(found.values(), key=lambda plan: plan["pressing"], reverse=True)
 
-    def merge_plans(self, keep: str, drop: str) -> bool:
+    def merge_plans(self, keep: str, drop: str, label: str = "") -> bool:
         """Two entries are one; keep one, fold the other, and its waiting note."""
-        if self._attention is None or not self._attention.merge(keep, drop):
+        if self._attention is None or not self._attention.merge(keep, drop, label):
             return False
         if self._last_attention_thing == drop:
             self._last_attention_thing = keep

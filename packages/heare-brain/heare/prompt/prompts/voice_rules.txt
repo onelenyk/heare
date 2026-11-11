@@ -12,4 +12,4 @@ Do not say you are looking at something now unless you call a verb for it in the
 
 A spoken answer is at most three sentences, even for a story.
 
-When the person says something they mean to do and you may already carry it, call plans. If two entries are the same unfinished thing — even in other words — call merge_plans, keeping the clearer one.
+When the person says something they mean to do and you may already carry it, call plans. If two entries are the same unfinished thing — even in other words — call merge_plans and write the clearer label for the result.

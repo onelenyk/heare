@@ -125,7 +125,8 @@ class Toolbox:
             return _("No plans are open.")
         keep = str(arguments.get("keep") or "")
         drop = str(arguments.get("drop") or "")
-        return _("Merged.") if self._plans.merge_plans(keep, drop) else _("No such plan.")
+        label = str(arguments.get("label") or "")
+        return _("Merged.") if self._plans.merge_plans(keep, drop, label) else _("No such plan.")
 
     async def _run_stop(self, arguments: dict) -> str:
         return _("Stopped.") if self._stop() else _("Nothing was running.")

@@ -241,7 +241,7 @@ class Attention:
                 want.pressing = 0.0
                 want.carried = True
 
-    def merge(self, keep_id: str, drop_id: str) -> bool:
+    def merge(self, keep_id: str, drop_id: str, label: str = "") -> bool:
         """Fold one thing into another: they are the same unfinished business.
 
         The person, or the model they speak to, says two entries are one. The
@@ -267,7 +267,9 @@ class Attention:
             twin.born = min(twin.born, want.born)
             self.wants.remove(want)
         self.things = [thing for thing in self.things if thing.id != drop.id]
-        if not keep.label:
+        if label:
+            keep.label = label
+        elif not keep.label:
             keep.label = drop.label
         if self.last_spoken == drop.id:
             self.last_spoken = keep.id

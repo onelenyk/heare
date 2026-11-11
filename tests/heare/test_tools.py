@@ -391,8 +391,9 @@ class FakePlans:
     def plans(self) -> list[dict]:
         return [{"id": "plan:a", "label": "податки", "pressing": 0.6, "said": 0}]
 
-    def merge_plans(self, keep: str, drop: str) -> bool:
+    def merge_plans(self, keep: str, drop: str, label: str = "") -> bool:
         self.merged = (keep, drop)
+        self.label = label
         return True
 
 
@@ -406,6 +407,8 @@ def test_plans_and_merge_are_offered_with_attention():
     listed = asyncio.run(verbs["plans"][1]({}))
     assert "plan:a" in listed and "податки" in listed
 
-    answer = asyncio.run(verbs["merge_plans"][1]({"keep": "plan:a", "drop": "plan:b"}))
+    answer = asyncio.run(verbs["merge_plans"][1](
+        {"keep": "plan:a", "drop": "plan:b", "label": "податки"}))
     assert answer
     assert plans.merged == ("plan:a", "plan:b")
+    assert plans.label == "податки"
