@@ -13,9 +13,10 @@ from pathlib import Path
 
 import pytest
 
-PAGE = (Path(__file__).resolve().parents[2]
-        / "packages/heare-brain/heare/api/page.html").read_text(encoding="utf-8")
-SCRIPT = "\n".join(re.findall(r"<script>(.*?)</script>", PAGE, re.S))
+API = Path(__file__).resolve().parents[2] / "packages/heare-brain/heare/api"
+PAGE = (API / "page.html").read_text(encoding="utf-8")
+SCRIPT = (API / "page.js").read_text(encoding="utf-8")
+STYLE = (API / "page.css").read_text(encoding="utf-8")
 # The kinds of control protocol.md §5 promises a part can declare.
 KINDS = ("toggle", "slider", "choice", "label", "button", "log", "text", "terminal")
 
@@ -91,14 +92,14 @@ def test_mind_refresh_keeps_search_results_and_refreshes_an_open_journal():
 
 
 def test_the_drawer_styles_new_rows_within_its_own_language():
-    item = PAGE.split(".mind-item {")[1].split("}")[0]
+    item = STYLE.split(".mind-item {")[1].split("}")[0]
     assert "border-radius:12px" in item
     assert "var(--card-2)" in item
-    text = PAGE.split(".mind-item-text {")[1].split("}")[0]
+    text = STYLE.split(".mind-item-text {")[1].split("}")[0]
     assert "overflow-wrap:anywhere" in text
-    meta = PAGE.split(".mind-item-meta {")[1].split("}")[0]
+    meta = STYLE.split(".mind-item-meta {")[1].split("}")[0]
     assert "var(--mono)" in meta
-    assert "#mind { width:100%; border-left:0; }" in PAGE
+    assert "#mind { width:100%; border-left:0; }" in STYLE
 
 
 @pytest.mark.parametrize("kind", KINDS)

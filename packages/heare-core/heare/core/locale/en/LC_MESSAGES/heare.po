@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-11 20:13+0200\n"
+"POT-Creation-Date: 2026-11-11 23:25+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -512,6 +512,249 @@ msgstr ""
 msgid "the file is damaged or not a zip"
 msgstr ""
 
+msgid "Settings"
+msgstr ""
+
+msgid "Brain"
+msgstr ""
+
+msgid "close"
+msgstr ""
+
+msgid "what it knows itself"
+msgstr ""
+
+msgid "settings: keys, model"
+msgstr ""
+
+msgid "you"
+msgstr ""
+
+msgid "it"
+msgstr ""
+
+msgid "State"
+msgstr ""
+
+msgid "model"
+msgstr ""
+
+msgid "around"
+msgstr ""
+
+msgid "quiet"
+msgstr ""
+
+msgid "reply"
+msgstr ""
+
+msgid "this run"
+msgstr ""
+
+msgid "awaiting a decision"
+msgstr ""
+
+msgid "settled facts"
+msgstr ""
+
+msgid "reminders"
+msgstr ""
+
+msgid "last review"
+msgstr ""
+
+msgid "Open memory"
+msgstr ""
+
+msgid "On my mind"
+msgstr ""
+
+msgid "Controls"
+msgstr ""
+
+msgid "■ Stop"
+msgstr ""
+
+msgid "Stop everything?"
+msgstr ""
+
+msgid "Yes"
+msgstr ""
+
+msgid "No"
+msgstr ""
+
+msgid "Machines"
+msgstr ""
+
+msgid "what runs where"
+msgstr ""
+
+msgid "no part is connected"
+msgstr ""
+
+msgid "fold"
+msgstr ""
+
+msgid "Screen"
+msgstr ""
+
+msgid "Context"
+msgstr ""
+
+msgid "This is its screen. It puts here what is better seen than heard — and what you ask to keep in front of you."
+msgstr ""
+
+msgid "Sessions"
+msgstr ""
+
+msgid "New"
+msgstr ""
+
+msgid "Rename"
+msgstr ""
+
+msgid "Delete"
+msgstr ""
+
+msgid "Conversation"
+msgstr ""
+
+msgid "hear the reply aloud"
+msgstr ""
+
+msgid "hear"
+msgstr ""
+
+msgid "speak and hear"
+msgstr ""
+
+msgid "attach a file"
+msgstr ""
+
+msgid "Write…"
+msgstr ""
+
+msgid "Language"
+msgstr ""
+
+msgid "what you hear and see"
+msgstr ""
+
+msgid "Model for the conversation"
+msgstr ""
+
+msgid "provider"
+msgstr ""
+
+msgid "Save"
+msgstr ""
+
+msgid "or a model id"
+msgstr ""
+
+msgid "Keys"
+msgstr ""
+
+msgid "your own key"
+msgstr ""
+
+msgid "value"
+msgstr ""
+
+msgid "paste the token"
+msgstr ""
+
+msgid "Values are never shown — only where a key comes from."
+msgstr ""
+
+msgid "Devices"
+msgstr ""
+
+msgid "A new browser or phone: take a code here and enter it there."
+msgstr ""
+
+msgid "Connect a device"
+msgstr ""
+
+msgid "one-time, lives 5 minutes"
+msgstr ""
+
+msgid "Facts"
+msgstr ""
+
+msgid "Reminders"
+msgstr ""
+
+msgid "Journal"
+msgstr ""
+
+msgid "Search"
+msgstr ""
+
+msgid "Hearing"
+msgstr ""
+
+msgid "Profile"
+msgstr ""
+
+msgid "Sources"
+msgstr ""
+
+msgid "Backups"
+msgstr ""
+
+msgid "what to recall?"
+msgstr ""
+
+msgid "what to recall"
+msgstr ""
+
+msgid "Search for it"
+msgstr ""
+
+msgid "Owner"
+msgstr ""
+
+msgid "e.g. Olena, speak informally"
+msgstr ""
+
+msgid "Open threads"
+msgstr ""
+
+msgid "what is in the works now"
+msgstr ""
+
+msgid "Goals"
+msgstr ""
+
+msgid "what you want this month"
+msgstr ""
+
+msgid "A backup is one file: conversations, journal, facts, profile, reminders, settings. Model keys and this Mac's bonds are not in it: on a new Mac you enter them again."
+msgstr ""
+
+msgid "with sound (Hearing recordings)"
+msgstr ""
+
+msgid "Make a backup"
+msgstr ""
+
+msgid "Bring a backup…"
+msgstr ""
+
+msgid "Connect this browser"
+msgstr ""
+
+msgid "A page already connected shows the code: ⚙ → Devices. Or in the terminal: heare-brain code"
+msgstr ""
+
+msgid "8 characters"
+msgstr ""
+
+msgid "Connect"
+msgstr ""
+
 msgid "browser"
 msgstr ""
 
@@ -581,9 +824,6 @@ msgstr ""
 msgid "Sure?"
 msgstr ""
 
-msgid "Delete"
-msgstr ""
-
 #, python-brace-format
 msgid "{name} did not upload"
 msgstr ""
@@ -609,9 +849,6 @@ msgstr ""
 
 #, python-brace-format
 msgid "playing: {what}"
-msgstr ""
-
-msgid "quiet"
 msgstr ""
 
 msgid "not here"
@@ -755,12 +992,6 @@ msgstr ""
 msgid "I ask because {why}"
 msgstr ""
 
-msgid "Yes"
-msgstr ""
-
-msgid "No"
-msgstr ""
-
 msgid "input"
 msgstr ""
 
@@ -777,9 +1008,6 @@ msgid "chat"
 msgstr ""
 
 msgid "CLI hands"
-msgstr ""
-
-msgid "Sources"
 msgstr ""
 
 msgid "Native hands"
@@ -918,9 +1146,6 @@ msgstr ""
 msgid "served by the brain"
 msgstr ""
 
-msgid "no part is connected"
-msgstr ""
-
 msgid "no part is connected now"
 msgstr ""
 
@@ -929,9 +1154,6 @@ msgid "settings · {part}"
 msgstr ""
 
 msgid "unfold"
-msgstr ""
-
-msgid "fold"
 msgstr ""
 
 msgid "Person"
@@ -944,9 +1166,6 @@ msgid "tokens"
 msgstr ""
 
 msgid "System prompt"
-msgstr ""
-
-msgid "Conversation"
 msgstr ""
 
 msgid "verbs"
@@ -1031,15 +1250,6 @@ msgstr ""
 msgid "in {d} d"
 msgstr ""
 
-msgid "awaiting a decision"
-msgstr ""
-
-msgid "settled facts"
-msgstr ""
-
-msgid "reminders"
-msgstr ""
-
 msgid "review"
 msgstr ""
 
@@ -1071,9 +1281,6 @@ msgstr ""
 msgid "no settled facts yet."
 msgstr ""
 
-msgid "Reminders"
-msgstr ""
-
 msgid "nothing to remind."
 msgstr ""
 
@@ -1081,9 +1288,6 @@ msgid "say «remind me…», and it will appear here."
 msgstr ""
 
 msgid "reading the journal…"
-msgstr ""
-
-msgid "Journal"
 msgstr ""
 
 msgid "the journal is empty."
@@ -1129,9 +1333,6 @@ msgid "what was really said"
 msgstr ""
 
 msgid "what you really said"
-msgstr ""
-
-msgid "Save"
 msgstr ""
 
 msgid "write what was said"
@@ -1185,9 +1386,6 @@ msgid "Sure? I will set the current aside"
 msgstr ""
 
 msgid "reading the backups…"
-msgstr ""
-
-msgid "Backups"
 msgstr ""
 
 msgid "no backups yet — make the first with the button above."
@@ -1487,204 +1685,6 @@ msgid "All imported: {n} note read."
 msgid_plural "All imported: {n} notes read."
 msgstr[0] ""
 msgstr[1] ""
-
-msgid "Brain"
-msgstr ""
-
-msgid "what it knows itself"
-msgstr ""
-
-msgid "settings: keys, model"
-msgstr ""
-
-msgid "you"
-msgstr ""
-
-msgid "it"
-msgstr ""
-
-msgid "State"
-msgstr ""
-
-msgid "model"
-msgstr ""
-
-msgid "around"
-msgstr ""
-
-msgid "reply"
-msgstr ""
-
-msgid "this run"
-msgstr ""
-
-msgid "last review"
-msgstr ""
-
-msgid "Open memory"
-msgstr ""
-
-msgid "On my mind"
-msgstr ""
-
-msgid "Controls"
-msgstr ""
-
-msgid "■ Stop"
-msgstr ""
-
-msgid "Stop everything?"
-msgstr ""
-
-msgid "Machines"
-msgstr ""
-
-msgid "what runs where"
-msgstr ""
-
-msgid "Screen"
-msgstr ""
-
-msgid "Context"
-msgstr ""
-
-msgid "This is its screen. It puts here what is better seen than heard — and what you ask to keep in front of you."
-msgstr ""
-
-msgid "Sessions"
-msgstr ""
-
-msgid "New"
-msgstr ""
-
-msgid "Rename"
-msgstr ""
-
-msgid "hear the reply aloud"
-msgstr ""
-
-msgid "hear"
-msgstr ""
-
-msgid "speak and hear"
-msgstr ""
-
-msgid "attach a file"
-msgstr ""
-
-msgid "Write…"
-msgstr ""
-
-msgid "Settings"
-msgstr ""
-
-msgid "Language"
-msgstr ""
-
-msgid "what you hear and see"
-msgstr ""
-
-msgid "Model for the conversation"
-msgstr ""
-
-msgid "provider"
-msgstr ""
-
-msgid "or a model id"
-msgstr ""
-
-msgid "Keys"
-msgstr ""
-
-msgid "your own key"
-msgstr ""
-
-msgid "value"
-msgstr ""
-
-msgid "paste the token"
-msgstr ""
-
-msgid "Values are never shown — only where a key comes from."
-msgstr ""
-
-msgid "Devices"
-msgstr ""
-
-msgid "A new browser or phone: take a code here and enter it there."
-msgstr ""
-
-msgid "Connect a device"
-msgstr ""
-
-msgid "one-time, lives 5 minutes"
-msgstr ""
-
-msgid "close"
-msgstr ""
-
-msgid "Facts"
-msgstr ""
-
-msgid "Search"
-msgstr ""
-
-msgid "Hearing"
-msgstr ""
-
-msgid "Profile"
-msgstr ""
-
-msgid "what to recall?"
-msgstr ""
-
-msgid "what to recall"
-msgstr ""
-
-msgid "Search for it"
-msgstr ""
-
-msgid "Owner"
-msgstr ""
-
-msgid "e.g. Olena, speak informally"
-msgstr ""
-
-msgid "Open threads"
-msgstr ""
-
-msgid "what is in the works now"
-msgstr ""
-
-msgid "Goals"
-msgstr ""
-
-msgid "what you want this month"
-msgstr ""
-
-msgid "A backup is one file: conversations, journal, facts, profile, reminders, settings. Model keys and this Mac's bonds are not in it: on a new Mac you enter them again."
-msgstr ""
-
-msgid "with sound (Hearing recordings)"
-msgstr ""
-
-msgid "Make a backup"
-msgstr ""
-
-msgid "Bring a backup…"
-msgstr ""
-
-msgid "Connect this browser"
-msgstr ""
-
-msgid "A page already connected shows the code: ⚙ → Devices. Or in the terminal: heare-brain code"
-msgstr ""
-
-msgid "8 characters"
-msgstr ""
-
-msgid "Connect"
-msgstr ""
 
 msgid "could not ask about a new version"
 msgstr ""

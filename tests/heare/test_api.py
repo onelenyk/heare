@@ -495,7 +495,7 @@ async def test_the_built_in_page_is_served(tmp_path):
 
 async def test_the_page_brings_its_own_fonts(tmp_path):
     room, client, _, _ = await _open(tmp_path)
-    page = await (await client.get("/")).text()
+    page = await (await client.get("/page.css")).text()
     named = set(re.findall(r"url\(/fonts/([a-z-]+)\.woff2\)", page))
     assert named == {"onest-cyrillic", "onest-latin", "unbounded-cyrillic", "unbounded-latin"}
     for name in named:  # no key: a font is no secret, and the page loads it before pairing
@@ -504,6 +504,17 @@ async def test_the_page_brings_its_own_fonts(tmp_path):
         assert (await got.read())[:4] == b"wOF2"
     assert (await client.get("/fonts/missing.woff2")).status == 404
     assert (await client.get("/fonts/..%2Fpage.html")).status == 404
+    await _close(room, client)
+
+
+async def test_the_page_brings_its_own_script_and_style(tmp_path):
+    room, client, _, _ = await _open(tmp_path)
+    css = await client.get("/page.css")
+    assert css.status == 200 and css.content_type == "text/css"
+    js = await client.get("/page.js")
+    assert js.status == 200 and js.content_type in ("text/javascript", "application/javascript")
+    assert "const LOCALE" in await js.text()
+    assert "@font-face" in await css.text()
     await _close(room, client)
 
 

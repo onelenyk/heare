@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-11 20:13+0200\n"
+"POT-Creation-Date: 2026-11-11 23:25+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -512,6 +512,249 @@ msgstr "файл у копії пошкоджений: {name}"
 msgid "the file is damaged or not a zip"
 msgstr "файл пошкоджений або це не zip"
 
+msgid "Settings"
+msgstr "Налаштування"
+
+msgid "Brain"
+msgstr "Мозок"
+
+msgid "close"
+msgstr "закрити"
+
+msgid "what it knows itself"
+msgstr "що він знає сам"
+
+msgid "settings: keys, model"
+msgstr "налаштування: ключі, модель"
+
+msgid "you"
+msgstr "ти"
+
+msgid "it"
+msgstr "він"
+
+msgid "State"
+msgstr "Стан"
+
+msgid "model"
+msgstr "модель"
+
+msgid "around"
+msgstr "довкола"
+
+msgid "quiet"
+msgstr "тихо"
+
+msgid "reply"
+msgstr "відповідь"
+
+msgid "this run"
+msgstr "цей запуск"
+
+msgid "awaiting a decision"
+msgstr "чекають рішення"
+
+msgid "settled facts"
+msgstr "сталі факти"
+
+msgid "reminders"
+msgstr "нагадування"
+
+msgid "last review"
+msgstr "останній огляд"
+
+msgid "Open memory"
+msgstr "Відкрити памʼять"
+
+msgid "On my mind"
+msgstr "Тримаю в голові"
+
+msgid "Controls"
+msgstr "Керування"
+
+msgid "■ Stop"
+msgstr "■ Стоп"
+
+msgid "Stop everything?"
+msgstr "Зупинити все?"
+
+msgid "Yes"
+msgstr "Так"
+
+msgid "No"
+msgstr "Ні"
+
+msgid "Machines"
+msgstr "Машини"
+
+msgid "what runs where"
+msgstr "що де працює"
+
+msgid "no part is connected"
+msgstr "жодна частина не під'єднана"
+
+msgid "fold"
+msgstr "згорнути"
+
+msgid "Screen"
+msgstr "Екран"
+
+msgid "Context"
+msgstr "Контекст"
+
+msgid "This is its screen. It puts here what is better seen than heard — and what you ask to keep in front of you."
+msgstr "Це його екран. Він сам ставить сюди те, що краще побачити, ніж почути — і те, що ти попросиш тримати перед очима."
+
+msgid "Sessions"
+msgstr "Сесії"
+
+msgid "New"
+msgstr "Нова"
+
+msgid "Rename"
+msgstr "Назва"
+
+msgid "Delete"
+msgstr "Видалити"
+
+msgid "Conversation"
+msgstr "Розмова"
+
+msgid "hear the reply aloud"
+msgstr "чути відповідь уголос"
+
+msgid "hear"
+msgstr "чути"
+
+msgid "speak and hear"
+msgstr "говорити й почути"
+
+msgid "attach a file"
+msgstr "додати файл"
+
+msgid "Write…"
+msgstr "Напиши…"
+
+msgid "Language"
+msgstr "Мова"
+
+msgid "what you hear and see"
+msgstr "що ти чуєш і бачиш"
+
+msgid "Model for the conversation"
+msgstr "Модель для розмови"
+
+msgid "provider"
+msgstr "провайдер"
+
+msgid "Save"
+msgstr "Зберегти"
+
+msgid "or a model id"
+msgstr "або id моделі"
+
+msgid "Keys"
+msgstr "Ключі"
+
+msgid "your own key"
+msgstr "свій ключ"
+
+msgid "value"
+msgstr "значення"
+
+msgid "paste the token"
+msgstr "встав токен"
+
+msgid "Values are never shown — only where a key comes from."
+msgstr "Значення не показуються ніколи — тільки те, звідки ключ."
+
+msgid "Devices"
+msgstr "Пристрої"
+
+msgid "A new browser or phone: take a code here and enter it there."
+msgstr "Новий браузер чи телефон: візьми код тут і введи його там."
+
+msgid "Connect a device"
+msgstr "Підключити пристрій"
+
+msgid "one-time, lives 5 minutes"
+msgstr "одноразовий, живе 5 хвилин"
+
+msgid "Facts"
+msgstr "Факти"
+
+msgid "Reminders"
+msgstr "Нагадування"
+
+msgid "Journal"
+msgstr "Журнал"
+
+msgid "Search"
+msgstr "Пошук"
+
+msgid "Hearing"
+msgstr "Слух"
+
+msgid "Profile"
+msgstr "Профіль"
+
+msgid "Sources"
+msgstr "Джерела"
+
+msgid "Backups"
+msgstr "Копії"
+
+msgid "what to recall?"
+msgstr "що пригадати?"
+
+msgid "what to recall"
+msgstr "що пригадати"
+
+msgid "Search for it"
+msgstr "Шукати"
+
+msgid "Owner"
+msgstr "Власник"
+
+msgid "e.g. Olena, speak informally"
+msgstr "напр. Олена, звертайся на «ти»"
+
+msgid "Open threads"
+msgstr "Відкриті нитки"
+
+msgid "what is in the works now"
+msgstr "що зараз у роботі"
+
+msgid "Goals"
+msgstr "Цілі"
+
+msgid "what you want this month"
+msgstr "чого хочеш цього місяця"
+
+msgid "A backup is one file: conversations, journal, facts, profile, reminders, settings. Model keys and this Mac's bonds are not in it: on a new Mac you enter them again."
+msgstr "Копія — один файл: розмови, журнал, факти, профіль, нагадування, налаштування. Ключів моделей і звʼязків цього мака в ній немає: на новому маку їх вводиш знову."
+
+msgid "with sound (Hearing recordings)"
+msgstr "зі звуком (записи «Слуху»)"
+
+msgid "Make a backup"
+msgstr "Зробити копію"
+
+msgid "Bring a backup…"
+msgstr "Принести копію…"
+
+msgid "Connect this browser"
+msgstr "Підключити цей браузер"
+
+msgid "A page already connected shows the code: ⚙ → Devices. Or in the terminal: heare-brain code"
+msgstr "Код покаже вже підключена сторінка: ⚙ → Пристрої. Або в терміналі: heare-brain code"
+
+msgid "8 characters"
+msgstr "8 символів"
+
+msgid "Connect"
+msgstr "Підключити"
+
 msgid "browser"
 msgstr "браузер"
 
@@ -581,9 +824,6 @@ msgstr "Зачекай, поки закінчиться відповідь."
 msgid "Sure?"
 msgstr "Точно?"
 
-msgid "Delete"
-msgstr "Видалити"
-
 #, python-brace-format
 msgid "{name} did not upload"
 msgstr "{name} не завантажився"
@@ -610,9 +850,6 @@ msgstr "агентів не знайдено"
 #, python-brace-format
 msgid "playing: {what}"
 msgstr "грає: {what}"
-
-msgid "quiet"
-msgstr "тихо"
 
 msgid "not here"
 msgstr "не тут"
@@ -755,12 +992,6 @@ msgstr "{who} хоче: {what}"
 msgid "I ask because {why}"
 msgstr "питаю, бо {why}"
 
-msgid "Yes"
-msgstr "Так"
-
-msgid "No"
-msgstr "Ні"
-
 msgid "input"
 msgstr "вхід"
 
@@ -778,9 +1009,6 @@ msgstr "чат"
 
 msgid "CLI hands"
 msgstr "Руки CLI"
-
-msgid "Sources"
-msgstr "Джерела"
 
 msgid "Native hands"
 msgstr "Нативні руки"
@@ -918,9 +1146,6 @@ msgstr "Сторінка"
 msgid "served by the brain"
 msgstr "її віддає мозок"
 
-msgid "no part is connected"
-msgstr "жодна частина не під'єднана"
-
 msgid "no part is connected now"
 msgstr "жодна частина не на зв'язку"
 
@@ -930,9 +1155,6 @@ msgstr "налаштування · {part}"
 
 msgid "unfold"
 msgstr "розгорнути"
-
-msgid "fold"
-msgstr "згорнути"
 
 msgid "Person"
 msgstr "Людина"
@@ -945,9 +1167,6 @@ msgstr "токенів"
 
 msgid "System prompt"
 msgstr "Системний промпт"
-
-msgid "Conversation"
-msgstr "Розмова"
 
 msgid "verbs"
 msgstr "дієслова"
@@ -1031,15 +1250,6 @@ msgstr "через {h} год"
 msgid "in {d} d"
 msgstr "через {d} дн"
 
-msgid "awaiting a decision"
-msgstr "чекають рішення"
-
-msgid "settled facts"
-msgstr "сталі факти"
-
-msgid "reminders"
-msgstr "нагадування"
-
 msgid "review"
 msgstr "огляд"
 
@@ -1071,9 +1281,6 @@ msgstr "Сталі факти"
 msgid "no settled facts yet."
 msgstr "сталих фактів ще немає."
 
-msgid "Reminders"
-msgstr "Нагадування"
-
 msgid "nothing to remind."
 msgstr "нічого не нагадувати."
 
@@ -1082,9 +1289,6 @@ msgstr "скажи «нагадай…», і воно з'явиться тут."
 
 msgid "reading the journal…"
 msgstr "читаю журнал…"
-
-msgid "Journal"
-msgstr "Журнал"
 
 msgid "the journal is empty."
 msgstr "журнал порожній."
@@ -1130,9 +1334,6 @@ msgstr "що сказано насправді"
 
 msgid "what you really said"
 msgstr "що ти насправді сказав"
-
-msgid "Save"
-msgstr "Зберегти"
 
 msgid "write what was said"
 msgstr "напиши, що було сказано"
@@ -1186,9 +1387,6 @@ msgstr "Точно? Поточне відкладу"
 
 msgid "reading the backups…"
 msgstr "читаю копії…"
-
-msgid "Backups"
-msgstr "Копії"
 
 msgid "no backups yet — make the first with the button above."
 msgstr "копій ще немає — зроби першу кнопкою вище."
@@ -1495,204 +1693,6 @@ msgid_plural "All imported: {n} notes read."
 msgstr[0] "Усе імпортовано: прочитано {n} нотатку."
 msgstr[1] "Усе імпортовано: прочитано {n} нотатки."
 msgstr[2] "Усе імпортовано: прочитано {n} нотаток."
-
-msgid "Brain"
-msgstr "Мозок"
-
-msgid "what it knows itself"
-msgstr "що він знає сам"
-
-msgid "settings: keys, model"
-msgstr "налаштування: ключі, модель"
-
-msgid "you"
-msgstr "ти"
-
-msgid "it"
-msgstr "він"
-
-msgid "State"
-msgstr "Стан"
-
-msgid "model"
-msgstr "модель"
-
-msgid "around"
-msgstr "довкола"
-
-msgid "reply"
-msgstr "відповідь"
-
-msgid "this run"
-msgstr "цей запуск"
-
-msgid "last review"
-msgstr "останній огляд"
-
-msgid "Open memory"
-msgstr "Відкрити памʼять"
-
-msgid "On my mind"
-msgstr "Тримаю в голові"
-
-msgid "Controls"
-msgstr "Керування"
-
-msgid "■ Stop"
-msgstr "■ Стоп"
-
-msgid "Stop everything?"
-msgstr "Зупинити все?"
-
-msgid "Machines"
-msgstr "Машини"
-
-msgid "what runs where"
-msgstr "що де працює"
-
-msgid "Screen"
-msgstr "Екран"
-
-msgid "Context"
-msgstr "Контекст"
-
-msgid "This is its screen. It puts here what is better seen than heard — and what you ask to keep in front of you."
-msgstr "Це його екран. Він сам ставить сюди те, що краще побачити, ніж почути — і те, що ти попросиш тримати перед очима."
-
-msgid "Sessions"
-msgstr "Сесії"
-
-msgid "New"
-msgstr "Нова"
-
-msgid "Rename"
-msgstr "Назва"
-
-msgid "hear the reply aloud"
-msgstr "чути відповідь уголос"
-
-msgid "hear"
-msgstr "чути"
-
-msgid "speak and hear"
-msgstr "говорити й почути"
-
-msgid "attach a file"
-msgstr "додати файл"
-
-msgid "Write…"
-msgstr "Напиши…"
-
-msgid "Settings"
-msgstr "Налаштування"
-
-msgid "Language"
-msgstr "Мова"
-
-msgid "what you hear and see"
-msgstr "що ти чуєш і бачиш"
-
-msgid "Model for the conversation"
-msgstr "Модель для розмови"
-
-msgid "provider"
-msgstr "провайдер"
-
-msgid "or a model id"
-msgstr "або id моделі"
-
-msgid "Keys"
-msgstr "Ключі"
-
-msgid "your own key"
-msgstr "свій ключ"
-
-msgid "value"
-msgstr "значення"
-
-msgid "paste the token"
-msgstr "встав токен"
-
-msgid "Values are never shown — only where a key comes from."
-msgstr "Значення не показуються ніколи — тільки те, звідки ключ."
-
-msgid "Devices"
-msgstr "Пристрої"
-
-msgid "A new browser or phone: take a code here and enter it there."
-msgstr "Новий браузер чи телефон: візьми код тут і введи його там."
-
-msgid "Connect a device"
-msgstr "Підключити пристрій"
-
-msgid "one-time, lives 5 minutes"
-msgstr "одноразовий, живе 5 хвилин"
-
-msgid "close"
-msgstr "закрити"
-
-msgid "Facts"
-msgstr "Факти"
-
-msgid "Search"
-msgstr "Пошук"
-
-msgid "Hearing"
-msgstr "Слух"
-
-msgid "Profile"
-msgstr "Профіль"
-
-msgid "what to recall?"
-msgstr "що пригадати?"
-
-msgid "what to recall"
-msgstr "що пригадати"
-
-msgid "Search for it"
-msgstr "Шукати"
-
-msgid "Owner"
-msgstr "Власник"
-
-msgid "e.g. Olena, speak informally"
-msgstr "напр. Олена, звертайся на «ти»"
-
-msgid "Open threads"
-msgstr "Відкриті нитки"
-
-msgid "what is in the works now"
-msgstr "що зараз у роботі"
-
-msgid "Goals"
-msgstr "Цілі"
-
-msgid "what you want this month"
-msgstr "чого хочеш цього місяця"
-
-msgid "A backup is one file: conversations, journal, facts, profile, reminders, settings. Model keys and this Mac's bonds are not in it: on a new Mac you enter them again."
-msgstr "Копія — один файл: розмови, журнал, факти, профіль, нагадування, налаштування. Ключів моделей і звʼязків цього мака в ній немає: на новому маку їх вводиш знову."
-
-msgid "with sound (Hearing recordings)"
-msgstr "зі звуком (записи «Слуху»)"
-
-msgid "Make a backup"
-msgstr "Зробити копію"
-
-msgid "Bring a backup…"
-msgstr "Принести копію…"
-
-msgid "Connect this browser"
-msgstr "Підключити цей браузер"
-
-msgid "A page already connected shows the code: ⚙ → Devices. Or in the terminal: heare-brain code"
-msgstr "Код покаже вже підключена сторінка: ⚙ → Пристрої. Або в терміналі: heare-brain code"
-
-msgid "8 characters"
-msgstr "8 символів"
-
-msgid "Connect"
-msgstr "Підключити"
 
 msgid "could not ask about a new version"
 msgstr "не вдалося спитати про нову версію"

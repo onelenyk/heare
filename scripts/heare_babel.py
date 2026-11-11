@@ -64,6 +64,17 @@ def page(fileobj: IO[bytes], keywords: object, comment_tags: object,
         yield at, "gettext", key, []
 
 
+def script(fileobj: IO[bytes], keywords: object, comment_tags: object,
+           options: object) -> Iterator[tuple[int, str, object, list[str]]]:
+    """tr("…") in the page's script (page.js)."""
+    text = fileobj.read().decode("utf-8")
+    for m in TR.finditer(text):
+        yield text.count("\n", 0, m.start()) + 1, "gettext", _unquote(m.group(1)), []
+    for m in TRN.finditer(text):
+        yield (text.count("\n", 0, m.start()) + 1, "ngettext",
+               (_unquote(m.group(1)), _unquote(m.group(2))), [])
+
+
 def swift(fileobj: IO[bytes], keywords: object, comment_tags: object,
           options: object) -> Iterator[tuple[int, str, object, list[str]]]:
     """tr("…") in the Mac shell (apps/mac, Words.swift)."""

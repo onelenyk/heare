@@ -99,6 +99,7 @@ def test_everything_allowed_to_speak_still_exists():
 # terminal still prints.
 PAGES = [
     PACKAGES / "heare-brain/heare/api/page.html",
+    PACKAGES / "heare-brain/heare/api/page.js",
     PACKAGES / "heare-keeper/heare/installer.html",
     *sorted((ROOT / "apps/mac/Sources").rglob("*.swift")),
     *sorted(p for p in (ROOT / "apps/mobile").rglob("*.kt")

@@ -56,6 +56,8 @@ from heare.model.providers import PROVIDERS, check_key, list_models
 logger = logging.getLogger("heare.api.server")
 
 PAGE = Path(__file__).with_name("page.html")
+PAGE_CSS = PAGE.with_name("page.css")
+PAGE_JS = PAGE.with_name("page.js")
 FONTS = Path(__file__).with_name("fonts")
 _NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,60}")
 
@@ -1756,6 +1758,12 @@ def build(core: Core, settings: Any, vitals: Any = None,
         # before the catalog arrives.
         return handed(words.page(PAGE.read_text(encoding="utf-8")))
 
+    async def page_css(request: web.Request) -> web.FileResponse:
+        return web.FileResponse(PAGE_CSS, headers={"Cache-Control": "no-store"})
+
+    async def page_js(request: web.Request) -> web.FileResponse:
+        return web.FileResponse(PAGE_JS, headers={"Cache-Control": "no-store"})
+
     async def font(request: web.Request) -> web.FileResponse:
         path = FONTS / f"{request.match_info['name']}.woff2"
         if not path.is_file():
@@ -1768,6 +1776,8 @@ def build(core: Core, settings: Any, vitals: Any = None,
     app.cleanup_ctx.append(asking_for_updates)
     app.add_routes([
         web.get("/", page),
+        web.get("/page.css", page_css),
+        web.get("/page.js", page_js),
         web.get("/fonts/{name:[a-z-]+}.woff2", font),
         web.post("/api/pair", pair),
         web.post("/api/pair-code", pair_code),
