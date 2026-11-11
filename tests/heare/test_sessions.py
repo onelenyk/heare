@@ -214,3 +214,45 @@ async def test_memory_gets_the_words_without_the_file():
 @pytest.mark.parametrize(("name", "kind"), [("a.PNG", "image"), ("a.md", "text"), ("a.pdf", "file"), ("a.svg", "file")])
 def test_kinds(name, kind):
     assert kind_of(name) == kind
+
+
+def test_a_message_carries_its_id_kind_and_width(tmp_path):
+    sessions = Sessions(tmp_path)
+    session = sessions.new()
+    first = sessions.add(session, "user", "привіт")
+    second = sessions.add(session, "assistant", "вітаю", kind="html",
+                             html="<p>вітаю</p>", artifact={"label": "card"}, width="w")
+    assert first["id"] == f"{session}/0" and second["id"] == f"{session}/1"
+    rows = sessions.read(session)
+    assert [row["id"] for row in rows] == [f"{session}/0", f"{session}/1"]
+    assert rows[1]["kind"] == "html" and rows[1]["width"] == "w"
+    assert rows[1]["html"] == "<p>вітаю</p>" and rows[1]["artifact"] == {"label": "card"}
+
+
+def test_a_patch_changes_a_message_without_adding_one(tmp_path):
+    sessions = Sessions(tmp_path)
+    session = sessions.new()
+    sessions.add(session, "assistant", "крок")
+    sessions.patch(session, 0, status="done", text="крок 2")
+    rows = sessions.read(session)
+    assert len(rows) == 1 and rows[0]["text"] == "крок 2" and rows[0]["status"] == "done"
+    assert sessions.message(session, 9) is None
+
+
+def test_an_old_row_gets_an_id_and_the_defaults(tmp_path):
+    sessions = Sessions(tmp_path)
+    session = sessions.new()
+    (tmp_path / session / "turns.jsonl").write_text(
+        '{"role":"user","text":"старе","at":1,"files":[]}\n', encoding="utf-8")
+    row = sessions.read(session)[0]
+    assert row["id"] == f"{session}/0" and row["kind"] == "text"
+    assert row["width"] == "s" and row["status"] == "done"
+
+
+def test_for_model_sees_only_text_and_the_turns_count_only_text(tmp_path):
+    sessions = Sessions(tmp_path)
+    session = sessions.new()
+    sessions.add(session, "assistant", "картка", kind="html", html="<p>картка</p>")
+    sessions.add(session, "user", "слово")
+    assert [turn["content"] for turn in sessions.for_model(session)] == ["слово"]
+    assert sessions.listed()[0]["turns"] == 1

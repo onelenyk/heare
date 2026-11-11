@@ -106,38 +106,96 @@ class Sessions:
         return sorted(self._index["items"].values(), key=lambda s: -s["updated"])
 
     def add(self, session: str, role: str, text: str, files: list[dict] | None = None,
-            unread: bool = False) -> None:
+            unread: bool = False, *, kind: str = "text", html: str = "",
+            artifact: dict | None = None, width: str = "s", status: str = "done",
+            at: float | None = None) -> dict:
+        """One message, appended. The id is its place among messages, so a
+        patch row never moves the ones after it."""
         item = self._index["items"].get(session)
         if item is None:
-            return
+            return {}
         words = text.split(ATTACHED, 1)[0]
-        row = {"role": role, "text": words, "at": time.time(), "files": files or []}
+        message = {
+            "id": f"{session}/{len(self.read(session))}", "session_id": session,
+            "role": role, "at": at if at is not None else time.time(),
+            "kind": kind, "text": words, "width": width, "status": status,
+            "files": files or [],
+        }
+        if html:
+            message["html"] = html
+        if artifact:
+            message["artifact"] = artifact
         with self._log(session).open("a", encoding="utf-8") as log:
-            log.write(json.dumps(row, ensure_ascii=False) + "\n")
-        item["updated"], item["turns"] = row["at"], item["turns"] + 1
+            log.write(json.dumps(message, ensure_ascii=False) + "\n")
+        item["updated"] = message["at"]
+        if kind == "text":
+            item["turns"] += 1
         if not item["title"] and role == "user":
             item["title"] = " ".join(words.split())[:TITLE_CHARS]
         if unread:
             item["unread"] += 1
         self._save()
+        return message
 
     def read(self, session: str) -> list[dict]:
+        """The messages, patches folded in. Old rows get their id, kind and
+        width here, at read time, so nothing has to be migrated."""
         try:
             lines = self._log(session).read_text(encoding="utf-8").splitlines()
         except OSError:
             return []
-        rows = []
+        messages: list[dict] = []
+        by_id: dict[str, dict] = {}
         for raw in lines:
             try:
-                rows.append(json.loads(raw))
+                row = json.loads(raw)
             except ValueError:
                 logger.warning("a broken line in session %s", session)
-        return rows
+                continue
+            if "patch" in row:
+                target = by_id.get(str(row.get("for", "")))
+                if target is not None:
+                    target.update(row["patch"])
+                continue
+            message = {
+                "id": f"{session}/{len(messages)}", "session_id": session,
+                "role": row.get("role", "assistant"), "at": row.get("at", 0),
+                "kind": row.get("kind", "text"), "text": row.get("text", ""),
+                "width": row.get("width", "s"), "status": row.get("status", "done"),
+                "files": row.get("files", []),
+            }
+            if "html" in row:
+                message["html"] = row["html"]
+            if "artifact" in row:
+                message["artifact"] = row["artifact"]
+            messages.append(message)
+            by_id[message["id"]] = message
+        return messages
+
+    def message(self, session: str, n: int) -> dict | None:
+        messages = self.read(session)
+        return messages[n] if 0 <= n < len(messages) else None
+
+    def patch(self, session: str, n: int, **fields: object) -> dict | None:
+        """A later line that changes one message; the log itself is never
+        rewritten."""
+        target = self.message(session, n)
+        if target is None:
+            return None
+        patch = {k: v for k, v in fields.items()
+                 if k in ("text", "html", "artifact", "width", "status")}
+        if not patch:
+            return target
+        row = {"patch": patch, "for": target["id"], "at": time.time()}
+        with self._log(session).open("a", encoding="utf-8") as log:
+            log.write(json.dumps(row, ensure_ascii=False) + "\n")
+        target.update(patch)
+        return target
 
     def for_model(self, session: str) -> list[dict]:
         """The newest text file comes back whole, because that is the one the
         talk is still about; older files stay names, so the budget holds the talk."""
-        rows = self.read(session)
+        rows = [row for row in self.read(session) if row["kind"] == "text"]
         latest = next((row for row in reversed(rows)
                        if any(f["kind"] == "text" for f in row.get("files", []))), None)
         turns = []

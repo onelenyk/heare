@@ -120,6 +120,19 @@ function dockRender() {
 }
 dockRender();
 
+const clock = at => {
+  if (!at) return "";
+  try { return new Date(at * 1000).toLocaleTimeString(LOCALE, {hour: "2-digit", minute: "2-digit"}); }
+  catch { return ""; }
+};
+const escapeHtml = text => String(text ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+function turnMsg(t) {
+  return msgEl({
+    id: t.id, who: t.role === "user" ? "me" : "it", time: clock(t.at),
+    html: t.kind === "html" && t.html ? t.html : `<p>${escapeHtml(t.text)}</p>`,
+    wide: t.width === "w",
+  });
+}
 function msgEl(m) {
   const wrap = el("div", "msg " + (m.who === "me" ? "me" : "it") + (m.wide ? " wide" : ""));
   wrap.dataset.mid = m.id;
@@ -275,8 +288,7 @@ async function loadSessions() {
   const turns = await api(`sessions/${session}/turns`);
   feedClear();
   if (!turns.length) feedEmpty();
-  turns.forEach(t => feedAppend(
-    chipped(el("div", `line ${t.role === "user" ? "me" : "it"} old`, t.text), t.text, session, t.files)));
+  turns.forEach(t => feedAppend(chipped(turnMsg(t), t.text, session, t.files)));
   feedToEnd();
 }
 const sessionAct = path => api(path, {method: "POST"}).catch(() => aside(tr("Wait for the reply to end.")));
