@@ -85,14 +85,12 @@ class Toolbox:
         return {"delegate", "stop_work", "remind", "cancel_reminder", "merge_plans"}
 
     def read_only(self, name: str) -> bool:
-        # canvas_view is the canvas's verb, not ours; named here because only
-        # the toolbox says what may be read and answered on in the same turn.
-        return name in {"recall", "list_reminders", "read_body", "canvas_view", "plans"}
+        return name in {"recall", "list_reminders", "read_body", "plans"}
 
     def lookup(self, name: str) -> bool:
         # remind and cancel_reminder change something, but only locally and
         # without permission; their answer is worth seeing inside the turn.
-        return name in {"recall", "list_reminders", "read_body", "canvas_view",
+        return name in {"recall", "list_reminders", "read_body",
                         "remind", "cancel_reminder", "plans", "merge_plans"}
 
     async def _run_recall(self, arguments: dict) -> str:

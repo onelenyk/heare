@@ -550,10 +550,13 @@ def build(core: Core, settings: Any, vitals: Any = None,
         attached, metas = sessions.block(sessions.active, ids)
         if not text and not metas:
             raise web.HTTPBadRequest(text="nothing was said")
+        session_id = sessions.active
+        person = sessions.add(session_id, "user", (text or "(see attached)") + attached,
+                              files=metas)
         if kept is not None:
-            kept.files = metas
+            kept.files = []
         core.hear(Message(text=(text or "(see attached)") + attached, channel="screen"))
-        return web.json_response({"ok": True})
+        return web.json_response({"ok": True, "session_id": session_id, "message": person})
 
     # -- sessions: the talk divided -------------------------------------------
 

@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-12 00:03+0200\n"
+"POT-Creation-Date: 2026-11-12 00:06+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -1850,6 +1850,18 @@ msgid "All imported: {n} note read."
 msgid_plural "All imported: {n} notes read."
 msgstr[0] ""
 msgstr[1] ""
+
+msgid "Nothing to show."
+msgstr ""
+
+msgid "It is on the page."
+msgstr ""
+
+msgid "That link cannot be shown."
+msgstr ""
+
+msgid "That file is not in this conversation."
+msgstr ""
 
 msgid "could not ask about a new version"
 msgstr ""

@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-12 00:03+0200\n"
+"POT-Creation-Date: 2026-11-12 00:06+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -1858,6 +1858,18 @@ msgid_plural "All imported: {n} notes read."
 msgstr[0] "Усе імпортовано: прочитано {n} нотатку."
 msgstr[1] "Усе імпортовано: прочитано {n} нотатки."
 msgstr[2] "Усе імпортовано: прочитано {n} нотаток."
+
+msgid "Nothing to show."
+msgstr "Нема чого показати."
+
+msgid "It is on the page."
+msgstr "Це вже на сторінці."
+
+msgid "That link cannot be shown."
+msgstr "Це посилання не можна показати."
+
+msgid "That file is not in this conversation."
+msgstr "Цього файлу немає в цій розмові."
 
 msgid "could not ask about a new version"
 msgstr "не вдалося спитати про нову версію"

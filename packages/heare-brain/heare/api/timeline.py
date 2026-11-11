@@ -14,9 +14,11 @@ import re
 import time
 from pathlib import Path
 from typing import AsyncIterator
+from urllib.parse import urlparse
 
 from heare.api.canvas import _ID as _BLOCK
 from heare.api.canvas import _text, clean
+from heare.core.i18n import _
 
 logger = logging.getLogger("heare.api.timeline")
 
@@ -34,6 +36,60 @@ def _title(html: str) -> str:
 def _artifact(html: str, block: str, label: str = "canvas") -> dict:
     return {"label": label, "block": block, "title": _title(html) or block,
             "live": bool(_LIVE.search(html))}
+
+
+def _label(html: str) -> str:
+    low = html.lower()
+    if "<table" in low:
+        return "table"
+    if "<script" in low:
+        return "game"
+    return "card"
+
+
+def _verb(name: str, description: str, properties: dict, required: list[str]) -> dict:
+    return {"type": "function", "function": {
+        "name": name, "description": description,
+        "parameters": {"type": "object", "properties": properties, "required": required}}}
+
+
+_SHOW = _verb(
+    "show",
+    "Put a card in the chat — the heare page in the browser. Use it by "
+    "yourself, without being asked, when something is better seen than heard "
+    "(a list, steps, a table, numbers, code) or the person wants something to "
+    "keep an eye on. Not for small talk or a one-line answer. The gist goes in "
+    "`say`, the detail in the card. HTML only, no <style>; start with "
+    "<h3>title</h3>. Helpers: class=\"big\", \"muted\", \"row\", "
+    "\"meter\" with style=\"--v:0.42\", \"pill\". A live card carries "
+    "one <script>; it can read heare.get('state'|'tasks').",
+    {
+        "html": {"type": "string", "description": "The card's HTML."},
+        "title": {"type": "string", "description": "A short title for the card and the dock."},
+        "say": {"type": "string", "description": "One short sentence to say aloud."},
+        "width": {"type": "string", "enum": ["s", "w"],
+                  "description": "s: the reading column (default); w: the whole panel."},
+        "label": {"type": "string", "description": "Optional short kind, e.g. table, weather, game."},
+    },
+    ["html", "say"],
+)
+_SHOW_LINK = _verb(
+    "show_link",
+    "Show a web link as a card in the chat. Only http:// or https:// links.",
+    {"url": {"type": "string"}, "title": {"type": "string"},
+     "say": {"type": "string", "description": "One short sentence to say aloud."}},
+    ["url", "say"],
+)
+_SHOW_MEDIA = _verb(
+    "show_media",
+    "Show a file that is in this conversation as a card: an image, an audio "
+    "recording or a video.",
+    {"file": {"type": "string", "description": "The file id from this conversation."},
+     "kind": {"type": "string", "enum": ["image", "audio", "video"]},
+     "title": {"type": "string"},
+     "say": {"type": "string", "description": "One short sentence to say aloud."}},
+    ["file", "kind", "say"],
+)
 
 
 class Timeline:
@@ -68,10 +124,65 @@ class Timeline:
     # -- the Surface and the Output --------------------------------------
 
     def context(self) -> str:
-        return ""
+        shown = [m for m in self._sessions.read(self._sessions.active)
+                 if m["kind"] != "text" and m["status"] != "withdrawn"]
+        if not shown:
+            return ""
+        lines = []
+        for message in shown[-8:]:
+            artifact = message.get("artifact") or {}
+            label = artifact.get("label") or message["kind"]
+            lines.append(f"- {message['id']} [{label}] {message['width']}: "
+                         f"{message['text'][:120]}")
+        return ("What the page shows, newest last (ids are for pins and width):\n"
+                + "\n".join(lines))[:900]
 
     def verbs(self) -> list[tuple[dict, object]]:
-        return []
+        return [(_SHOW, self._show), (_SHOW_LINK, self._show_link),
+                (_SHOW_MEDIA, self._show_media)]
+
+    async def _show(self, arguments: dict) -> str:
+        html = clean(str(arguments.get("html", "")))
+        if not html.strip():
+            return _("Nothing to show.")
+        say = str(arguments.get("say", "")).strip()
+        label = str(arguments.get("label", "")).strip() or _label(html)
+        title = str(arguments.get("title", "")).strip() or _title(html) or label
+        width = str(arguments.get("width", "")).strip()
+        if width not in ("s", "w"):
+            width = "w" if label in ("table", "weather", "game") else "s"
+        self._sessions.add(self._sessions.active, "assistant", say or _text(html)[:400],
+                           kind="html", html=html, width=width,
+                           artifact={"label": label, "title": title,
+                                     "live": bool(_LIVE.search(html))})
+        return say or _("It is on the page.")
+
+    async def _show_link(self, arguments: dict) -> str:
+        url = str(arguments.get("url", "")).strip()
+        if not re.match(r"^https?://", url, re.IGNORECASE):
+            return _("That link cannot be shown.")
+        title = str(arguments.get("title", "")).strip() or url
+        say = str(arguments.get("say", "")).strip()
+        self._sessions.add(self._sessions.active, "assistant", say or title,
+                           kind="link", width="s",
+                           artifact={"url": url, "title": title,
+                                     "host": urlparse(url).netloc})
+        return say or _("It is on the page.")
+
+    async def _show_media(self, arguments: dict) -> str:
+        file_id = str(arguments.get("file", ""))
+        kind = str(arguments.get("kind", "")).strip()
+        found = self._sessions.stored(self._sessions.active, file_id)
+        if found is None or kind not in ("image", "audio", "video"):
+            return _("That file is not in this conversation.")
+        meta, _path = found
+        title = str(arguments.get("title", "")).strip() or meta["name"]
+        say = str(arguments.get("say", "")).strip()
+        self._sessions.add(self._sessions.active, "assistant", say or title,
+                           kind=kind, width="s" if kind == "audio" else "w",
+                           artifact={"file": file_id, "name": meta["name"],
+                                     "mime": meta.get("mime", ""), "title": title})
+        return say or _("It is on the page.")
 
     async def say(self, pieces: AsyncIterator[str]) -> str:
         async for _ in pieces:

@@ -262,8 +262,10 @@ class Sessions:
 
 
 class Kept:
-    """The memory, with each turn also written to the session it belongs to.
-    Stands where the memory stands, so the core needs to know nothing."""
+    """The memory, and the assistant's side of the session.
+
+    The person's side is written by the door before the turn begins; writing
+    it again here would make every question twice."""
 
     def __init__(self, memory: object, sessions: Sessions) -> None:
         self._memory = memory
@@ -275,5 +277,6 @@ class Kept:
 
     async def keep(self, role: str, text: str, channel: str, fields: dict | None = None) -> None:
         files, self.files = (self.files, []) if role == "user" else ([], self.files)
-        self._sessions.add(self._sessions.active, role, text, files)
+        if role != "user":
+            self._sessions.add(self._sessions.active, role, text, files)
         await self._memory.keep(role, text.split(ATTACHED, 1)[0], channel, fields)

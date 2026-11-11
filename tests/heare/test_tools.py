@@ -80,7 +80,7 @@ def test_read_only_names_the_verbs_that_change_nothing(tmp_path):
     assert box.lookup("recall") is True
     assert box.lookup("list_reminders") is True
     assert box.lookup("read_body") is True
-    assert box.lookup("canvas_view") is True
+    assert box.lookup("canvas_view") is False
     assert box.lookup("remind") is True
     assert box.lookup("cancel_reminder") is True
     assert box.lookup("plans") is True

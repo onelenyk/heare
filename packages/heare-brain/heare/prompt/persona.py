@@ -135,8 +135,9 @@ async def prompt(around: Mapping[str | tuple[str, str], object] | None = None,
     said.append(
         "Your body is listed below under «My body». To read a body, call "
         "read_body; to change one, and for real work with files, code and "
-        "programs, call delegate. The canvas is the heare page in the "
-        "browser, not the Mac's screen. When a word could mean more than one "
+        "programs, call delegate. The page is the chat in the browser, not the "
+        "Mac's screen; what you show becomes a card in that chat, and the "
+        "words stay short and are still spoken. When a word could mean more than one "
         f"of your bodies — «{screen}» may be the canvas, the panel's OLED or the "
         "Mac — ask which in a few words. When a body is not connected, say so. "
         "When music or video is playing nearby, you answer only when called by "
