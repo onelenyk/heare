@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import socket
 import threading
@@ -14,6 +15,7 @@ import pytest
 from heare import keys
 from heare import setup
 from heare.config import Settings
+from heare.core import i18n
 
 
 def test_want_setup_until_the_first_run_is_done(tmp_path):
@@ -179,7 +181,7 @@ def test_a_body_is_paired_with_the_brain_it_names(form, tmp_path, monkeypatch):
     asked = {}
 
     def paired(url, code, kind, name):
-        asked.update(url=url, code=code, kind=kind)
+        asked.update(url=url, code=code, kind=kind, name=name)
         return {"pid": "machine@MBP-M4--Nazar.lan", "token": "machine-token"}
 
     monkeypatch.setattr(setup, "pair", paired)
@@ -190,10 +192,47 @@ def test_a_body_is_paired_with_the_brain_it_names(form, tmp_path, monkeypatch):
     status, state = _post(base + "/role", {"role": "body", "url": "https://brain.example/",
                                            "code": "ABCD1234"})
     assert status == 200 and state["role"] == "body" and state["url"] == "https://brain.example"
-    assert asked == {"url": "https://brain.example", "code": "ABCD1234", "kind": "machine"}
+    assert asked == {"url": "https://brain.example", "code": "ABCD1234", "kind": "machine",
+                     "name": setup.socket.gethostname()}, \
+        "a machine nobody named is called by its host, as before"
     assert (tmp_path / "machine_token").read_text() == "machine-token"
     assert (tmp_path / "machine_name").read_text() == "MBP-M4--Nazar.lan", \
         "the name the brain knows it by is kept: its parts key on it"
+
+
+def test_a_machine_may_be_paired_under_a_name_of_its_own(form, tmp_path, monkeypatch):
+    """Two computers may share a host name; the brain knows them by name."""
+    base, config, _ = form
+    asked = {}
+
+    def paired(url, code, kind, name):
+        asked.update(name=name)
+        return {"pid": f"machine@{name}", "token": "machine-token"}
+
+    monkeypatch.setattr(setup, "pair", paired)
+    status, state = _post(base + "/role", {
+        "role": "body", "url": "https://brain.example", "code": "ABCD1234",
+        "name": " kitchen "})
+    assert status == 200 and asked["name"] == "kitchen"
+    assert (tmp_path / "machine_name").read_text() == "kitchen"
+
+
+def test_a_taken_name_says_what_to_do_and_keeps_the_key(form, tmp_path, monkeypatch):
+    base, config, _ = form
+
+    def taken(url, code, kind, name):
+        raise urllib.error.HTTPError(url, 409, "Conflict", {}, io.BytesIO(b"taken"))
+
+    monkeypatch.setattr(setup, "pair", taken)
+    with pytest.raises(urllib.error.HTTPError) as refused:
+        _post(base + "/role", {"role": "body", "url": "https://brain.example",
+                               "code": "ABCD1234", "name": "mac"})
+    assert refused.value.code == 400
+    answer = json.loads(refused.value.read().decode())
+    assert answer["errors"] == [i18n._(
+        "a machine with this name is already connected — forget it on the brain's page, "
+        "or give this one another name")]
+    assert not (tmp_path / "machine_token").exists()
 
 
 def test_the_brain_here_forgets_a_brain_elsewhere(form):

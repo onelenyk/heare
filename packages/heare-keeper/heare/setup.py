@@ -15,6 +15,7 @@ import socket
 import subprocess
 import sys
 import threading
+import urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -48,6 +49,18 @@ def want_setup(settings: Settings) -> bool:
 def _text(data: dict, name: str) -> str:
     value = data.get(name)
     return value.strip() if isinstance(value, str) else ""
+
+
+def _pair_failed(error: urllib.error.HTTPError) -> str:
+    """What to tell the person when the brain would not pair this machine."""
+    if error.code == 409:
+        return _("a machine with this name is already connected — forget it on the brain's page, or give this one another name")
+    try:
+        said = error.read().decode("utf-8", "replace").strip()
+    except (OSError, AttributeError):
+        said = ""
+    return _("the brain did not connect: {error}").format(
+        error=said or getattr(error, "reason", "") or error)
 
 
 _LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
@@ -183,8 +196,14 @@ class _Handler(BaseHTTPRequestHandler):
             if len(code) != 8:
                 self._send(400, {"errors": [_("the code must be 8 characters")]})
                 return
+            # The name the brain knows this machine by. Its own host name
+            # unless the person says otherwise: two computers may share one.
+            name = _text(data, "name") or socket.gethostname()
             try:
-                answer = pair(url, code, "machine", socket.gethostname())
+                answer = pair(url, code, "machine", name)
+            except urllib.error.HTTPError as error:
+                self._send(400, {"errors": [_pair_failed(error)]})
+                return
             except OSError as error:
                 self._send(400, {"errors": [_("the brain did not connect: {error}").format(error=error)]})
                 return
@@ -253,6 +272,7 @@ def _machine() -> dict:
             "parts": machine.parts(Path(settings.parts_dir)),
             "keys": keys.view(),
             "url": settings.url or "",
+            "host": settings.host,
             "api_port": settings.api_port,
             "setup": state()}
 

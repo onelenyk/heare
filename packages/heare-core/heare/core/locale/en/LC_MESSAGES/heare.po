@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-11 17:52+0200\n"
+"POT-Creation-Date: 2026-11-11 20:13+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -2056,6 +2056,12 @@ msgstr ""
 msgid "The connection code — on the brain's page: ⚙ → Devices"
 msgstr ""
 
+msgid "The name the brain knows this computer by"
+msgstr ""
+
+msgid "Two computers may share a host name — give this one its own."
+msgstr ""
+
 msgid "connecting…"
 msgstr ""
 
@@ -2176,6 +2182,9 @@ msgstr ""
 msgid "another keeper already runs on this computer (pid {pid}) — this one stops"
 msgstr ""
 
+msgid "this machine is paired again; its parts start"
+msgstr ""
+
 msgid "settings changed; the parts restart"
 msgstr ""
 
@@ -2211,6 +2220,16 @@ msgstr ""
 msgid "not switched on: {error}"
 msgstr ""
 
+msgid "the brain no longer knows this machine — pair it again"
+msgstr ""
+
+msgid "a machine with this name is already connected — forget it on the brain's page, or give this one another name"
+msgstr ""
+
+#, python-brace-format
+msgid "the brain did not connect: {error}"
+msgstr ""
+
 msgid "another page does not control this form"
 msgstr ""
 
@@ -2236,10 +2255,6 @@ msgid "the address must start with http:// or https://"
 msgstr ""
 
 msgid "the code must be 8 characters"
-msgstr ""
-
-#, python-brace-format
-msgid "the brain did not connect: {error}"
 msgstr ""
 
 msgid "an unknown or empty key"

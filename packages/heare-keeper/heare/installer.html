@@ -137,7 +137,7 @@ function role() {
   const chosen = machine.role || "all";
   const out = [el("h2", "", tr("This computer is…")), el("p", "lead", tr("The brain is memory and conversation. There is one; the parts can be on different machines."))];
   let pick = chosen;
-  const url = el("input"), code = el("input");
+  const url = el("input"), code = el("input"), name = el("input");
   const body = el("div"); body.hidden = pick !== "body";
   for (const {name, label, what} of machine.roles) {
     const row = el("label", "choice" + (name === pick ? " on" : "")), radio = el("input");
@@ -148,14 +148,17 @@ function role() {
   }
   url.placeholder = tr("https://my-brain.example"); url.value = machine.url || "";
   code.placeholder = tr("8 characters from the brain's page"); code.maxLength = 8; code.autocomplete = "off";
-  const f1 = el("div", "field"), f2 = el("div", "field");
+  name.placeholder = machine.host || ""; name.value = machine.host || ""; name.autocomplete = "off";
+  const f1 = el("div", "field"), f2 = el("div", "field"), f3 = el("div", "field");
   f1.append(el("label", "", tr("The brain's address")), url);
   f2.append(el("label", "", tr("The connection code — on the brain's page: ⚙ → Devices")), code);
-  body.append(f1, f2);
+  f3.append(el("label", "", tr("The name the brain knows this computer by")), name,
+            el("small", "", tr("Two computers may share a host name — give this one its own.")));
+  body.append(f1, f2, f3);
   out.push(body, foot(async (go, note) => {
     go.disabled = true; note.className = "say soft"; note.textContent = pick === "body" ? tr("connecting…") : "";
     try {
-      machine = await post("role", {role: pick, url: url.value.trim(), code: code.value.trim()});
+      machine = await post("role", {role: pick, url: url.value.trim(), code: code.value.trim(), name: name.value.trim()});
       forward();
     } catch (error) { note.className = "say bad"; note.textContent = error.message; go.disabled = false; }
   }));

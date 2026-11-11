@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-11 17:52+0200\n"
+"POT-Creation-Date: 2026-11-11 20:13+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -2064,6 +2064,12 @@ msgstr "Адреса мозку"
 msgid "The connection code — on the brain's page: ⚙ → Devices"
 msgstr "Код підключення — на сторінці мозку: ⚙ → Пристрої"
 
+msgid "The name the brain knows this computer by"
+msgstr "Ім'я, під яким мозок знає цей комп'ютер"
+
+msgid "Two computers may share a host name — give this one its own."
+msgstr "Два комп'ютери можуть мати однакове ім'я хоста — дай цьому своє."
+
 msgid "connecting…"
 msgstr "підключаюсь…"
 
@@ -2225,6 +2231,13 @@ msgstr "не ввімкнув: {error}"
 msgid "the brain no longer knows this machine — pair it again"
 msgstr "мозок більше не знає цю машину — спаруй її знову"
 
+msgid "a machine with this name is already connected — forget it on the brain's page, or give this one another name"
+msgstr "машина з таким ім'ям уже підключена — забудь її на сторінці мозку або дай цій інше ім'я"
+
+#, python-brace-format
+msgid "the brain did not connect: {error}"
+msgstr "мозок не підключив: {error}"
+
 msgid "another page does not control this form"
 msgstr "чужа сторінка не керує цією формою"
 
@@ -2251,10 +2264,6 @@ msgstr "адреса має починатися з http:// або https://"
 
 msgid "the code must be 8 characters"
 msgstr "код має бути 8 символів"
-
-#, python-brace-format
-msgid "the brain did not connect: {error}"
-msgstr "мозок не підключив: {error}"
 
 msgid "an unknown or empty key"
 msgstr "невідомий або порожній ключ"

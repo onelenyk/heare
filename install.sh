@@ -108,6 +108,7 @@ text_en() {
         role_kept) printf 'keeping the role: %s' "$2" ;;
         role_now) printf 'heare: role %s' "$2" ;;
         pair_http_error) printf 'the code is wrong or expired (HTTP %%s) — take a new one: heare-brain code' ;;
+        pair_taken) printf 'a machine with this name is already connected to the brain — forget it on the brain page (⚙ → Devices), or rename this computer first' ;;
         pair_url_error) printf 'could not reach the brain: %%s' ;;
         pair_failed) printf 'did not pair with the brain — check the address and the code' ;;
         body_paired) printf 'the body is paired with %s' "$2" ;;
@@ -194,6 +195,7 @@ text_uk() {
         role_kept) printf 'роль лишаю: %s' "$2" ;;
         role_now) printf 'heare: роль %s' "$2" ;;
         pair_http_error) printf 'код невірний або прострочений (HTTP %%s) — візьми новий: heare-brain code' ;;
+        pair_taken) printf 'машина з таким імʼям уже підключена до мозку — забудь її на сторінці мозку (⚙ → Пристрої) або спершу перейменуй цей компʼютер' ;;
         pair_url_error) printf 'не знайшов адресу мозку: %%s' ;;
         pair_failed) printf 'не підключився до мозку — перевір адресу й код' ;;
         body_paired) printf 'тіло підключене до %s' "$2" ;;
@@ -555,7 +557,10 @@ url = os.environ["HEARE_PAIR_URL"].rstrip("/")
 try:
     answer = pair(url, os.environ["HEARE_PAIR_CODE"], "machine", sys.argv[1])
 except urllib.error.HTTPError as error:
-    sys.stderr.write((sys.argv[2] + "\n") % error.code)
+    if error.code == 409:
+        sys.stderr.write(sys.argv[4] + "\n")
+    else:
+        sys.stderr.write((sys.argv[2] + "\n") % error.code)
     raise SystemExit(1)
 except urllib.error.URLError as error:
     sys.stderr.write((sys.argv[3] + "\n") % error.reason)
@@ -566,10 +571,14 @@ path = Path(settings.machine_token_file)
 path.parent.mkdir(parents=True, exist_ok=True)
 path.write_text(answer["token"], encoding="utf-8")
 path.chmod(0o600)
+# The name the brain knows this machine by: every part keys on it, and the
+# network name of the day is not it (5 November on a Mac).
+paired = str(answer.get("pid") or "").split("@", 1)[-1] or sys.argv[1]
+Path(settings.machine_name_file).write_text(paired, encoding="utf-8")
 settings.set("url", url)'
     HEARE_PAIR_URL="$URL" HEARE_PAIR_CODE="$CODE" \
         "$PY" -c "$PAIR_CODE" "$(uname -n)" \
-        "$(msg pair_http_error)" "$(msg pair_url_error)" \
+        "$(msg pair_http_error)" "$(msg pair_url_error)" "$(msg pair_taken)" \
         || die "$(msg pair_failed)"
     say body_paired "$URL"
 elif [ "$ROLE" != "body" ]; then

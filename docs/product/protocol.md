@@ -325,6 +325,11 @@
 | вікно | не машина; звіт — `403` |
 | власник | `GET /api/machines`, `POST /api/machines/{name}/parts/{part}`, `…/restart`, `PUT /api/machines/{name}`, `POST /api/machines/{name}/forget` |
 
+`POST /api/pair` `{code, kind: "machine", name}` — ключ машини. Ім'я машини
+унікальне на мозок: якщо `machine@<ім'я>` уже має ключ — `409`, і код
+лишається живим для іншого імені. Машина без імені — `400`. Забута машина
+звільняє своє ім'я.
+
 Бажане зберігає мозок (`~/.heare/machine/machines.json`), маніфести — лише
 keeper. Деталі: [machines.md](machines.md).
 

@@ -44,10 +44,19 @@ def make(path: Path, now: float | None = None) -> str:
     """A fresh code; only its hash and its death are kept."""
     now = time.time() if now is None else now
     code = "".join(secrets.choice(ALPHABET) for _ in range(LENGTH))
-    alive = {k: v for k, v in _read(path).items() if v > now}
-    alive[fingerprint(code)] = now + TTL_S
-    _write(path, alive)
+    kept = {k: v for k, v in _read(path).items() if v > now}
+    kept[fingerprint(code)] = now + TTL_S
+    _write(path, kept)
     return code
+
+
+def alive(path: Path, code: str, now: float | None = None) -> bool:
+    """Whether a code would be taken now, without taking it.
+
+    A question, not a claim: the answer may send the person back to give
+    this computer another name, and the same code must still work then."""
+    now = time.time() if now is None else now
+    return _read(path).get(fingerprint(code), 0.0) > now
 
 
 def redeem(path: Path, code: str, now: float | None = None) -> bool:
@@ -57,7 +66,7 @@ def redeem(path: Path, code: str, now: float | None = None) -> bool:
     key = fingerprint(code)
     if key not in codes:
         return False
-    alive = codes[key] > now
+    live = codes[key] > now
     codes.pop(key, None)
     _write(path, {k: v for k, v in codes.items() if v > now})
-    return alive
+    return live

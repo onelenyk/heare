@@ -478,9 +478,23 @@ def build(core: Core, settings: Any, vitals: Any = None,
         kind = str(data.get("kind") or "window")
         if kind not in ("machine", "window"):
             raise web.HTTPBadRequest(text="kind is machine or window")
-        if not codes.redeem(code_path, str(data.get("code") or "")):
+        # The code is asked about, not taken yet: a machine that gave a
+        # name already in use must be able to try another with the same code.
+        code = str(data.get("code") or "")
+        if not codes.alive(code_path, code):
             raise web.HTTPUnauthorized(text="bad code")
         name = re.sub(r"[^A-Za-z0-9._-]", "", str(data.get("name") or ""))[:40]
+        if kind == "machine":
+            if not name:
+                raise web.HTTPBadRequest(text="a machine needs a name")
+            # A name is a machine's key. Two machines under one name would
+            # take turns replacing each other's key and stopping the other's
+            # parts; the person forgets the old card first, or renames this
+            # one on its own settings page.
+            if auth.known(part_tokens, f"machine@{name}"):
+                raise web.HTTPConflict(text="a machine with this name is already connected")
+        if not codes.redeem(code_path, code):
+            raise web.HTTPUnauthorized(text="bad code")
         who = name or request.remote or "here"
         # Every tab of one browser calls itself "Chrome". A pid of its own per
         # pairing keeps a second tab from revoking the first one's key, which

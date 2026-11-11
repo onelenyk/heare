@@ -2938,3 +2938,35 @@ async def test_a_paired_machine_with_no_parts_is_listed(tmp_path):
     assert [one["name"] for one in machines] == ["ghost"]
     assert machines[0]["reported"] is False and machines[0]["keyed"] is True
     await _close(room, client)
+
+
+async def test_a_machine_name_is_kept_for_one_machine(tmp_path):
+    """A name is a machine's key: pairing a second machine under it would
+    replace the first one's key and stop its parts without a word."""
+    room, client, owner, settings = await _open(tmp_path)
+
+    def mint() -> str:
+        return pair.make(Path(settings.pair_codes_file))
+
+    first = await client.post("/api/pair", json={
+        "code": mint(), "kind": "machine", "name": "mac"})
+    assert first.status == 200
+
+    code = mint()
+    twice = await client.post("/api/pair", json={
+        "code": code, "kind": "machine", "name": "mac"})
+    assert twice.status == 409
+    # The refused try took no code: another name works with the same one.
+    other = await client.post("/api/pair", json={
+        "code": code, "kind": "machine", "name": "mbp"})
+    assert other.status == 200
+
+    nameless = await client.post("/api/pair", json={"code": mint(), "kind": "machine"})
+    assert nameless.status == 400, "a machine is called by a name, not by its address"
+
+    forgotten = await client.post("/api/machines/mac/forget", headers=owner, json={})
+    assert forgotten.status == 200
+    again = await client.post("/api/pair", json={
+        "code": mint(), "kind": "machine", "name": "mac"})
+    assert again.status == 200, "forgetting a machine frees its name"
+    await _close(room, client)
