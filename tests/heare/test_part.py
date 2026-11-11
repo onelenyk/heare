@@ -114,6 +114,47 @@ async def test_a_part_that_knocks_and_is_rejected_returns_the_rejected_code(tmp_
     assert code == part.EXIT_REJECTED
 
 
+async def _refused_stream(tmp_path, monkeypatch, status: int) -> int:
+    """A part let in, whose next stream the brain refuses with *status*."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/events":
+            return httpx.Response(status, text="no token")
+        return httpx.Response(200, json={"approved": True, "pid": "eyes@mac"})
+
+    class Refusing(httpx.AsyncClient):
+        """The client the part makes for its stream, on a mock brain."""
+
+        def __init__(self, **kw):
+            kw.setdefault("transport", httpx.MockTransport(handler))
+            super().__init__(**kw)
+
+    monkeypatch.setattr(part.httpx, "AsyncClient", Refusing)
+
+    async def work(wire):
+        await asyncio.sleep(30)  # a part that would run forever
+        return 0
+
+    client = Refusing()
+    try:
+        return await asyncio.wait_for(
+            part.live({"channel": "eyes"}, work, settings=_settings(tmp_path),
+                      client=client), 2.0)
+    finally:
+        await client.aclose()
+
+
+async def test_a_part_whose_key_was_revoked_stops_instead_of_knocking_forever(tmp_path, monkeypatch):
+    """The brain no longer knows this part: no retry brings its key back,
+    and a body that knocks at a door that will not open every second is a
+    busy loop, not a beacon. It leaves with the code the keeper parks it on."""
+    assert await _refused_stream(tmp_path, monkeypatch, 401) == part.EXIT_REFUSED
+    assert await _refused_stream(tmp_path, monkeypatch, 403) == part.EXIT_REFUSED
+
+
+async def test_a_stream_with_no_route_ends_the_part_with_that_code(tmp_path, monkeypatch):
+    assert await _refused_stream(tmp_path, monkeypatch, 404) == part.EXIT_NO_ROUTE
+
+
 async def test_a_call_outlives_a_brain_that_restarts(monkeypatch):
     monkeypatch.setattr(part, "RETRY_S", 0.0)
     answers = [httpx.RemoteProtocolError("dropped"), httpx.ConnectError("down"),

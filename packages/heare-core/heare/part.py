@@ -187,12 +187,16 @@ async def knock(client: httpx.AsyncClient | httpx.Client, base: str,
 
 async def follow(base: str, secret: str, channel: str | None,
                  on_event: Callable[[dict], None],
-                 on_open: Callable[[], None] | None = None) -> None:
+                 on_open: Callable[[], None] | None = None,
+                 refused: asyncio.Future[int] | None = None) -> None:
     """Read the brain's stream forever, handing this channel's events over
     (every event, when *channel* is None).
 
     A brain that restarts is not a reason to die: the stream is opened
-    again a second later, which is what makes a body a beacon.
+    again a second later, which is what makes a body a beacon. A brain
+    that no longer knows this part is: its key went with the trust, no
+    retry will bring it back, so the stream ends and *refused* takes the
+    exit code the keeper parks the part on.
     """
     while True:
         opened, events, last = None, 0, None
@@ -202,6 +206,11 @@ async def follow(base: str, secret: str, channel: str | None,
                 async with client.stream(
                     "GET", f"{base}/api/events?token={quote(secret, safe='')}"
                 ) as response:
+                    if response.status_code in (401, 403, 404):
+                        if refused is not None and not refused.done():
+                            refused.set_result(
+                                EXIT_NO_ROUTE if response.status_code == 404 else EXIT_REFUSED)
+                        return
                     if on_open is not None:
                         try:
                             on_open()
@@ -393,16 +402,26 @@ async def live(about: dict, work: Callable[[Wire], Awaitable[int | None]], *,
             opened = True
 
         channel = None if about.get("hears") == "all" else about["channel"]
+        # A revoked key ends the stream; the part ends with it, so the
+        # keeper parks it instead of the process knocking forever.
+        refused: asyncio.Future[int] = asyncio.get_running_loop().create_future()
         following = asyncio.create_task(follow(
-            base, secret, channel, on_event or (lambda event: None), on_open))
+            base, secret, channel, on_event or (lambda event: None), on_open,
+            refused=refused))
+        working = asyncio.ensure_future(work(wire))
         try:
-            return int(await work(wire) or 0)
+            done, _pending = await asyncio.wait(
+                {working, refused}, return_when=asyncio.FIRST_COMPLETED)
+            if working in done:
+                return int(working.result() or 0)
+            return refused.result()
         finally:
             logging.getLogger().removeHandler(trouble)
             following.cancel()
             if lending is not None:
                 lending.cancel()
-            await asyncio.gather(following, return_exceptions=True)
+            working.cancel()
+            await asyncio.gather(following, working, return_exceptions=True)
             await wire.settle()
     finally:
         if owned:
