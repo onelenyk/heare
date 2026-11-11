@@ -1,7 +1,8 @@
 <!doctype html>
 <html lang="uk">
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#131217">
 <title>heare</title>
 <style>
   /* The brand's two faces, served by the brain itself: the page works with
@@ -14,12 +15,19 @@
   /* «Нічний фіолет»: warm near-black, one violet accent, muted semantic
      hues kept apart from it. */
   :root {
+    color-scheme:dark;
     --bg:#131217; --card:#1c1a21; --card-2:#242029; --line:#302c37;
     --ink:#ece8e2; --soft:#96909e; --accent:#9d7cff; --accent-ink:#17141d;
     --ok:#5fbf8f; --warn:#dbb64f; --bad:#ef7a6b; --info:#6fb8d9;
     --display:'Unbounded',-apple-system,system-ui,sans-serif;
     --sans:'Onest',-apple-system,'Segoe UI',system-ui,sans-serif;
     --mono:'SF Mono','Fira Code','Cascadia Code',ui-monospace,monospace;
+    /* One scale for the whole surface: five steps of space, three corners,
+       two sizes of small text. A card that takes these cannot invent its own
+       rhythm, and a change here moves every card that follows. */
+    --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:22px;
+    --r1:8px; --r2:12px; --r3:16px;
+    --meta:11px; --small:11.5px;
   }
   * { box-sizing:border-box; margin:0; }
   /* A class that sets display (a key, a slider) outranks the browser's own
@@ -29,25 +37,33 @@
   html, body { height:100%; }
   body { background:var(--bg); color:var(--ink); font:14px/1.55 var(--sans); -webkit-font-smoothing:antialiased; }
   button, input, select { font:inherit; color:inherit; }
+  /* What the keyboard is on, said the same way everywhere: a ring, never a
+     border quietly changing colour — the pointer does not need it, and the
+     person who tabs does. */
+  :where(button, input, select, textarea):focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
   ::-webkit-scrollbar { width:6px; } ::-webkit-scrollbar-thumb { background:var(--line); border-radius:3px; }
 
   /* Desktop: brain and list down the left, the parts' own widgets over the
      canvas on the right, and the conversation as a bar across the bottom. */
   #app { display:grid; grid-template-columns:370px minmax(0,1fr); grid-template-rows:auto minmax(0,1fr) auto; height:100vh; }
+  /* The top bar is the phone's: the page's own face and words, and the way
+     into the panels that have no room in a pocket. On a wide screen the pult
+     holds all of it, so both stay out of the page. */
+  #mbar, #left-head { display:none; }
 
   /* ── the panel: a stack of widget cards, grouped by where the data comes from ── */
   #left { grid-column:1; grid-row:1 / span 2; border-right:1px solid var(--line); background:var(--bg); display:flex; flex-direction:column; min-height:0; overflow:hidden; }
-  #pult { overflow-y:auto; font-family:var(--mono); font-size:12.5px; flex:1 1 auto; min-height:0; display:flex; flex-direction:column; gap:10px; padding:12px 12px 14px; }
+  #pult { overflow-y:auto; font-family:var(--mono); font-size:13px; flex:1 1 auto; min-height:0; display:flex; flex-direction:column; gap:var(--s3); padding:var(--s3) var(--s3) var(--s4); }
   /* A widget is one card; the group header above a list of them is not. */
-  .widgets { display:grid; gap:10px; min-width:0; }
-  .widget { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; min-width:0; }
-  .widget.hero { background:radial-gradient(120% 140% at 0% 0%, rgba(157,124,255,.08), transparent 62%), var(--card); padding:16px; }
-  .label { font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--soft); margin-bottom:10px; }
+  .widgets { display:grid; gap:var(--s3); min-width:0; }
+  .widget { background:var(--card); border:1px solid var(--line); border-radius:var(--r3); padding:var(--s4); min-width:0; }
+  .widget.hero { background:radial-gradient(120% 140% at 0% 0%, rgba(157,124,255,.08), transparent 62%), var(--card); padding:var(--s4); }
+  .label { font-size:var(--meta); letter-spacing:.12em; text-transform:uppercase; color:var(--soft); margin-bottom:var(--s2); }
   /* A band names where everything under it comes from: the brain itself, the
      registry it keeps of the parts, the conversation, the screen. */
   .band { display:flex; align-items:baseline; gap:8px; padding:0; }
-  .band b { font-weight:600; font-size:9.5px; letter-spacing:.18em; text-transform:uppercase; color:var(--ink); }
-  .band span { margin-left:auto; color:var(--soft); font-size:10px; }
+  .band b { font-weight:600; font-size:var(--meta); letter-spacing:.14em; text-transform:uppercase; color:var(--ink); }
+  .band span { margin-left:auto; color:var(--soft); font-size:var(--meta); }
   #pult .band { padding:2px 2px 0; }
   #who { display:flex; align-items:baseline; gap:10px; }
   .update { margin:8px 0 2px; padding:9px 11px; border:1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); border-radius:10px; font-size:12.5px; display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
@@ -57,7 +73,7 @@
   .update a { color:inherit; }
   #open-settings { border:0; background:transparent; color:var(--soft); cursor:pointer; font-size:15px; padding:0 2px; }
   #open-settings:hover { color:var(--ink); }
-  #name { font:700 22px/1 var(--display); letter-spacing:-.4px; }
+  #name { font:700 22px/1.15 var(--display); letter-spacing:-.4px; }
   #up { color:var(--soft); font:11px var(--mono); margin-left:auto; }
   /* A part not of the brain's version: a quiet mark, the details on hover. */
   .part-ver { flex:none; color:var(--warn); font-size:11px; cursor:help; }
@@ -87,8 +103,8 @@
   .vol { grid-column:1 / -1; display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:10px; color:var(--soft); }
   input[type=range] { accent-color:var(--accent); width:100%; }
 
-  .rows { display:grid; gap:6px; }
-  .row { display:grid; grid-template-columns:82px 1fr; gap:10px; }
+  .rows { display:grid; gap:var(--s2); }
+  .row { display:grid; grid-template-columns:82px 1fr; gap:var(--s3); }
   .row > span:first-child { color:var(--soft); }
   .row b { font-weight:600; } .ok { color:var(--ok); } .warn { color:var(--warn); } .bad { color:var(--bad); }
   #spark { vertical-align:middle; margin-left:6px; }
@@ -343,7 +359,7 @@
   .divider::before, .divider::after { content:""; flex:1; height:1px; background:var(--line); }
   #say { display:flex; flex:1; gap:8px; min-width:0; padding:0; border:0; }
   #say input { flex:1; min-width:0; background:var(--bg); border:1px solid var(--line); border-radius:9px; padding:9px 12px; font-size:13.5px; }
-  #say input:focus { outline:none; border-color:var(--accent); }
+  #say input:focus { border-color:var(--accent); }
   #say button { background:var(--accent); color:var(--accent-ink); border:0; border-radius:9px; padding:0 14px; font-weight:700; cursor:pointer; }
   #say .talk { background:var(--card-2); color:var(--soft); border:1px solid var(--line); padding:0 11px; font-size:15px; }
   #say .talk:hover { border-color:var(--accent); color:var(--accent); }
@@ -492,6 +508,11 @@
   .featurefail { margin-top:0; }
   /* ── memory: a quiet summary in the pult, the whole of it in a drawer ── */
   #mind-widget .keys { margin-top:10px; }
+  /* These are numbers, not prose: the label holds one line and the value a
+     column of its own, so a long label cannot push its number out of line. */
+  #mind-widget .row { grid-template-columns:minmax(0,1fr) auto; }
+  #mind-widget .row > span:first-child { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #mind-widget .row > span:last-child { font-variant-numeric:tabular-nums; }
   #mind-widget #mind-pending.warn { color:var(--warn); }
   #mind { position:fixed; top:0; right:0; bottom:0; width:min(560px, 100%); background:var(--card); border-left:1px solid var(--line); padding:22px; overflow-y:auto; transform:translateX(100%); visibility:hidden; transition:transform .2s ease, visibility .2s; z-index:11; }
   #mind.on { transform:none; visibility:visible; }
@@ -504,8 +525,9 @@
   .mind-chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
   .mind-chip { padding:4px 10px; border:1px solid var(--line); border-radius:999px; color:var(--soft); font:11px var(--mono); }
   .mind-chip b { color:var(--ink); font-weight:600; }
-  .mind-tabs { display:flex; gap:2px; border-bottom:1px solid var(--line); margin-bottom:14px; }
-  .mind-tab { border:0; border-bottom:2px solid transparent; background:transparent; color:var(--soft); padding:8px 11px; margin-bottom:-1px; cursor:pointer; font-size:12.5px; }
+  .mind-tabs { display:flex; gap:2px; border-bottom:1px solid var(--line); margin-bottom:14px; overflow-x:auto; scrollbar-width:none; }
+  .mind-tabs::-webkit-scrollbar { display:none; }
+  .mind-tab { flex:none; border:0; border-bottom:2px solid transparent; background:transparent; color:var(--soft); padding:8px 11px; margin-bottom:-1px; cursor:pointer; font-size:12.5px; }
   .mind-tab:hover { color:var(--ink); }
   .mind-tab.on { color:var(--ink); border-bottom-color:var(--accent); }
   .mind-tab:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
@@ -526,7 +548,7 @@
   .mind-block { margin-bottom:18px; min-width:0; }
   .mind-block h3 { font:10px var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--soft); margin:0 0 7px; }
   .mind-block textarea { width:100%; min-height:96px; resize:vertical; background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:10px 11px; color:var(--ink); font:13px/1.55 var(--sans); }
-  .mind-block textarea:focus { outline:none; border-color:var(--accent); }
+  .mind-block textarea:focus { border-color:var(--accent); }
   .mind-block textarea::placeholder { color:var(--soft); }
   .mind-foot { display:flex; align-items:center; gap:10px; margin-top:6px; flex-wrap:wrap; }
   .mind-count { color:var(--soft); font:10.5px var(--mono); }
@@ -567,10 +589,10 @@
   .backup-folder { font:10.5px var(--mono); overflow-wrap:anywhere; }
   .hear-row .fix { display:flex; gap:6px; margin:0 0 6px; }
   .hear-row .fix input { flex:1; min-width:0; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:6px 9px; color:var(--ink); font:13px var(--sans); }
-  .hear-row .fix input:focus { outline:none; border-color:var(--accent); }
+  .hear-row .fix input:focus { border-color:var(--accent); }
   .mind-search { display:flex; align-items:stretch; gap:6px; margin-bottom:10px; }
   .mind-search input { flex:1; min-width:0; background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:9px 11px; color:var(--ink); font:13px var(--sans); }
-  .mind-search input:focus { outline:none; border-color:var(--accent); }
+  .mind-search input:focus { border-color:var(--accent); }
   .mind-search input::placeholder { color:var(--soft); }
   .mind-search .btn { flex:none; padding:7px 13px; font-size:12.5px; }
   .mind-search-status { color:var(--soft); font:11px var(--mono); min-height:16px; margin-bottom:8px; }
@@ -579,18 +601,65 @@
   @media (max-width:900px) {
     #mind { width:100%; border-left:0; }
   }
-  /* A narrow window stacks the regions in reading order: brain, its index,
-     the parts' widgets, the canvas, then the conversation inline. */
+  /* A phone is not a narrow desktop. The screen is the canvas; the bar under
+     it is always at hand; the brain's panel waits in a sheet behind its face,
+     and the page itself never scrolls — the stage does. */
   @media (max-width:900px) {
-    #app { grid-template-columns:minmax(0,1fr); grid-template-rows:auto; height:auto; }
-    #left { grid-column:1; grid-row:auto; height:auto; overflow:visible; border-right:0; }
-    #pult { flex:none; overflow:visible; }
-    #partcol { grid-column:1; grid-row:auto; overflow:visible; }
-    #app { --pad:14px; }
-    #stage { grid-column:1; grid-row:auto; height:70vh; }
-    #talkcol { grid-column:1; grid-row:auto; position:static; padding:10px 14px 14px; }
-    #talkdrawer { position:static; max-height:none; margin-bottom:8px; border:1px solid var(--line); border-radius:12px; box-shadow:none; }
-    #talkdrawer #talk { max-height:40vh; }
+    #app { grid-template-columns:minmax(0,1fr); grid-template-rows:auto auto minmax(0,1fr) auto; height:100vh; height:100dvh; --pad:14px; }
+    #mbar { display:flex; grid-column:1; grid-row:1; align-items:center; gap:6px; padding:8px 12px; padding-top:max(8px, env(safe-area-inset-top)); background:var(--bg); border-bottom:1px solid var(--line); }
+    #mbar #mopenleft { display:flex; align-items:center; gap:9px; flex:1; min-width:0; padding:0; border:0; background:transparent; color:inherit; cursor:pointer; text-align:left; }
+    #mbar .face { width:32px; height:32px; }
+    .mwho { display:grid; min-width:0; }
+    .mtop { display:flex; align-items:center; gap:5px; min-width:0; }
+    .mwho b { font:700 15px/1.15 var(--display); letter-spacing:-.2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    #mphase { color:var(--soft); font:11px/1.3 var(--mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .mchev { flex:none; color:var(--soft); font-size:9px; }
+    /* What waits behind the face — a question, a yes, a decision about a
+       reminder — says so on the face itself, not only inside the sheet. */
+    .mneed { flex:none; min-width:18px; padding:0 5px; border-radius:999px; background:var(--warn); color:var(--accent-ink); font:700 10.5px/18px var(--mono); text-align:center; }
+    .mact { flex:none; height:34px; padding:0 10px; border:1px solid var(--line); border-radius:9px; background:var(--card-2); color:var(--soft); font-size:11.5px; cursor:pointer; }
+    .mact:hover { border-color:var(--accent); color:var(--accent); }
+    #left { position:fixed; top:0; left:0; bottom:0; width:min(420px,100%); z-index:12; border-right:0; box-shadow:24px 0 70px rgba(0,0,0,.55); transform:translateX(-102%); transition:transform .22s var(--ease); }
+    #left.on { transform:none; }
+    #left-head { display:flex; align-items:center; gap:10px; flex:none; padding:max(10px, env(safe-area-inset-top)) 14px 0; }
+    #left-head b { font:600 10px var(--mono); letter-spacing:.18em; text-transform:uppercase; color:var(--ink); }
+    #left-head button { margin-left:auto; padding:0 2px; border:0; background:transparent; color:var(--soft); font-size:22px; line-height:1; cursor:pointer; }
+    #left-head button:hover { color:var(--ink); }
+    #pult > .band:first-child { display:none; }
+    #pult { padding-top:8px; }
+    #partcol { grid-column:1; grid-row:2; max-height:40dvh; overflow-y:auto; }
+    #partcol .band { min-height:44px; align-items:center; padding:0 var(--pad); }
+    #partcol .band button { font-size:12px; padding:6px 4px; }
+    #stage { grid-column:1; grid-row:3; height:auto; min-height:0; }
+    .tabs { padding:4px var(--pad) 0; }
+    .tabs button { padding:9px 14px; font-size:12px; }
+    #talkcol { grid-column:1; grid-row:4; position:relative; padding:8px 12px max(8px, env(safe-area-inset-bottom)); }
+    #talkbar { gap:6px; }
+    /* The transcript toggle keeps its word for a reader, and becomes the
+       page's own mark on a screen too narrow to say it. */
+    #talktoggle { width:40px; padding:0; font-size:0; }
+    #talktoggle::before { content:"☰"; font-size:16px; }
+    #say { gap:6px; }
+    #say .talk { padding:0 9px; }
+    #say button { padding:0 12px; }
+    #talkdrawer { max-height:60dvh; }
+    #talkdrawer #talk { max-height:calc(60dvh - 54px); }
+    /* A phone zooms the whole page when a field under 16px takes the focus. */
+    #say input { font-size:16px; }
+    #live { padding-top:12px; }
+    #mind { padding:16px; }
+    .mind-tabs { flex-wrap:wrap; overflow:visible; }
+  }
+  /* A phone on its side has very little height to spend: the bars give back
+     what they can, so the canvas still has a screen to stand on. */
+  @media (max-width:900px) and (max-height:520px) {
+    #mbar { padding-top:4px; padding-bottom:4px; }
+    #mbar .face { width:26px; height:26px; }
+    #mphase { display:none; }
+    #partcol .band { min-height:36px; }
+    #partchips { padding-top:6px; padding-bottom:8px; }
+    #talkcol { padding-top:6px; padding-bottom:max(6px, env(safe-area-inset-bottom)); }
+    .tabs button { padding:7px 14px; }
   }
   @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
   /* ── the pairing: a browser that has no key yet ── */
@@ -599,7 +668,7 @@
   #pairing form { width:min(420px,92vw); background:var(--card); border:1px solid var(--line); border-radius:16px; padding:26px; display:grid; gap:12px; }
   #pairing h1 { margin:0; font:700 22px var(--sans); letter-spacing:-.3px; color:var(--ink); }
   #pairing p { margin:0; color:var(--soft); font:13px/1.5 var(--sans); }
-  #pairing input { padding:12px 14px; border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--ink); font:700 20px var(--mono); letter-spacing:.35em; text-transform:uppercase; text-align:center; outline:none; }
+  #pairing input { padding:12px 14px; border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--ink); font:700 20px var(--mono); letter-spacing:.35em; text-transform:uppercase; text-align:center; }
   #pairing input:focus { border-color:var(--accent); }
   #pairing button { padding:12px; border:0; border-radius:10px; background:var(--accent); color:var(--accent-ink); font:700 15px var(--sans); cursor:pointer; }
   #pairing .pairerror { color:var(--bad); min-height:18px; }
@@ -607,7 +676,16 @@
 <style id="own"></style>
 
 <div id="app">
+  <header id="mbar">
+    <button type="button" id="mopenleft" aria-expanded="false" aria-controls="left">
+      <svg class="face" id="mface" viewBox="0 0 120 120" aria-hidden="true"><rect class="head" x="12" y="16" width="96" height="88" rx="30"/><rect class="eye" x="37" y="42" width="13" height="22" rx="6.5"/><rect class="eye" x="70" y="42" width="13" height="22" rx="6.5"/><g><rect class="bar" x="42" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="50" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="58" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="66" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="74" y="76" width="5" height="14" rx="2.5"/></g></svg>
+      <span class="mwho"><span class="mtop"><b id="mname">heare</b><span id="mneed" class="mneed" hidden></span><span class="mchev" aria-hidden="true">▾</span></span><span id="mphase">…</span></span>
+    </button>
+    <button type="button" id="mopenmind" class="mact" data-t>Memory</button>
+    <button type="button" id="mopensettings" class="mact" data-t-aria aria-label="Settings" data-t-title title="Settings">⚙</button>
+  </header>
   <div id="left">
+    <div id="left-head"><b data-t>Brain</b><button type="button" id="close-left" data-t-aria aria-label="close">×</button></div>
     <aside id="pult">
       <div class="band"><b data-t>Brain</b><span data-t>what it knows itself</span></div>
 
@@ -804,6 +882,7 @@
 /*WORDS*/
 const LOCALE = document.documentElement.lang === "uk" ? "uk-UA" : "en-US";
 const $ = id => document.getElementById(id);
+const narrow = matchMedia("(max-width:900px)");
 const api = (path, opts = {}) => fetch("/api/" + path, {
   ...opts, credentials: "same-origin",
   headers: {"Content-Type": "application/json"},
@@ -969,15 +1048,17 @@ loadSessions().catch(() => {});
 function show() {
   const off = voice && !voice.mic && !voice.speaker;
   const mood = off ? "off" : phase;
-  $("face").setAttribute("class", "face " + mood); $("bigface").setAttribute("class", "face " + mood);
-  $("nowtext").textContent = off ? tr("paused") : NOW[phase] + (voice ? (voice.mic ? "" : tr(" · not hearing")) : tr(" · no voice"));
+  const said = off ? tr("paused") : NOW[phase] + (voice ? (voice.mic ? "" : tr(" · not hearing")) : tr(" · no voice"));
+  for (const id of ["face", "bigface", "mface"]) $(id).setAttribute("class", "face " + mood);
+  $("nowtext").textContent = said;
+  $("mphase").textContent = said;
   $("you").classList.toggle("live", phase === "hearing" && !off);
   $("it").classList.toggle("live", phase === "thinking" || phase === "speaking");
 }
 
 function vitals(s) {
   const m = s.model || {};
-  if (m.name) { $("name").textContent = m.name; $("bigname").textContent = m.name; document.title = m.name + " · heare"; }
+  if (m.name) { $("name").textContent = m.name; $("bigname").textContent = m.name; $("mname").textContent = m.name; document.title = m.name + " · heare"; }
   const box = $("model"); box.replaceChildren();
   if (m.error) box.append(el("b", "bad", tr("no key for any model")));
   else {
@@ -1118,7 +1199,14 @@ function noteTask(e) {
 }
 
 let held = [], holding = {live: [], permission: null, question: null};
-const holdShow = () => { $("hold").hidden = !holding.live.length && !holding.permission && !holding.question && !held.length; };
+const holdShow = () => {
+  const waiting = (holding.permission ? 1 : 0) + (holding.question ? 1 : 0) + held.length;
+  $("hold").hidden = !holding.live.length && !waiting;
+  const need = $("mneed");
+  need.hidden = !waiting;
+  need.textContent = waiting > 9 ? "9+" : String(waiting);
+  need.title = waiting ? tr("On my mind") : "";
+};
 function drawIntents() {
   const words = {soma: tr("unfinished"), reminder: tr("a reminder"),
                  task_done: tr("done"), task_failed: tr("failed")};
@@ -1638,7 +1726,12 @@ function parts(map) {
   const now = [...grid.children].filter(n => n !== drawer);
   if (now.length === fresh.length && fresh.every((card, i) => card === now[i] || !fresh.includes(now[i]))) {
     fresh.forEach((card, i) => { if (now[i] !== card) now[i].replaceWith(card); });
-  } else grid.replaceChildren(...(fresh.length ? fresh : [el("p", "empty", tr("no part is connected now"))]));
+  } else {
+    // A page or a part that is away already says where it is in its chip;
+    // an empty card above the chips would call the same thing absent twice.
+    const chipsOnly = ordered.some(([pid, b]) => isChip(pid, b));
+    grid.replaceChildren(...(fresh.length || chipsOnly ? fresh : [el("p", "empty", tr("no part is connected now"))]));
+  }
   const chips = $("partchips");
   if (!typingIn(chips))
     chips.replaceChildren(...ordered.filter(([pid, b]) => isChip(pid, b)).map(([pid, b]) => partChip(pid, b)));
@@ -1906,7 +1999,7 @@ new ResizeObserver(() => parent.postMessage({heare: "size", h: document.document
 <\/script>`;
 // The frame's body carries the widget's id, so a rule written for
 // `#blk-clock .big` reaches the inside of a live widget too.
-const framed = (html, id) => `<!doctype html><meta charset="utf-8"><style>:root{${vars()}} *{box-sizing:border-box} html,body{margin:0;background:transparent;color:var(--ink);font:14px/1.55 var(--sans);overflow:hidden} ${SHEET}\n${own}</style>${BRIDGE}<body class="w" id="blk-${id}">${html}`;
+const framed = (html, id) => `<!doctype html><meta charset="utf-8"><style>:root{color-scheme:dark;${vars()}} *{box-sizing:border-box} html,body{margin:0;background:transparent;color:var(--ink);font:14px/1.55 var(--sans);overflow:hidden} ${SHEET}\n${own}</style>${BRIDGE}<body class="w" id="blk-${id}">${html}`;
 
 function block(b) {
   let node = document.getElementById("blk-" + b.id);
@@ -2864,7 +2957,8 @@ function mindClose() {
   mindOpen = false;
   clearInterval(mindTimer);
   mindTimer = null;
-  if (was) $("open-mind").focus();
+  if (was) (narrow.matches && !$("left").classList.contains("on")
+    ? $("mopenmind") : $("open-mind")).focus();
   $("mind").classList.remove("on");
   $("mind").setAttribute("aria-hidden", "true");
   $("open-mind").setAttribute("aria-expanded", "false");
@@ -2928,10 +3022,47 @@ for (const key of MIND_PROFILE) {
 /* ── settings ── */
 const shut = () => {
   mindClose();
+  leftClose();
   for (const id of ["veil", "settings"]) $(id).classList.remove("on");
 };
 $("veil").onclick = shut;
 document.addEventListener("keydown", e => { if (e.key === "Escape") { shut(); talkOn(false); } });
+
+// A phone's brain panel: the same pult, slid over the stage from behind the
+// face. A wide screen never opens it — there the pult is simply there.
+function leftClose() {
+  const was = $("left").classList.contains("on");
+  $("left").classList.remove("on");
+  $("mopenleft").setAttribute("aria-expanded", "false");
+  syncLeftInert();
+  if (was && narrow.matches) $("mopenleft").focus();
+}
+function leftOpen() {
+  if (!narrow.matches) return;
+  shut();
+  $("left").classList.add("on");
+  $("left").inert = false;
+  $("veil").classList.add("on");
+  $("mopenleft").setAttribute("aria-expanded", "true");
+  setTimeout(() => $("close-left").focus(), 30);
+  // A question waiting behind the face is the reason the sheet was opened:
+  // it comes into view, rather than a scroll away under the state cards.
+  if (!$("hold").hidden) setTimeout(() => $("hold").scrollIntoView({block: "start"}), 80);
+}
+// A sheet that is off the screen must not be a place the keyboard can still
+// walk into. On a wide screen the pult is not a sheet at all.
+function syncLeftInert() {
+  $("left").inert = narrow.matches && !$("left").classList.contains("on");
+}
+$("mopenleft").onclick = () => { if ($("left").classList.contains("on")) shut(); else leftOpen(); };
+$("mopenmind").onclick = () => mindOpenDrawer();
+$("mopensettings").onclick = () => openSettings();
+$("close-left").onclick = () => shut();
+narrow.addEventListener("change", e => {
+  if (!e.matches && $("left").classList.contains("on")) shut();
+  syncLeftInert();
+});
+syncLeftInert();
 function keyRows(have) {
   const list = $("keylist");
   if (!have) {
@@ -3017,7 +3148,7 @@ function fillProviders() {
   $("provider").replaceChildren(...offers.map(p => new Option(p, p)));
   $("provider").value = chosen && offers.includes(chosen) ? chosen : (m.wanted || m.provider || "");
 }
-$("open-settings").onclick = () => {
+function openSettings() {
   shut();
   fillProviders();
   $("modelcustom").value = "";
@@ -3031,7 +3162,8 @@ $("open-settings").onclick = () => {
   $("pair-code-box").hidden = true;
   $("pair-code-note").textContent = "";
   keys(); featureLoad(); $("settings").classList.add("on"); $("veil").classList.add("on");
-};
+}
+$("open-settings").onclick = openSettings;
 $("save-model").onclick = () => {
   const provider = $("provider").value;
   const chosen = $("modelcustom").value.trim() || $("modelpick").value;
@@ -3332,7 +3464,11 @@ stream.onmessage = m => {
 
   if (["task", "permission", "permission_closed", "question", "question_closed", "control", "usage", "said", "key", "halted", "part"].includes(e.kind)) refresh();
 };
-stream.onerror = () => { $("face").setAttribute("class", "face off"); $("nowtext").textContent = tr("no connection to heare"); };
+stream.onerror = () => {
+  const lost = tr("no connection to heare");
+  for (const id of ["face", "mface"]) $(id).setAttribute("class", "face off");
+  $("nowtext").textContent = lost; $("mphase").textContent = lost;
+};
 // One open does both: the page is present among the parts again after a
 // brain restart (a knock re-registers this window), and the state is fresh.
 stream.onopen = () => { knock(); refresh(); };
