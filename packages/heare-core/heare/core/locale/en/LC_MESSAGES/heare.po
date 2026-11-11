@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-11 15:25+0200\n"
+"POT-Creation-Date: 2026-11-11 17:52+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -40,6 +40,10 @@ msgstr ""
 
 #, python-brace-format
 msgid "heare {v} is out — update…"
+msgstr ""
+
+#, python-brace-format
+msgid "downloading heare {v}… {done} of {total}"
 msgstr ""
 
 msgid "Open heare"
@@ -655,6 +659,10 @@ msgid "updated to {new}"
 msgstr ""
 
 msgid "asked to update"
+msgstr ""
+
+#, python-brace-format
+msgid "updating… {pct}%"
 msgstr ""
 
 msgid "updating…"

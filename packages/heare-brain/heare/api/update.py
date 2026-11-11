@@ -266,9 +266,28 @@ class Updates:
         return {"version": asked["to"], "kind": "wheels", "install": script, "sums": sums,
                 "from": script.rsplit("/", 1)[0]}
 
+    def progress(self, machine: str, received: object, total: object) -> dict:
+        """How far a machine is through the dmg it took; the page says it.
+
+        The app is the one that downloads, so it is the one that knows; it
+        tells the brain, and the brain shows it beside the update."""
+        asked = self.machines.get(machine)
+        if not asked:
+            return dict(self.state)
+        try:
+            got, all_of = max(0, int(received)), max(0, int(total))
+        except (TypeError, ValueError):
+            return dict(self.state)
+        if not all_of:
+            asked.pop("progress", None)
+        else:
+            asked["progress"] = {"received": min(got, all_of), "total": all_of}
+        return self._set(machines=dict(self.machines))
+
     def machine_failed(self, machine: str, why: str) -> dict:
         asked = self.machines.get(machine)
         if asked:
+            asked.pop("progress", None)
             asked.update(state="failed", error=why[:300] or _("the app could not install the new version"))
         return self._set(machines=dict(self.machines))
 

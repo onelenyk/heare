@@ -1016,6 +1016,7 @@ LOCAL_ONLY = frozenset({
     ("POST", "/api/machines/{name}/parts/{part}/restart"),
     ("GET", "/api/update/mine"),
     ("POST", "/api/update/mine/failed"),
+    ("POST", "/api/update/mine/progress"),
     ("POST", "/api/bodies/{id}/approve"),
     ("POST", "/api/bodies/{id}/reject"),
     ("POST", "/api/bodies/{id}/forget"),
@@ -2803,6 +2804,10 @@ async def test_a_machine_asks_only_for_its_own_update_and_nothing_else(tmp_path)
     machine = {"X-Heare-Token": given["token"]}
     mine = await client.get("/api/update/mine?version=0.1.0&arch=arm64", headers=machine)
     assert mine.status == 200 and await mine.json() == {}
+    # The app's number for the page; no ask, so nowhere to put it.
+    said = await client.post("/api/update/mine/progress", headers=machine,
+                             json={"received": 1, "total": 2})
+    assert said.status == 200 and (await said.json()).get("machines") is None
     # The owner's button is not the machine's to press.
     pressed = await client.post("/api/update/machine", headers=machine, json={"machine": "machine@mac"})
     assert pressed.status == 403

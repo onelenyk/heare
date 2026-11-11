@@ -1013,7 +1013,9 @@ const UPDATE_SAYS = {
    it fetches and checks it itself. */
 const MACHINE_SAYS = {
   asked: () => tr("asked to update"),
-  taking: () => tr("updating…"),
+  taking: m => (m.progress && m.progress.total)
+    ? tr("updating… {pct}%", {pct: Math.min(100, Math.round(100 * m.progress.received / m.progress.total))})
+    : tr("updating…"),
   failed: m => tr("could not update: {why}", {why: m.error || ""}),
 };
 function machinesBehind(u) {

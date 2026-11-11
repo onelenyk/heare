@@ -49,14 +49,15 @@ enum Fetch {
 
     /// The checked dmg's path, or why there is none. Blocking: call it off
     /// the main thread.
-    static func take(_ asked: Asked) -> Result<String, Updater.Failure> {
+    static func take(_ asked: Asked, progress: @escaping (Int64, Int64) -> Void = { _, _ in })
+        -> Result<String, Updater.Failure> {
         guard let sums = get(asked.sums), let text = String(data: sums, encoding: .utf8) else {
             return .failure(Updater.Failure(tr("could not download the new version")))
         }
         guard let wanted = expectedSum(text, name: asked.name) else {
             return .failure(Updater.Failure(tr("{sums} has no sum for {dmg}", ["sums": "SHA256SUMS.txt", "dmg": asked.name])))
         }
-        guard let file = download(asked.dmg) else {
+        guard let file = download(asked.dmg, progress: progress) else {
             return .failure(Updater.Failure(tr("could not download the new version")))
         }
         guard let data = try? Data(contentsOf: file, options: .mappedIfSafe),
@@ -98,18 +99,51 @@ enum Fetch {
         return out
     }
 
-    private static func download(_ url: URL) -> URL? {
-        var out: URL?
-        let done = DispatchSemaphore(value: 0)
-        session.downloadTask(with: url) { file, response, _ in
-            if let file, (response as? HTTPURLResponse)?.statusCode == 200 {
-                let kept = FileManager.default.temporaryDirectory
-                    .appendingPathComponent("heare-\(UUID().uuidString).dmg")
-                if (try? FileManager.default.moveItem(at: file, to: kept)) != nil { out = kept }
-            }
-            done.signal()
-        }.resume()
+    private static func download(_ url: URL, progress: @escaping (Int64, Int64) -> Void) -> URL? {
+        Download(url, progress: progress).wait()
+    }
+}
+
+/// One dmg, with the bytes as they come: the download takes minutes on a
+/// slow route, and a menu that says nothing looks like a menu that is dead.
+private final class Download: NSObject, URLSessionDownloadDelegate {
+    private let done = DispatchSemaphore(value: 0)
+    private let progress: (Int64, Int64) -> Void
+    private var session: URLSession!
+    private var out: URL?
+
+    init(_ url: URL, progress: @escaping (Int64, Int64) -> Void) {
+        self.progress = progress
+        super.init()
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 60
+        config.timeoutIntervalForResource = 30 * 60
+        config.httpAdditionalHeaders = ["User-Agent": "heare"]
+        session = URLSession(configuration: config, delegate: self, delegateQueue: nil)
+        session.downloadTask(with: url).resume()
+    }
+
+    func wait() -> URL? {
         done.wait()
+        session.finishTasksAndInvalidate()
         return out
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
+                    didWriteData bytesWritten: Int64, totalBytesWritten: Int64,
+                    totalBytesExpectedToWrite: Int64) {
+        progress(totalBytesWritten, totalBytesExpectedToWrite)
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
+                    didFinishDownloadingTo location: URL) {
+        guard (downloadTask.response as? HTTPURLResponse)?.statusCode == 200 else { return }
+        let kept = FileManager.default.temporaryDirectory
+            .appendingPathComponent("heare-\(UUID().uuidString).dmg")
+        if (try? FileManager.default.moveItem(at: location, to: kept)) != nil { out = kept }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        done.signal()
     }
 }

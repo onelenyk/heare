@@ -39,6 +39,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var began = Date()
     private var offeredOld = false
     private var lastAsked = Date.distantPast
+    // The dmg being taken elsewhere: which version, and how far it is.
+    private var taking: String?
+    private var done: (Int64, Int64) = (0, 0)
+    private var saidProgressAt = Date.distantPast
 
     /// What macOS says of the microphone, in the keeper's log: when the
     /// voice hears only zeros, this tells a refusal from an attribution.
@@ -205,8 +209,21 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Local.call(url, headers: ["X-Heare-Token": token, "User-Agent": "heare"]) { [weak self] answer in
             guard answer.status == 200, let asked = Fetch.asked(answer.json), let self, !self.updating else { return }
             self.updating = true
+            self.taking = asked.version
+            self.done = (0, 0)
+            self.draw()
             DispatchQueue.global().async {
-                let prepared = Fetch.take(asked).flatMap { Updater.prepare(dmg: $0, version: asked.version) }
+                let prepared = Fetch.take(asked) { [weak self] done, total in
+                    DispatchQueue.main.async {
+                        guard let self else { return }
+                        self.done = (done, total)
+                        self.draw()
+                        if Date().timeIntervalSince(self.saidProgressAt) >= 5 {
+                            self.saidProgressAt = Date()
+                            self.sayProgress(done, total)
+                        }
+                    }
+                }.flatMap { Updater.prepare(dmg: $0, version: asked.version) }
                 DispatchQueue.main.async { [weak self] in
                     switch prepared {
                     case .success(let ready):
@@ -220,9 +237,22 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// The brain shows the same number beside the machine on the page: the
+    /// app is the one that downloads, so it is the one that knows.
+    private func sayProgress(_ done: Int64, _ total: Int64) {
+        guard let token = config.machineToken, var parts = URLComponents(string: config.url),
+              !config.url.isEmpty else { return }
+        parts.path = (parts.path.hasSuffix("/") ? String(parts.path.dropLast()) : parts.path) + "/api/update/mine/progress"
+        guard let url = parts.url else { return }
+        Local.call(url, method: "POST", body: ["received": done, "total": total],
+                   headers: ["X-Heare-Token": token, "User-Agent": "heare"]) { _ in }
+    }
+
     private func updateFailed(_ why: String) {
         NSLog("heare: update: %@", why)
         updating = false
+        done = (0, 0)
+        taking = nil
         if !config.brainHere {
             guard let token = config.machineToken, let base = URL(string: config.url), !config.url.isEmpty else { return }
             Local.call(base.appendingPathComponent("api/update/mine/failed"), method: "POST", body: ["why": why],
@@ -260,6 +290,15 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let update = state?["update"] as? [String: Any], update["state"] as? String == "available",
            let latest = update["latest"] as? String {
             menu.addItem(action(tr("heare {v} is out — update…", ["v": latest]), #selector(openHeare), key: ""))
+        }
+        if let taking, done.1 > 0 {
+            let got = ByteCountFormatter.string(fromByteCount: done.0, countStyle: .file)
+            let all = ByteCountFormatter.string(fromByteCount: done.1, countStyle: .file)
+            let line = NSMenuItem(title: tr("downloading heare {v}… {done} of {total}",
+                                            ["v": taking, "done": got, "total": all]),
+                                  action: nil, keyEquivalent: "")
+            line.isEnabled = false
+            menu.addItem(line)
         }
         menu.addItem(.separator())
         menu.addItem(action(tr("Open heare"), #selector(openHeare), key: "o"))

@@ -228,3 +228,22 @@ def test_a_spoiled_file_of_asks_is_no_asks(tmp_path):
     (tmp_path / "cache" / "update").mkdir(parents=True)
     (tmp_path / "cache" / "update" / "machines.json").write_text("{not json", encoding="utf-8")
     assert Updates(_Settings(""), "0.2.0", tmp_path).machines == {}
+
+
+def test_a_machines_progress_is_shown_with_its_ask_and_dropped(tmp_path):
+    updates = Updates(_Settings(""), "0.2.0", tmp_path)
+    _released(updates)
+    updates.ask_machine("machine@mac")
+    updates.progress("machine@mac", 1024, 2048)
+    assert updates.state["machines"]["machine@mac"]["progress"] == {"received": 1024, "total": 2048}
+    # A number the app could not know is ignored, not fatal.
+    updates.progress("machine@mac", "x", 2048)
+    assert updates.state["machines"]["machine@mac"]["progress"] == {"received": 1024, "total": 2048}
+    # The owner's new word starts clean; a failure keeps no number.
+    updates.ask_machine("machine@mac")
+    assert "progress" not in updates.state["machines"]["machine@mac"]
+    updates.progress("machine@mac", 10, 20)
+    updates.machine_failed("machine@mac", "why")
+    assert "progress" not in updates.state["machines"]["machine@mac"]
+    # A machine that was not asked has nowhere to put it.
+    assert updates.state == updates.progress("machine@other", 1, 2)

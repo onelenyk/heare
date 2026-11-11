@@ -452,7 +452,8 @@ def build(core: Core, settings: Any, vitals: Any = None,
                     ("POST", "/api/parts"), ("POST", "/api/bodies"),
                     ("POST", "/api/machine/mine/report"),
                     ("GET", "/api/update/mine"),
-                    ("POST", "/api/update/mine/failed")):
+                    ("POST", "/api/update/mine/failed"),
+                    ("POST", "/api/update/mine/progress")):
                 request["part"] = pid
                 return await handler(request)
             raise web.HTTPForbidden(text="a machine only knocks")
@@ -1667,6 +1668,12 @@ def build(core: Core, settings: Any, vitals: Any = None,
         return web.json_response(updates.machine_failed(
             request.get("part") or BRAIN_MACHINE, str(data.get("why") or "")))
 
+    async def update_mine_progress(request: web.Request) -> web.Response:
+        """A machine saying how far its download is: the page shows it."""
+        data = await body(request)
+        return web.json_response(updates.progress(
+            request.get("part") or BRAIN_MACHINE, data.get("received"), data.get("total")))
+
     async def asking_for_updates(app: web.Application):
         async def every_day() -> None:
             await asyncio.sleep(UPDATE_FIRST_S)
@@ -1824,6 +1831,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.post("/api/update/machine", update_machine),
         web.get("/api/update/mine", update_mine),
         web.post("/api/update/mine/failed", update_mine_failed),
+        web.post("/api/update/mine/progress", update_mine_progress),
         web.get("/api/backups", backups_list),
         web.post("/api/backups", backups_make),
         web.post("/api/backups/bring", backups_bring),
