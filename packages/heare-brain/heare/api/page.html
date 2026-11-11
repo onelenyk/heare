@@ -8,24 +8,37 @@
 <style id="own"></style>
 
 <div id="app">
-  <header id="mbar">
-    <button type="button" id="mopenleft" aria-expanded="false" aria-controls="left">
-      <svg class="face" id="mface" viewBox="0 0 120 120" aria-hidden="true"><rect class="head" x="12" y="16" width="96" height="88" rx="30"/><rect class="eye" x="37" y="42" width="13" height="22" rx="6.5"/><rect class="eye" x="70" y="42" width="13" height="22" rx="6.5"/><g><rect class="bar" x="42" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="50" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="58" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="66" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="74" y="76" width="5" height="14" rx="2.5"/></g></svg>
-      <span class="mwho"><span class="mtop"><b id="mname">heare</b><span id="mneed" class="mneed" hidden></span><span class="mchev" aria-hidden="true">▾</span></span><span id="mphase">…</span></span>
+  <header id="top">
+    <button type="button" id="idbtn" aria-expanded="false" aria-controls="system">
+      <svg class="face" id="face" viewBox="0 0 120 120" aria-hidden="true"><rect class="head" x="12" y="16" width="96" height="88" rx="30"/><rect class="eye" x="37" y="42" width="13" height="22" rx="6.5"/><rect class="eye" x="70" y="42" width="13" height="22" rx="6.5"/><g><rect class="bar" x="42" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="50" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="58" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="66" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="74" y="76" width="5" height="14" rx="2.5"/></g></svg>
+      <span class="who"><b id="name">heare</b><span id="nowtext">…</span></span>
+      <span id="mneed" class="mneed" hidden></span>
+      <span id="dot" hidden></span>
+      <span class="chev" aria-hidden="true">▾</span>
     </button>
-    <button type="button" id="mopenmind" class="mact" data-t>Memory</button>
-    <button type="button" id="mopensettings" class="mact" data-t-aria aria-label="Settings" data-t-title title="Settings">⚙</button>
+    <div class="topright">
+      <button type="button" id="openmind" class="tbtn" data-t>Memory</button>
+      <button type="button" id="opensettings" class="tbtn" data-t-aria aria-label="Settings" data-t-title title="Settings">⚙</button>
+      <button type="button" id="stop" class="tstop" data-t>■ Stop</button>
+      <div class="stopask" id="confirm" hidden><span data-t>Stop everything?</span><button class="mini yes" id="stop-yes" data-t>Yes</button><button class="mini" id="stop-no" data-t>No</button></div>
+    </div>
   </header>
-  <div id="left">
-    <div id="left-head"><b data-t>Brain</b><button type="button" id="close-left" data-t-aria aria-label="close">×</button></div>
-    <aside id="pult">
+  <div id="main">
+    <aside id="system" aria-hidden="true">
+      <div class="syshead"><b data-t>System</b><button type="button" id="systemclose" data-t-aria aria-label="close">×</button></div>
+      <div class="sessbar">
+        <select id="sessionpick" data-t-title title="Sessions"></select>
+        <button type="button" id="sessionnew" class="mini" data-t>New</button>
+        <button type="button" id="sessionname" class="mini" data-t>Rename</button>
+        <button type="button" id="sessiondrop" class="mini" data-t>Delete</button>
+      </div>
+      <aside id="pult">
       <div class="band"><b data-t>Brain</b><span data-t>what it knows itself</span></div>
 
       <div class="widgets">
         <section class="widget hero">
-          <div id="who"><span id="name">heare</span><span id="up"></span><button id="open-settings" data-t-title title="settings: keys, model">⚙</button></div>
+          <div id="who"><span id="up"></span><button id="open-settings" data-t-title title="settings: keys, model">⚙</button></div>
           <div id="update" class="update" role="status" hidden></div>
-          <div id="now"><svg class="face" id="face" viewBox="0 0 120 120" aria-hidden="true"><rect class="head" x="12" y="16" width="96" height="88" rx="30"/><rect class="eye" x="37" y="42" width="13" height="22" rx="6.5"/><rect class="eye" x="70" y="42" width="13" height="22" rx="6.5"/><g><rect class="bar" x="42" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="50" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="58" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="66" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="74" y="76" width="5" height="14" rx="2.5"/></g></svg><span><span id="nowtext">…</span></span><span id="dot" hidden></span></div>
           <div class="lanes">
             <div class="lane"><span data-t>you</span><div class="bar" id="you"><i></i></div></div>
             <div class="lane"><span data-t>it</span><div class="bar" id="it"><i></i></div></div>
@@ -62,21 +75,43 @@
           <div id="tasks"></div>
         </section>
 
-        <section class="widget">
-          <div class="label" data-t>Controls</div>
-          <div class="keys">
-            <button class="key stop wide" id="stop" data-t>■ Stop</button>
-            <div class="stopask" id="confirm" hidden><span data-t>Stop everything?</span><button class="mini yes" id="stop-yes" data-t>Yes</button><button class="mini" id="stop-no" data-t>No</button></div>
-          </div>
-        </section>
       </div>
 
       <div class="band"><b data-t>Machines</b><span data-t>what runs where</span></div>
 
       <div id="bodies"><p class="empty" data-t>no part is connected</p></div>
     </aside>
+      <div class="sysfoot">
+        <button type="button" id="sysscreen" data-t>Screen</button>
+        <button type="button" id="sysparts" data-t>Parts</button>
+        <button type="button" id="sysmemory" data-t>Memory</button>
+        <button type="button" id="sysdetails" data-t>Details</button>
+        <button type="button" id="syssettings" data-t>Settings</button>
+      </div>
+    </aside>
+    <section id="chat">
+      <div id="pin-dock" aria-label="Pinned"></div>
+      <div id="feed"><div id="flow"></div></div>
+      <div id="composer">
+        <div id="chips"></div>
+        <form id="say">
+          <button type="button" id="hear" class="talk" data-t-title title="speak and hear">◉</button>
+          <button type="button" id="attach" class="talk" data-t-title title="attach a file">＋</button>
+          <input id="filepick" type="file" multiple hidden>
+          <input id="text" data-t-placeholder placeholder="Write…" autocomplete="off">
+          <button type="button" id="speak" class="mini" data-t-title title="hear the reply aloud" data-t>hear</button>
+          <button>→</button>
+        </form>
+      </div>
+    </section>
   </div>
+</div>
 
+<div class="veil" id="veil"></div>
+
+<aside id="sheet" aria-hidden="true">
+  <div id="sheethead"><b id="sheettitle" data-t>Screen</b><button type="button" id="sheetclose" data-t-aria aria-label="close">×</button></div>
+  <div id="sheetbody">
   <section id="partcol">
     <div class="band"><b data-t>Parts</b><div id="partfold"></div><button type="button" id="partfoldbtn" aria-expanded="true" data-t>fold</button></div>
     <div id="key-asks"></div>
@@ -84,7 +119,7 @@
     <div id="partchips"></div>
   </section>
 
-  <main id="stage">
+  <section id="stage">
     <nav class="tabs" role="tablist">
       <button type="button" role="tab" data-page="screen" data-t>Screen</button>
       <button type="button" role="tab" data-page="context" data-t>Context</button>
@@ -94,23 +129,11 @@
     <div id="empty"><svg class="face" id="bigface" viewBox="0 0 120 120" aria-hidden="true"><rect class="head" x="12" y="16" width="96" height="88" rx="30"/><rect class="eye" x="37" y="42" width="13" height="22" rx="6.5"/><rect class="eye" x="70" y="42" width="13" height="22" rx="6.5"/><g><rect class="bar" x="42" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="50" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="58" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="66" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="74" y="76" width="5" height="14" rx="2.5"/></g></svg><b id="bigname">heare</b><span data-t>This is its screen. It puts here what is better seen than heard — and what you ask to keep in front of you.</span></div>
     </div>
     <div class="page" id="page-context" hidden></div>
-  </main>
-
-  <section id="talkcol">
-    <div id="talkdrawer">
-      <div class="band sess"><select id="sessionpick" data-t-title title="Sessions"></select><button type="button" id="sessionnew" class="mini" data-t>New</button><button type="button" id="sessionname" class="mini" data-t>Rename</button><button type="button" id="sessiondrop" class="mini" data-t>Delete</button></div>
-      <div id="talk"></div>
-    </div>
-    <div id="chips"></div>
-    <div id="talkbar">
-      <button type="button" id="talktoggle" class="mini" aria-expanded="false" aria-controls="talkdrawer" data-t>Conversation</button>
-      <button type="button" id="speak" class="mini" data-t-title title="hear the reply aloud" data-t>hear</button>
-      <form id="say"><button type="button" id="hear" class="talk" data-t-title title="speak and hear">◉</button><button type="button" id="attach" class="talk" data-t-title title="attach a file">＋</button><input id="filepick" type="file" multiple hidden><input id="text" data-t-placeholder placeholder="Write…" autocomplete="off"><button>→</button></form>
-    </div>
   </section>
-</div>
 
-<div class="veil" id="veil"></div>
+  </div>
+</aside>
+
 <aside id="settings">
   <h2 data-t>Settings</h2>
   <h3 data-t>Language</h3>
@@ -199,6 +222,9 @@
     <p class="mind-empty backup-folder" id="backup-folder"></p>
   </div>
 </aside>
+
+<div id="pinpreview" class="pinpreview" hidden></div>
+<div id="toast" class="toast" hidden></div>
 
 <div id="pairing" hidden>
   <form id="pairform" autocomplete="off">

@@ -487,7 +487,8 @@ async def test_a_screen_is_served_sandboxed_and_cannot_reach_the_api(tmp_path):
 async def test_the_built_in_page_is_served(tmp_path):
     room, client, _, _ = await _open(tmp_path)
     page = await (await client.get("/")).text()
-    assert "HEARE_TOKEN" not in page and "Controls" in page
+    assert "HEARE_TOKEN" not in page
+    assert 'id="chat"' in page and 'id="composer"' in page and 'id="pin-dock"' in page
     assert 'id="pairing"' in page  # a browser without a key asks for a code
     assert "Devices" in page and "Connect a device" in page
     await _close(room, client)

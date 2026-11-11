@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-11 23:25+0200\n"
+"POT-Creation-Date: 2026-11-11 23:41+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -515,11 +515,38 @@ msgstr "файл пошкоджений або це не zip"
 msgid "Settings"
 msgstr "Налаштування"
 
-msgid "Brain"
-msgstr "Мозок"
+msgid "■ Stop"
+msgstr "■ Стоп"
+
+msgid "Stop everything?"
+msgstr "Зупинити все?"
+
+msgid "Yes"
+msgstr "Так"
+
+msgid "No"
+msgstr "Ні"
+
+msgid "System"
+msgstr "Система"
 
 msgid "close"
 msgstr "закрити"
+
+msgid "Sessions"
+msgstr "Сесії"
+
+msgid "New"
+msgstr "Нова"
+
+msgid "Rename"
+msgstr "Назва"
+
+msgid "Delete"
+msgstr "Видалити"
+
+msgid "Brain"
+msgstr "Мозок"
 
 msgid "what it knows itself"
 msgstr "що він знає сам"
@@ -569,21 +596,6 @@ msgstr "Відкрити памʼять"
 msgid "On my mind"
 msgstr "Тримаю в голові"
 
-msgid "Controls"
-msgstr "Керування"
-
-msgid "■ Stop"
-msgstr "■ Стоп"
-
-msgid "Stop everything?"
-msgstr "Зупинити все?"
-
-msgid "Yes"
-msgstr "Так"
-
-msgid "No"
-msgstr "Ні"
-
 msgid "Machines"
 msgstr "Машини"
 
@@ -593,38 +605,11 @@ msgstr "що де працює"
 msgid "no part is connected"
 msgstr "жодна частина не під'єднана"
 
-msgid "fold"
-msgstr "згорнути"
-
 msgid "Screen"
 msgstr "Екран"
 
-msgid "Context"
-msgstr "Контекст"
-
-msgid "This is its screen. It puts here what is better seen than heard — and what you ask to keep in front of you."
-msgstr "Це його екран. Він сам ставить сюди те, що краще побачити, ніж почути — і те, що ти попросиш тримати перед очима."
-
-msgid "Sessions"
-msgstr "Сесії"
-
-msgid "New"
-msgstr "Нова"
-
-msgid "Rename"
-msgstr "Назва"
-
-msgid "Delete"
-msgstr "Видалити"
-
-msgid "Conversation"
-msgstr "Розмова"
-
-msgid "hear the reply aloud"
-msgstr "чути відповідь уголос"
-
-msgid "hear"
-msgstr "чути"
+msgid "Details"
+msgstr "Деталі"
 
 msgid "speak and hear"
 msgstr "говорити й почути"
@@ -634,6 +619,21 @@ msgstr "додати файл"
 
 msgid "Write…"
 msgstr "Напиши…"
+
+msgid "hear the reply aloud"
+msgstr "чути відповідь уголос"
+
+msgid "hear"
+msgstr "чути"
+
+msgid "fold"
+msgstr "згорнути"
+
+msgid "Context"
+msgstr "Контекст"
+
+msgid "This is its screen. It puts here what is better seen than heard — and what you ask to keep in front of you."
+msgstr "Це його екран. Він сам ставить сюди те, що краще побачити, ніж почути — і те, що ти попросиш тримати перед очима."
 
 msgid "Language"
 msgstr "Мова"
@@ -793,6 +793,15 @@ msgstr "вирішив не відповідати"
 
 msgid "something is playing, and no one called it"
 msgstr "щось грає, а звертання не було"
+
+msgid "Nothing here yet"
+msgstr "Тут поки нічого"
+
+msgid "Say something, or ask for a screen."
+msgstr "Скажи щось або попроси екран."
+
+msgid "Nothing is pinned yet"
+msgstr "Поки нічого не закріплено"
 
 msgid "looking in memory"
 msgstr "шукаю в памʼяті"
@@ -1168,6 +1177,9 @@ msgstr "токенів"
 msgid "System prompt"
 msgstr "Системний промпт"
 
+msgid "Conversation"
+msgstr "Розмова"
+
 msgid "verbs"
 msgstr "дієслова"
 
@@ -1213,6 +1225,9 @@ msgstr "зберігаю…"
 #, python-brace-format
 msgid "not saved: {why}"
 msgstr "не збереглося: {why}"
+
+msgid "new on the screen"
+msgstr "нове на екрані"
 
 msgid "from the old memory"
 msgstr "зі старої памʼяті"
@@ -2546,4 +2561,7 @@ msgstr "я перестав чути {s} секунд тому — схоже, �
 
 #~ msgid "the brain's registry"
 #~ msgstr "реєстр мозку"
+
+#~ msgid "Controls"
+#~ msgstr "Керування"
 

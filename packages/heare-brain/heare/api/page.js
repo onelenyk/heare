@@ -48,13 +48,27 @@ const speeds = [];
 const stepLog = new Map();   // task id -> {request, steps: [{executor, step}, …]}
 
 /* ── the conversation ── */
+function feedAppend(node) { $("flow").append(node); feedToEnd(); return node; }
+function feedToEnd() { const f = $("feed"); if (f) f.scrollTop = f.scrollHeight; }
+function feedClear() { $("flow").replaceChildren(); }
+function feedEmpty() {
+  const box = el("div", "feed-empty");
+  box.append(el("b", "", tr("Nothing here yet")), el("span", "", tr("Say something, or ask for a screen.")));
+  feedAppend(box);
+}
+function dockRender() {
+  const dock = $("pin-dock");
+  if (!dock) return;
+  const pins = [];  // the pin store arrives with F0.5; the shell shows the quiet state
+  dock.replaceChildren(...(pins.length ? pins : [el("div", "dock-empty", tr("Nothing is pinned yet"))]));
+}
+dockRender();
 function line(text, who, via) {
   const e = el("div", "line " + who, text);
   if (VIA[via]) e.append(el("span", "via", VIA[via]));
-  $("talk").append(e); $("talk").scrollTop = $("talk").scrollHeight;
-  return e;
+  return feedAppend(e);
 }
-const aside = text => { $("talk").append(el("div", "aside", text)); $("talk").scrollTop = $("talk").scrollHeight; };
+const aside = text => feedAppend(el("div", "aside", text));
 const LOOK = {
   recall: tr("looking in memory"),
   list_reminders: tr("checking the reminders"),
@@ -126,9 +140,11 @@ async function loadSessions() {
   if (!changed) return;
   pending = []; showPending();
   const turns = await api(`sessions/${session}/turns`);
-  $("talk").replaceChildren(...turns.map(t =>
+  feedClear();
+  if (!turns.length) feedEmpty();
+  turns.forEach(t => feedAppend(
     chipped(el("div", `line ${t.role === "user" ? "me" : "it"} old`, t.text), t.text, session, t.files)));
-  $("talk").scrollTop = $("talk").scrollHeight;
+  feedToEnd();
 }
 const sessionAct = path => api(path, {method: "POST"}).catch(() => aside(tr("Wait for the reply to end.")));
 $("sessionpick").onchange = () => sessionAct(`sessions/${$("sessionpick").value}/open`).then(loadSessions);
@@ -167,16 +183,15 @@ function show() {
   const off = voice && !voice.mic && !voice.speaker;
   const mood = off ? "off" : phase;
   const said = off ? tr("paused") : NOW[phase] + (voice ? (voice.mic ? "" : tr(" · not hearing")) : tr(" · no voice"));
-  for (const id of ["face", "bigface", "mface"]) $(id).setAttribute("class", "face " + mood);
+  for (const id of ["face", "bigface"]) $(id).setAttribute("class", "face " + mood);
   $("nowtext").textContent = said;
-  $("mphase").textContent = said;
   $("you").classList.toggle("live", phase === "hearing" && !off);
   $("it").classList.toggle("live", phase === "thinking" || phase === "speaking");
 }
 
 function vitals(s) {
   const m = s.model || {};
-  if (m.name) { $("name").textContent = m.name; $("bigname").textContent = m.name; $("mname").textContent = m.name; document.title = m.name + " · heare"; }
+  if (m.name) { $("name").textContent = m.name; $("bigname").textContent = m.name; document.title = m.name + " · heare"; }
   const box = $("model"); box.replaceChildren();
   if (m.error) box.append(el("b", "bad", tr("no key for any model")));
   else {
@@ -1380,7 +1395,16 @@ function drawn(e) {
     const n = document.getElementById("blk-" + key);
     if (n) { n.className = "blk " + (e.sizes[key] || "s"); $("live").append(n); n.classList.add("fresh"); setTimeout(() => n.classList.remove("fresh"), 1200); }
   }
-  else if (e.op === "put") { const node = block(e); node.classList.add("fresh"); setTimeout(() => node.classList.remove("fresh"), 1600); node.scrollIntoView({behavior: "smooth", block: "nearest"}); }
+  else if (e.op === "put") {
+    const node = block(e); node.classList.add("fresh"); setTimeout(() => node.classList.remove("fresh"), 1600);
+    node.scrollIntoView({behavior: "smooth", block: "nearest"});
+    if (!$("sheet").classList.contains("on")) {
+      const note = el("div", "feed-note");
+      const open = el("button", "", "↗ " + tr("new on the screen")); open.type = "button";
+      open.onclick = () => openSheet(tr("Screen"));
+      note.append(open); feedAppend(note);
+    }
+  }
   few();
 }
 api("canvas").then(c => { restyle(c.css); c.blocks.forEach(block); few(); });
@@ -1414,16 +1438,6 @@ const confirming = on => { $("stop").hidden = on; $("confirm").hidden = !on; };
 $("stop").onclick = () => confirming(true);
 $("stop-no").onclick = () => confirming(false);
 $("stop-yes").onclick = () => api("stop", {method: "POST"}).then(() => { confirming(false); aside(tr("stopped")); });
-
-/* ── the conversation drawer: open on the toggle or on the input ── */
-const talkOn = on => {
-  $("talkdrawer").classList.toggle("on", on);
-  $("talktoggle").classList.toggle("on", on);
-  $("talktoggle").setAttribute("aria-expanded", on ? "true" : "false");
-  if (on) $("talk").scrollTop = $("talk").scrollHeight;
-};
-$("talktoggle").onclick = () => talkOn(!$("talkdrawer").classList.contains("on"));
-$("text").addEventListener("focus", () => talkOn(true));
 
 /* ── talking to it, and hearing it back ── */
 const speech = window.speechSynthesis;
@@ -2075,8 +2089,7 @@ function mindClose() {
   mindOpen = false;
   clearInterval(mindTimer);
   mindTimer = null;
-  if (was) (narrow.matches && !$("left").classList.contains("on")
-    ? $("mopenmind") : $("open-mind")).focus();
+  if (was) $("openmind").focus();
   $("mind").classList.remove("on");
   $("mind").setAttribute("aria-hidden", "true");
   $("open-mind").setAttribute("aria-expanded", "false");
@@ -2138,49 +2151,66 @@ for (const key of MIND_PROFILE) {
 }
 
 /* ── settings ── */
+const anyOpen = () => ["system", "mind", "settings", "sheet"].some(id => $(id).classList.contains("on"));
+function systemClose() {
+  const was = $("system").classList.contains("on");
+  $("system").classList.remove("on");
+  $("system").inert = true;
+  $("system").setAttribute("aria-hidden", "true");
+  document.body.classList.remove("sysopen");
+  $("idbtn").setAttribute("aria-expanded", "false");
+  if (!anyOpen()) $("veil").classList.remove("on");
+  if (was) $("idbtn").focus();
+}
+function systemOpen() {
+  shut();
+  $("system").classList.add("on");
+  $("system").inert = false;
+  $("system").setAttribute("aria-hidden", "false");
+  document.body.classList.add("sysopen");
+  $("idbtn").setAttribute("aria-expanded", "true");
+  $("veil").classList.add("on");
+  setTimeout(() => $("systemclose").focus(), 30);
+}
+function openSheet(title, which = "screen") {
+  mindClose();
+  $("settings").classList.remove("on");
+  $("sheettitle").textContent = title;
+  $("partcol").hidden = which !== "parts";
+  $("stage").hidden = which === "parts";
+  $("sheet").classList.add("on");
+  $("sheet").setAttribute("aria-hidden", "false");
+  $("sheet").inert = false;
+  $("veil").classList.add("on");
+}
+function closeSheet() {
+  $("sheet").classList.remove("on");
+  $("sheet").setAttribute("aria-hidden", "true");
+  $("sheet").inert = true;
+  if (!anyOpen()) $("veil").classList.remove("on");
+}
 const shut = () => {
   mindClose();
-  leftClose();
+  closeSheet();
+  systemClose();
   for (const id of ["veil", "settings"]) $(id).classList.remove("on");
 };
 $("veil").onclick = shut;
-document.addEventListener("keydown", e => { if (e.key === "Escape") { shut(); talkOn(false); } });
+document.addEventListener("keydown", e => { if (e.key === "Escape") shut(); });
 
-// A phone's brain panel: the same pult, slid over the stage from behind the
-// face. A wide screen never opens it — there the pult is simply there.
-function leftClose() {
-  const was = $("left").classList.contains("on");
-  $("left").classList.remove("on");
-  $("mopenleft").setAttribute("aria-expanded", "false");
-  syncLeftInert();
-  if (was && narrow.matches) $("mopenleft").focus();
-}
-function leftOpen() {
-  if (!narrow.matches) return;
-  shut();
-  $("left").classList.add("on");
-  $("left").inert = false;
-  $("veil").classList.add("on");
-  $("mopenleft").setAttribute("aria-expanded", "true");
-  setTimeout(() => $("close-left").focus(), 30);
-  // A question waiting behind the face is the reason the sheet was opened:
-  // it comes into view, rather than a scroll away under the state cards.
-  if (!$("hold").hidden) setTimeout(() => $("hold").scrollIntoView({block: "start"}), 80);
-}
-// A sheet that is off the screen must not be a place the keyboard can still
-// walk into. On a wide screen the pult is not a sheet at all.
-function syncLeftInert() {
-  $("left").inert = narrow.matches && !$("left").classList.contains("on");
-}
-$("mopenleft").onclick = () => { if ($("left").classList.contains("on")) shut(); else leftOpen(); };
-$("mopenmind").onclick = () => mindOpenDrawer();
-$("mopensettings").onclick = () => openSettings();
-$("close-left").onclick = () => shut();
-narrow.addEventListener("change", e => {
-  if (!e.matches && $("left").classList.contains("on")) shut();
-  syncLeftInert();
-});
-syncLeftInert();
+$("idbtn").onclick = () => { if ($("system").classList.contains("on")) systemClose(); else systemOpen(); };
+$("systemclose").onclick = () => shut();
+$("openmind").onclick = () => mindOpenDrawer();
+$("opensettings").onclick = () => openSettings();
+$("sheetclose").onclick = closeSheet;
+const clickTab = page => document.querySelector(`.tabs button[data-page="${page}"]`)?.click();
+$("sysscreen").onclick = () => { openSheet(tr("Screen"), "screen"); clickTab("screen"); };
+$("sysdetails").onclick = () => { openSheet(tr("Details"), "details"); clickTab("context"); };
+$("sysparts").onclick = () => { openSheet(tr("Parts"), "parts"); };
+$("sysmemory").onclick = () => mindOpenDrawer();
+$("syssettings").onclick = () => openSettings();
+$("system").inert = true;
+$("sheet").inert = true;
 function keyRows(have) {
   const list = $("keylist");
   if (!have) {
@@ -2562,7 +2592,7 @@ stream.onmessage = m => {
   const e = JSON.parse(m.data);
   if (e.kind === "sessions") loadSessions().catch(() => {});
   else if (e.kind === "heard") { writing = null; askedAt = e.at; const words = e.text.split("\n\n[attached")[0]; chipped(line(words, "me", e.channel), words); }
-  else if (e.kind === "reply") { writing = writing || line("", "it"); writing.firstChild ? writing.firstChild.textContent += e.text : writing.append(e.text); $("talk").scrollTop = $("talk").scrollHeight; }
+  else if (e.kind === "reply") { writing = writing || line("", "it"); writing.firstChild ? writing.firstChild.textContent += e.text : writing.append(e.text); feedToEnd(); }
   else if (e.kind === "said") { if (!writing && e.text) line(e.text, "it", e.channel); writing = null; const mine = askedHere; askedHere = false; if (e.failed) aside(tr("failure: {why}", {why: e.failed})); else if (mine) speak(e.text, e.channel); }
   else if (e.kind === "overheard") aside(tr("heard «{text}» — {why}", {text: e.text, why: WHY[e.why] || tr("no name, not answering")}));
   else if (e.kind === "phase") {
@@ -2584,8 +2614,8 @@ stream.onmessage = m => {
 };
 stream.onerror = () => {
   const lost = tr("no connection to heare");
-  for (const id of ["face", "mface"]) $(id).setAttribute("class", "face off");
-  $("nowtext").textContent = lost; $("mphase").textContent = lost;
+  $("face").setAttribute("class", "face off");
+  $("nowtext").textContent = lost;
 };
 // One open does both: the page is present among the parts again after a
 // brain restart (a knock re-registers this window), and the state is fresh.
