@@ -129,6 +129,7 @@ const escapeHtml = text => String(text ?? "").replace(/[&<>"]/g, c => ({"&": "&a
 function onMessage(e) {
   if (e.session_id !== session) return;
   if (e.op === "add" && e.message) {
+    if (writing) { writing.remove(); writing = null; }
     feedAppend(chipped(turnMsg(e.message), e.message.text, e.session_id, e.message.files || []));
     return;
   }
@@ -2749,9 +2750,9 @@ if (!DEMO) {
     const e = JSON.parse(m.data);
     if (e.kind === "sessions") loadSessions().catch(() => {});
     else if (e.kind === "message") onMessage(e);
-    else if (e.kind === "heard") { writing = null; askedAt = e.at; const words = e.text.split("\n\n[attached")[0]; chipped(line(words, "me", e.channel), words); }
+    else if (e.kind === "heard") { writing = null; askedAt = e.at; }
     else if (e.kind === "reply") { writing = writing || line("", "it"); writing.firstChild ? writing.firstChild.textContent += e.text : writing.append(e.text); feedToEnd(); }
-    else if (e.kind === "said") { if (!writing && e.text) line(e.text, "it", e.channel); writing = null; const mine = askedHere; askedHere = false; if (e.failed) aside(tr("failure: {why}", {why: e.failed})); else if (mine) speak(e.text, e.channel); }
+    else if (e.kind === "said") { writing = null; const mine = askedHere; askedHere = false; if (e.failed) aside(tr("failure: {why}", {why: e.failed})); else if (mine) speak(e.text, e.channel); }
     else if (e.kind === "overheard") aside(tr("heard «{text}» — {why}", {text: e.text, why: WHY[e.why] || tr("no name, not answering")}));
     else if (e.kind === "phase") {
       phase = e.phase; show();
