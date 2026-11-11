@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from heare.engine import Engine, Intents
 from heare.engine.attention import Attention
+from heare.engine.intent import ATTENTION, tag
 
 
 @dataclass
@@ -169,3 +170,17 @@ def test_dropping_by_hand_is_not_speaking(tmp_path):
     assert held, "the want waits as an intent"
     assert motor.drop(held[0].id)
     assert motor._attention.energy == energy, "a drop cost the energy of a remark"
+
+
+def test_plans_are_listed_and_two_are_merged(tmp_path):
+    attention = Attention()
+    attention.feed("plan_said", thing_id="plan:a", kind="promise", label="податки")
+    attention.feed("plan_said", thing_id="plan:b", kind="promise", label="покдатки")
+    store, said, motor, clock = engine(tmp_path, attention=attention)
+
+    assert {plan["id"] for plan in motor.plans()} == {"plan:a", "plan:b"}
+    store.hold("покдатки", ATTENTION, 2, about=tag(ATTENTION, "plan:b"))
+
+    assert motor.merge_plans("plan:a", "plan:b") is True
+    assert {plan["id"] for plan in motor.plans()} == {"plan:a"}
+    assert not [i for i in store.alive(clock()) if i.about == tag(ATTENTION, "plan:b")]

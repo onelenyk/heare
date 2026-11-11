@@ -170,16 +170,6 @@ class Brain:
             words=lambda: for_language(self.settings.language),
             fit=partial(budget.fit, limit=int(self.settings.context_tokens)),
         )
-        self.core.attach_tools(Toolbox(
-            memory=self.core.memory, state=self.core.state,
-            delegate=self.core.delegate, stop=self.core.stop_all,
-            words=lambda: self.core.words,
-            has_executors=lambda: bool(self.core.executors),
-            reminders=self.intents,
-            hands=lambda: [(e.id, e.name, e.machine, e.about)
-                           for e in self.core.executors.values()],
-            bodies=lambda: self.bodies,
-        ))
         # Hands are a body: they register over the door and are added then.
         # The brain itself holds no agent's process.
         self.engine = Engine(
@@ -189,6 +179,17 @@ class Brain:
             attention_path=self.settings.intents_path.with_name("attention.json"),
             open_loop=lambda text: for_language(self.settings.language).open_loop(text),
         )
+        self.core.attach_tools(Toolbox(
+            memory=self.core.memory, state=self.core.state,
+            delegate=self.core.delegate, stop=self.core.stop_all,
+            words=lambda: self.core.words,
+            has_executors=lambda: bool(self.core.executors),
+            reminders=self.intents,
+            hands=lambda: [(e.id, e.name, e.machine, e.about)
+                           for e in self.core.executors.values()],
+            bodies=lambda: self.bodies,
+            plans=self.engine,
+        ))
         self._review_lock = asyncio.Lock()
         self._consolidate_lock = asyncio.Lock()
         self.features = build_features(self)

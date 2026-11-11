@@ -317,6 +317,38 @@ class Engine:
         """What presses, in the body's own words; empty when there is no body."""
         return self._attention.state() if self._attention is not None else ""
 
+    def plans(self) -> list[dict[str, Any]]:
+        """What attention carries, for the model's eyes: id, label, pressure."""
+        if self._attention is None:
+            return []
+        found: dict[str, dict[str, Any]] = {}
+        for want in self._attention.wants:
+            thing = self._attention.thing(want.thing_id)
+            if thing is None or thing.state != "alive":
+                continue
+            if thing.id not in found or want.pressing > found[thing.id]["pressing"]:
+                found[thing.id] = {
+                    "id": thing.id, "label": thing.label or thing.id,
+                    "kind": thing.kind, "care": round(want.care, 2),
+                    "pressing": round(want.pressing, 2),
+                    "said": want.said, "carried": want.carried,
+                }
+        return sorted(found.values(), key=lambda plan: plan["pressing"], reverse=True)
+
+    def merge_plans(self, keep: str, drop: str) -> bool:
+        """Two entries are one; keep one, fold the other, and its waiting note."""
+        if self._attention is None or not self._attention.merge(keep, drop):
+            return False
+        if self._last_attention_thing == drop:
+            self._last_attention_thing = keep
+        now = self._now()
+        about = tag(ATTENTION, drop)
+        for intent in self._intents.alive(now):
+            if intent.about == about:
+                self._intents.done(intent, status="dropped", at=now)
+        say(f"engine: merged {drop} into {keep}")
+        return True
+
     def held(self) -> list[Intent]:
         """What waits to be said, heaviest first — the page shows this list."""
         return sorted(

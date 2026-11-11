@@ -241,6 +241,39 @@ class Attention:
                 want.pressing = 0.0
                 want.carried = True
 
+    def merge(self, keep_id: str, drop_id: str) -> bool:
+        """Fold one thing into another: they are the same unfinished business.
+
+        The person, or the model they speak to, says two entries are one. The
+        kept want takes the stronger numbers — care, pressing, said, carried,
+        the older birth — so a merge never silences a thing twice said. The
+        dropped thing and its wants go; a last remark moves to the kept id.
+        """
+        keep = self.thing(keep_id)
+        drop = self.thing(drop_id)
+        if keep is None or drop is None or keep.id == drop.id:
+            return False
+        if keep.state != "alive" or drop.state != "alive":
+            return False
+        for want in [w for w in self.wants if w.thing_id == drop.id]:
+            twin = self._want(want.verb, keep.id)
+            if twin is None:
+                want.thing_id = keep.id
+                continue
+            twin.care = max(twin.care, want.care)
+            twin.pressing = max(twin.pressing, want.pressing)
+            twin.said = max(twin.said, want.said)
+            twin.carried = twin.carried or want.carried
+            twin.born = min(twin.born, want.born)
+            self.wants.remove(want)
+        self.things = [thing for thing in self.things if thing.id != drop.id]
+        if not keep.label:
+            keep.label = drop.label
+        if self.last_spoken == drop.id:
+            self.last_spoken = keep.id
+        self._trim()
+        return True
+
     def ignored(self) -> None:
         if self.last_spoken is None:
             return

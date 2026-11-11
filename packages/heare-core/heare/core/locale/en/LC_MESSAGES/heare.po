@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-10 16:44+0200\n"
+"POT-Creation-Date: 2026-11-11 14:09+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -1760,6 +1760,15 @@ msgid "Cancelled."
 msgstr ""
 
 msgid "I did not find that reminder."
+msgstr ""
+
+msgid "No plans are open."
+msgstr ""
+
+msgid "Merged."
+msgstr ""
+
+msgid "No such plan."
 msgstr ""
 
 msgid "Stopped."

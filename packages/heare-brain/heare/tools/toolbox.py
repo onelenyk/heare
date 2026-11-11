@@ -17,10 +17,12 @@ from heare.tools import delegate as delegate_tool
 from heare.tools import bodies as body_tools
 from heare.tools import recall, reminders as reminder_tools
 from heare.tools import schemas
-from heare.tools.ports import Bodies, Reminders
+from heare.tools.ports import Bodies, Plans, Reminders
 from heare.tools.schemas import (
     _CANCEL_REMINDER,
     _LIST_REMINDERS,
+    _MERGE_PLANS,
+    _PLANS,
     _READ_BODY,
     _RECALL,
     _REMIND,
@@ -42,6 +44,7 @@ class Toolbox:
         now: Callable[[], float] = time.time,
         hands: Callable[[], list[tuple[str, str, str, str]]] = lambda: [],
         bodies: Callable[[], Bodies | None] = lambda: None,
+        plans: Plans | None = None,
     ) -> None:
         self._memory = memory
         self._state = state
@@ -53,6 +56,7 @@ class Toolbox:
         self._now = now
         self._hands = hands
         self._bodies = bodies
+        self._plans = plans
 
     def verbs(self) -> dict[str, tuple[dict, Callable[[dict], Awaitable[str]]]]:
         verbs: dict[str, tuple[dict, Callable[[dict], Awaitable[str]]]] = {}
@@ -62,6 +66,9 @@ class Toolbox:
             verbs["delegate"] = (schemas.delegate(self._hands()), self._run_delegate)
         if any(task.status == "running" for task in self._state.tasks.values()):
             verbs["stop_work"] = (_STOP, self._run_stop)
+        if self._plans is not None:
+            verbs["plans"] = (_PLANS, self._run_plans)
+            verbs["merge_plans"] = (_MERGE_PLANS, self._run_merge_plans)
         if self._reminders is not None:
             verbs["remind"] = (_REMIND, self._run_remind)
             verbs["list_reminders"] = (_LIST_REMINDERS, self._run_list_reminders)
@@ -75,18 +82,18 @@ class Toolbox:
         return verbs
 
     def acknowledging(self) -> set[str]:
-        return {"delegate", "stop_work", "remind", "cancel_reminder"}
+        return {"delegate", "stop_work", "remind", "cancel_reminder", "merge_plans"}
 
     def read_only(self, name: str) -> bool:
         # canvas_view is the canvas's verb, not ours; named here because only
         # the toolbox says what may be read and answered on in the same turn.
-        return name in {"recall", "list_reminders", "read_body", "canvas_view"}
+        return name in {"recall", "list_reminders", "read_body", "canvas_view", "plans"}
 
     def lookup(self, name: str) -> bool:
         # remind and cancel_reminder change something, but only locally and
         # without permission; their answer is worth seeing inside the turn.
         return name in {"recall", "list_reminders", "read_body", "canvas_view",
-                        "remind", "cancel_reminder"}
+                        "remind", "cancel_reminder", "plans", "merge_plans"}
 
     async def _run_recall(self, arguments: dict) -> str:
         return await recall.run(self._memory, arguments)
@@ -102,6 +109,23 @@ class Toolbox:
         if bodies is None:
             return "No bodies are connected now."
         return await body_tools.read(bodies, arguments)
+
+    async def _run_plans(self, arguments: dict) -> str:
+        plans = self._plans.plans() if self._plans is not None else []
+        if not plans:
+            return "Nothing is on your mind."
+        return "\n".join(
+            f"{plan['id']} · {plan['label']} (pressing {plan['pressing']:.2f}, "
+            f"said {plan['said']})"
+            for plan in plans
+        )
+
+    async def _run_merge_plans(self, arguments: dict) -> str:
+        if self._plans is None:
+            return _("No plans are open.")
+        keep = str(arguments.get("keep") or "")
+        drop = str(arguments.get("drop") or "")
+        return _("Merged.") if self._plans.merge_plans(keep, drop) else _("No such plan.")
 
     async def _run_stop(self, arguments: dict) -> str:
         return _("Stopped.") if self._stop() else _("Nothing was running.")

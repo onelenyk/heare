@@ -26,7 +26,9 @@ ATTENTION = ENGINE / "attention.py"
 # +20 more for the bounded list — a dozen wants, ranked by pressing and
 # age, and a drop that costs no energy; +20 for the one trim that holds
 # between ticks, and the last_spoken clear that keeps the invariants.
-ATTENTION_LINES = 480
+# 11 November 2026: +25 for merging two entries that are the same thing —
+# the model can name them, attention only folds the numbers.
+ATTENTION_LINES = 505
 
 # The engine's whole conversation with attention. ``feed`` and ``tick`` are
 # what happens; ``spoke``, ``engage``, ``ignored`` are how the person
@@ -34,7 +36,7 @@ ATTENTION_LINES = 480
 # ``load`` are its own file. Nothing else belongs here without a decision.
 PUBLIC = {
     "feed", "tick", "hottest", "spoke", "engage", "ignored",
-    "state", "thing", "save", "load", "to_dict", "from_dict",
+    "state", "thing", "merge", "save", "load", "to_dict", "from_dict",
 }
 
 

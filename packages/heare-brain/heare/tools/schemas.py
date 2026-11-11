@@ -190,3 +190,45 @@ def delegate(hands: list[tuple[str, str, str, str]]) -> dict:
         f"what `hand` takes):\n{roster}"
     )
     return {"type": "function", "function": function}
+
+
+_PLANS = {
+    "type": "function",
+    "function": {
+        "name": "plans",
+        "description": (
+            "List the unfinished things you are carrying: id, label, and how "
+            "hard each presses. Call it when the person asks what is on your "
+            "mind, or before merging two entries that may be the same thing "
+            "said in different words."
+        ),
+        "parameters": {"type": "object", "properties": {}, "required": []},
+    },
+}
+
+_MERGE_PLANS = {
+    "type": "function",
+    "function": {
+        "name": "merge_plans",
+        "description": (
+            "Fold two entries from plans into one when they are the same "
+            "unfinished thing — the person may have said it twice in other "
+            "words or with typos. Keep one, drop the other. Use only when you "
+            "are sure; a wrong merge forgets a real thing."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "keep": {
+                    "type": "string",
+                    "description": "The id of the entry to keep, from plans.",
+                },
+                "drop": {
+                    "type": "string",
+                    "description": "The id of the entry to fold into it.",
+                },
+            },
+            "required": ["keep", "drop"],
+        },
+    },
+}

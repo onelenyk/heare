@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from datetime import datetime, timedelta
 
@@ -23,6 +24,7 @@ def _toolbox(
     stop=lambda: 0,
     delegate=None,
     reminders: Intents | None = None,
+    plans=None,
     now=lambda: 100.0,
 ) -> Toolbox:
     return Toolbox(
@@ -33,6 +35,7 @@ def _toolbox(
         words=uk,
         has_executors=lambda: has_executors,
         reminders=reminders,
+        plans=plans,
         now=now,
     )
 
@@ -59,7 +62,7 @@ def test_stop_work_is_offered_only_with_a_running_task():
 
 def test_acknowledging_names_the_verbs_that_only_acknowledge():
     assert _toolbox().acknowledging() == {
-        "delegate", "stop_work", "remind", "cancel_reminder",
+        "delegate", "stop_work", "remind", "cancel_reminder", "merge_plans",
     }
 
 
@@ -69,6 +72,8 @@ def test_read_only_names_the_verbs_that_change_nothing(tmp_path):
     assert box.read_only("recall") is True
     assert box.read_only("list_reminders") is True
     assert box.read_only("cancel_reminder") is False
+    assert box.read_only("plans") is True
+    assert box.read_only("merge_plans") is False
     assert box.read_only("delegate") is False
     assert box.read_only("remind") is False
 
@@ -78,6 +83,8 @@ def test_read_only_names_the_verbs_that_change_nothing(tmp_path):
     assert box.lookup("canvas_view") is True
     assert box.lookup("remind") is True
     assert box.lookup("cancel_reminder") is True
+    assert box.lookup("plans") is True
+    assert box.lookup("merge_plans") is True
     assert box.lookup("delegate") is False
     assert box.lookup("stop_work") is False
 
@@ -375,3 +382,30 @@ async def test_read_body_never_changes_anything():
     said = await run({"part": "кухня", "skill": "on"})
     assert "delegate" in said and bodies.called == []
     assert "No body" in await run({"part": "спальня", "skill": "temp"})
+
+
+class FakePlans:
+    def __init__(self) -> None:
+        self.merged: tuple[str, str] | None = None
+
+    def plans(self) -> list[dict]:
+        return [{"id": "plan:a", "label": "податки", "pressing": 0.6, "said": 0}]
+
+    def merge_plans(self, keep: str, drop: str) -> bool:
+        self.merged = (keep, drop)
+        return True
+
+
+def test_plans_and_merge_are_offered_with_attention():
+    plans = FakePlans()
+    box = _toolbox(plans=plans)
+    verbs = box.verbs()
+    assert "plans" in verbs
+    assert "merge_plans" in verbs
+
+    listed = asyncio.run(verbs["plans"][1]({}))
+    assert "plan:a" in listed and "податки" in listed
+
+    answer = asyncio.run(verbs["merge_plans"][1]({"keep": "plan:a", "drop": "plan:b"}))
+    assert answer
+    assert plans.merged == ("plan:a", "plan:b")
