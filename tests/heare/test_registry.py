@@ -172,3 +172,18 @@ def test_two_executors_of_one_channel_are_called_back_by_pid(tmp_path):
         ("native-hands@mac", "native-hands", "швидкі", "mac"),
     ]
     assert registry.executor_on("native-hands") is True
+
+
+async def test_a_part_forgotten_while_it_waits_is_answered_at_once(tmp_path, monkeypatch):
+    """The person can forget a machine while one of its parts still waits
+    for a yes: the question goes with it, and the knock must not fall on a
+    name that no longer exists two minutes later."""
+    monkeypatch.setattr(registry_mod, "APPROVAL_WAIT_S", 30.0)
+    registry, _, _ = _registry(tmp_path)
+    registry.attach("voice@mac", "voice", ["input"], "", "mac", "pending",
+                    machine="machine@mac")
+    waiting = asyncio.create_task(registry.answer("voice@mac"))
+    await asyncio.sleep(0)
+    registry.forget("voice@mac")
+    assert await asyncio.wait_for(waiting, timeout=1.0) == "forgotten"
+    assert "voice@mac" not in registry.known

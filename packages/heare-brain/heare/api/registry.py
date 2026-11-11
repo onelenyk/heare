@@ -213,27 +213,40 @@ class Registry:
         return str(entry.get("channel") or pid.split("@")[0])
 
     def forget(self, pid: str) -> dict | None:
-        """Out of the list and out of trust; the entry it was, or None."""
+        """Out of the list and out of trust; the entry it was, or None.
+
+        A part still waiting for the person's yes is answered at once: the
+        question went with it, and its knock must not stand there for two
+        minutes and then fall on a name that no longer exists.
+        """
         entry = self.known.pop(pid, None)
         if entry is None:
             return None
         self._untrust(pid)
+        event = self._waiting.get(pid)
+        if event is not None:
+            event.set()
         self._tell(entry, "forgotten")
         return entry
 
     # -- the person's answer ----------------------------------------------
 
     async def answer(self, pid: str) -> str:
-        """Wait for the person to decide on a pending part: its state then."""
+        """Wait for the person to decide on a pending part: its state then.
+
+        A part forgotten while it waits is answered «forgotten», not left
+        to time out on an entry that is gone."""
         event = self._waiting.setdefault(pid, asyncio.Event())
         try:
             await asyncio.wait_for(event.wait(), APPROVAL_WAIT_S)
         except TimeoutError:
-            self.known[pid]["state"] = "expired"
+            entry = self.known.get(pid)
+            if entry is not None:
+                entry["state"] = "expired"
         finally:
             if self._waiting.get(pid) is event:
                 self._waiting.pop(pid, None)
-        return self.known[pid]["state"]
+        return str((self.known.get(pid) or {}).get("state") or "forgotten")
 
     def decide(self, pid: str, state: str) -> bool:
         """The person's yes or no; False when nothing of that name waits."""
