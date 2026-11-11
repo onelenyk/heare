@@ -1,6 +1,6 @@
 # Душа: конституція, особа, пам'ять, увага
 
-*10 листопада 2026, v0.9.12 у проді (мозок і мак).
+*11 листопада 2026, v0.9.13 у проді (мозок); мак — 0.9.12 (тіло).
 Стан звірено з кодом: `packages/heare-brain/heare/engine/attention.py`,
 `engine.py`, `intent.py`, `language/uk.py`, `tests/heare/test_engine_attention*.py`.*
 
