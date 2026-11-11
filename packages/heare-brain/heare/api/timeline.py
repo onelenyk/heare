@@ -185,7 +185,7 @@ class Timeline:
         return say or _("It is on the page.")
 
     async def say(self, pieces: AsyncIterator[str]) -> str:
-        async for _ in pieces:
+        async for piece in pieces:
             pass
         return "done"
 
