@@ -2184,6 +2184,9 @@ msgstr "не вдалося запустити {command}: {why}"
 msgid "another keeper already runs on this computer (pid {pid}) — this one stops"
 msgstr "наглядач уже працює на цьому комп'ютері (pid {pid}) — цей зупиняється"
 
+msgid "this machine is paired again; its parts start"
+msgstr "цю машину спаровано знову; її частини стартують"
+
 msgid "settings changed; the parts restart"
 msgstr "налаштування змінилися; частини перезапускаються"
 
@@ -2218,6 +2221,9 @@ msgstr "не встановлена на цій машині"
 #, python-brace-format
 msgid "not switched on: {error}"
 msgstr "не ввімкнув: {error}"
+
+msgid "the brain no longer knows this machine — pair it again"
+msgstr "мозок більше не знає цю машину — спаруй її знову"
 
 msgid "another page does not control this form"
 msgstr "чужа сторінка не керує цією формою"

@@ -175,6 +175,17 @@ def _fingerprint(settings_path: Path, folder: Path) -> str:
     return "|".join(stamps)
 
 
+def _pairing(settings_path: Path) -> str:
+    """Which trust this machine holds: a new token is a new pairing.
+
+    Kept apart from the rest of the fingerprint: a setting changed while
+    the machine is forgotten must not start its parts again with the old,
+    refused key."""
+    machine = settings_path.parent.parent / "machine"
+    return "|".join(_stamp(path) for path in (
+        machine / "machine_token", machine / "api_token"))
+
+
 def _part_env() -> dict[str, str]:
     """A part watches the keeper, not the app: the keeper is its supervisor."""
     env = dict(os.environ)
@@ -217,6 +228,11 @@ class Keeper:
         # and puts it back, and it is not counted as a fall.
         self._again: set[str] = set()
         self._fingerprint = _fingerprint(self._settings, folder)
+        self._identity = _pairing(self._settings)
+        # Why the machine's parts are not running at all — its brain has
+        # forgotten the machine — or "" while it is trusted. Only a new
+        # pairing lifts it: a setting is not a new yes.
+        self._halted = ""
 
     def _note(self, name: str, state: str, why: str = "", **fields) -> None:
         try:
@@ -224,6 +240,20 @@ class Keeper:
                              restarts=self._restarts.get(name, 0), **fields)
         except OSError:
             logger.exception("could not write the state of %s", name)
+
+    def halt(self, why: str) -> None:
+        """The brain no longer knows this machine: stop its parts.
+
+        The brain cannot knock on a forgotten machine, so the keeper is
+        the one that learns — from the refused report — and stops what it
+        raises. Every part says why, so the person sees it on the settings
+        page instead of a machine that looks healthy and is not heard."""
+        if self._halted:
+            return
+        self._halted = why
+        for name in wanted(self._folder):
+            self._note(name, "unwell", why)
+        logger.warning("the machine is forgotten by the brain: %s", why)
 
     def restart(self, name: str) -> None:
         """The person asked this one to start again; the loop does it."""
@@ -289,6 +319,23 @@ class Keeper:
             while True:
                 asked = wanted(self._folder)
                 stamp = _fingerprint(self._settings, self._folder)
+                pairing = _pairing(self._settings)
+                if pairing != self._identity:
+                    self._identity = pairing
+                    if self._halted:
+                        self._halted = ""
+                        logs.say(_("this machine is paired again; its parts start"))
+                if self._halted:
+                    # A forgotten machine waits for a pairing, not for a
+                    # setting: nothing here starts a part with its old key.
+                    self._fingerprint = stamp
+                    if tasks:
+                        await self._restart(tasks)
+                    for name in [known for known in machine.health(self._folder)
+                                 if known not in asked]:
+                        machine.forget(self._folder, name)
+                    await asyncio.sleep(POLL_S)
+                    continue
                 if stamp != self._fingerprint:
                     self._fingerprint = stamp
                     logs.say(_("settings changed; the parts restart"))
@@ -405,7 +452,8 @@ async def kept(folder: Path, settings_path: Path | None = None) -> int:
     # keeper's own settings, not the developer's home: a test's temporary
     # machine must not report to a brain that happens to run here.
     reporting = asyncio.create_task(
-        Report(settings, folder, on_restart=keeper.restart).run())
+        Report(settings, folder, on_restart=keeper.restart,
+               on_refused=keeper.halt).run())
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, running.cancel)

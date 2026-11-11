@@ -461,6 +461,67 @@ async def test_a_brain_that_refused_the_key_is_parked_not_looped(tmp_path, monke
     assert marks.read_text().splitlines() == ["x"]
 
 
+async def test_a_machine_its_brain_forgot_stops_its_parts(tmp_path, monkeypatch):
+    """The brain cannot knock on a forgotten machine: the keeper learns from
+    the refused report, stops what it raises, and says why. A setting is not
+    a new trust; a new pairing is, and only then do the parts come back."""
+    monkeypatch.setattr(keeper, "POLL_S", 0.02)
+    monkeypatch.setattr(keeper, "BACKOFF_S", 0.02)
+    config = tmp_path / "settings" / "config.toml"
+    config.parent.mkdir()
+    config.write_text('role = "body"\n', encoding="utf-8")
+    folder = tmp_path / "machine" / "parts"
+    home = folder / "eyes"
+    home.mkdir(parents=True)
+    marks = tmp_path / "marks"
+    code = ("import os, pathlib, time\n"
+            f"pathlib.Path({str(marks)!r}).open('a').write(str(os.getpid()) + '\\n')\n"
+            "time.sleep(60)\n")
+    (home / "heare.json").write_text(json.dumps({
+        "channel": "eyes", "run": [sys.executable, "-c", code]}),
+        encoding="utf-8")
+
+    why = "the brain no longer knows this machine — pair it again"
+    beacon = keeper.Keeper(folder, config)
+    running = asyncio.create_task(beacon.run())
+    try:
+        for _ in range(250):
+            if marks.exists() and marks.read_text().strip():
+                break
+            await asyncio.sleep(0.02)
+        else:
+            raise AssertionError("the part did not start")
+        old = int(marks.read_text().splitlines()[0])
+
+        beacon.halt(why)
+        for _ in range(250):
+            if _gone(old):
+                break
+            await asyncio.sleep(0.02)
+        else:
+            raise AssertionError("a forgotten machine kept its part running")
+        assert machine.health(folder)["eyes"]["why"] == why
+
+        # A setting changed after the refusal is not a new pairing.
+        config.write_text('role = "all"\n', encoding="utf-8")
+        await asyncio.sleep(0.3)
+        assert len(marks.read_text().splitlines()) == 1, \
+            "a setting started the parts again under the refused key"
+
+        # A pairing is: the machine may knock again, so the parts come back.
+        (tmp_path / "machine" / "machine_token").write_text("new", encoding="utf-8")
+        for _ in range(250):
+            if len(marks.read_text().splitlines()) >= 2:
+                break
+            await asyncio.sleep(0.02)
+        else:
+            raise AssertionError("a paired again machine did not start its parts")
+        assert _gone(old)
+    finally:
+        running.cancel()
+        await asyncio.gather(running, return_exceptions=True)
+
+
 def test_the_brain_keeper_finds_the_master_token(tmp_path):
     home = tmp_path
     (home / "machine").mkdir()

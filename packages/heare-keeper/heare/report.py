@@ -22,6 +22,7 @@ import httpx
 
 from heare import machine, part
 from heare.config import HOME, Settings
+from heare.core.i18n import _
 
 logger = logging.getLogger("heare.keeper.report")
 
@@ -133,10 +134,12 @@ class Report:
     """The keeper's half of the conversation, once every half minute."""
 
     def __init__(self, settings: Settings, folder: Path, *,
-                 on_restart: Callable[[str], None] | None = None) -> None:
+                 on_restart: Callable[[str], None] | None = None,
+                 on_refused: Callable[[str], None] | None = None) -> None:
         self.settings = settings
         self.folder = Path(folder)
         self._on_restart = on_restart
+        self._on_refused = on_refused
 
     async def run(self) -> None:
         failures = 0
@@ -156,6 +159,12 @@ class Report:
             answer = await brain.post(
                 f"{self.settings.base}/api/machine/mine/report",
                 headers={"X-Heare-Token": self.settings.secret}, json=data)
+        if answer.status_code in (401, 403):
+            # The brain will not know this machine until it is paired
+            # again: no retry can fix a key that went with the trust.
+            if self._on_refused is not None:
+                self._on_refused(
+                    _("the brain no longer knows this machine — pair it again"))
         if answer.status_code >= 400:
             logger.debug("the brain did not take the report: %s", answer.status_code)
             return False
