@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-11 23:41+0200\n"
+"POT-Creation-Date: 2026-11-11 23:47+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -800,8 +800,169 @@ msgstr "Тут поки нічого"
 msgid "Say something, or ask for a screen."
 msgstr "Скажи щось або попроси екран."
 
+msgid "another conversation"
+msgstr "інша розмова"
+
+msgid "Pinned"
+msgstr "Закріплене"
+
+msgid "Go to the message"
+msgstr "До повідомлення"
+
 msgid "Nothing is pinned yet"
 msgstr "Поки нічого не закріплено"
+
+msgid "Doka"
+msgstr "Дока"
+
+msgid "full width"
+msgstr "на всю ширину"
+
+msgid "Weather"
+msgstr "Погода"
+
+msgid "Burshtyn"
+msgstr "Бурштин"
+
+msgid "now"
+msgstr "зараз"
+
+msgid "cloudy · feels like −2°"
+msgstr "хмарно · відчувається −2°"
+
+msgid "wind"
+msgstr "вітер"
+
+msgid "km/h"
+msgstr "км/год"
+
+msgid "humidity"
+msgstr "вологість"
+
+msgid "pressure"
+msgstr "тиск"
+
+msgid "mm"
+msgstr "мм"
+
+msgid "Mock · 11 November"
+msgstr "Макет · 11 листопада"
+
+msgid "What changes"
+msgstr "Що змінюється"
+
+msgid "Was"
+msgstr "Було"
+
+msgid "Became"
+msgstr "Стало"
+
+msgid "A separate board"
+msgstr "Окрема дошка"
+
+msgid "A chat and a pinned dock"
+msgstr "Чат і док закріпленого"
+
+msgid "A canvas grid"
+msgstr "Сітка канвасу"
+
+msgid "Artifacts as messages"
+msgstr "Артефакти-повідомлення"
+
+msgid "Part cards and chips"
+msgstr "Картки й чипи частин"
+
+msgid "One carousel of the body"
+msgstr "Одна карусель «тіла»"
+
+msgid "The Context tab"
+msgstr "Вкладка Context"
+
+msgid "Details in the system column"
+msgstr "«Деталі» в системній колонці"
+
+msgid "HANDS ASK FOR PERMISSION"
+msgstr "HANDS ПРОСИТЬ ДОЗВІЛ"
+
+msgid "Run make test in this checkout?"
+msgstr "Запустити make test у цьому чекауті?"
+
+msgid "Allow"
+msgstr "Дозволити"
+
+msgid "Not now"
+msgstr "Не зараз"
+
+msgid "HANDS"
+msgstr "РУКИ"
+
+msgid "checked the branch"
+msgstr "перевірив гілку"
+
+msgid "built it"
+msgstr "зібрав"
+
+msgid "heare design system"
+msgstr "Дизайн-система heare"
+
+msgid "What is the weather in Burshtyn?"
+msgstr "Що там з погодою у Бурштині?"
+
+msgid "It is +1° in Burshtyn, feels like −2°. Wind 6 km/h."
+msgstr "У Бурштині зараз +1°, відчувається як −2°. Вітер 6 км/год."
+
+msgid "Show me the new screen."
+msgstr "Покажи, як виглядає новий екран."
+
+msgid "Here is the mock. This is not a board any more — a chat, a pinned dock and the body beside it."
+msgstr "Ось макет. Це вже не дошка — чат, док закріпленого і тіло збоку."
+
+msgid "And the table: what goes away from the old screen."
+msgstr "І таблиця: що саме зникає зі старого екрана."
+
+msgid "The meeting is at 13:30 — the dentist. I will remind you 25 minutes before."
+msgstr "Зустріч о 13:30 — дантист. Нагадаю за 25 хвилин."
+
+msgid "Here is the design-system link."
+msgstr "Ось посилання на дизайн-систему."
+
+msgid "Show this at full width."
+msgstr "Покажи це на всю ширину."
+
+msgid "Done. The table above is the whole panel wide — use the corner button to bring it back."
+msgstr "Готово. Таблиця вище — на всю ширину панелі; кутова кнопка поверне її у стрічку."
+
+msgid "The new screen"
+msgstr "Новий екран"
+
+msgid "mock · 11 November"
+msgstr "макет · 11 листопада"
+
+msgid "table · 4 rows"
+msgstr "таблиця · 4 рядки"
+
+msgid "Carpathians"
+msgstr "Карпати"
+
+msgid "October · 3 November"
+msgstr "Жовтень · 3 листопада"
+
+msgid "November · 2 November"
+msgstr "Листопад · 2 листопада"
+
+msgid "Today"
+msgstr "Сьогодні"
+
+msgid "you are here"
+msgstr "ти тут"
+
+#, python-brace-format
+msgid "replies: {n}"
+msgstr "відповідей: {n}"
+
+#, python-brace-format
+msgid "{m} min"
+msgstr "{m} хв"
 
 msgid "looking in memory"
 msgstr "шукаю в памʼяті"
@@ -863,15 +1024,8 @@ msgstr "грає: {what}"
 msgid "not here"
 msgstr "не тут"
 
-msgid "you are here"
-msgstr "ти тут"
-
 msgid "just started"
 msgstr "щойно запущено"
-
-#, python-brace-format
-msgid "{m} min"
-msgstr "{m} хв"
 
 #, python-brace-format
 msgid "{h} h {m} min"
@@ -880,10 +1034,6 @@ msgstr "{h} год {m} хв"
 #, python-brace-format
 msgid "commit {c}"
 msgstr "коміт {c}"
-
-#, python-brace-format
-msgid "replies: {n}"
-msgstr "відповідей: {n}"
 
 #, python-brace-format
 msgid "downloading heare {v}…"
@@ -1061,9 +1211,6 @@ msgstr "ця сторінка"
 #, python-brace-format
 msgid "page · {host}"
 msgstr "сторінка · {host}"
-
-msgid "Allow"
-msgstr "Дозволити"
 
 msgid "Refuse"
 msgstr "Відмовити"
@@ -1652,6 +1799,9 @@ msgstr "не можу: {what} ({why})"
 
 msgid "no connection to heare"
 msgstr "немає зв'язку з heare"
+
+msgid "This is a mock"
+msgstr "Це макет"
 
 #, python-brace-format
 msgid "{n} piece"
@@ -2416,9 +2566,6 @@ msgstr "плата, що має ще й датчик температури"
 
 msgid "sources: looking at what is outside"
 msgstr "джерела: дивлюсь, що надворі"
-
-msgid "Weather"
-msgstr "Погода"
 
 msgid "City"
 msgstr "Місто"

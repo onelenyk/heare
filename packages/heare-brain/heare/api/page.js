@@ -1,6 +1,7 @@
 const LOCALE = document.documentElement.lang === "uk" ? "uk-UA" : "en-US";
 const $ = id => document.getElementById(id);
 const narrow = matchMedia("(max-width:900px)");
+const DEMO = new URLSearchParams(location.search).get("demo") === "1";
 const api = (path, opts = {}) => fetch("/api/" + path, {
   ...opts, credentials: "same-origin",
   headers: {"Content-Type": "application/json"},
@@ -11,6 +12,7 @@ const api = (path, opts = {}) => fetch("/api/" + path, {
 });
 
 function showPairing() {
+  if (DEMO) return;
   const p = $("pairing");
   if (p) { p.hidden = false; setTimeout(() => $("paircode").focus(), 30); }
 }
@@ -56,13 +58,144 @@ function feedEmpty() {
   box.append(el("b", "", tr("Nothing here yet")), el("span", "", tr("Say something, or ask for a screen.")));
   feedAppend(box);
 }
+let pinState = { trail: [], shelf: [] };
+let previewTimer = 0;
+let toastTimer = 0;
+function toast(text) {
+  const t = $("toast");
+  t.textContent = text; t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 2400);
+}
+function dockMeasure() {
+  const chat = $("chat"), dock = $("pin-dock"), composer = $("composer");
+  if (!chat || !dock || !composer) return;
+  chat.style.setProperty("--dock-h", dock.offsetHeight + "px");
+  chat.style.setProperty("--comp-h", composer.offsetHeight + "px");
+}
+function pinChip(p) {
+  const chip = el("button", "pinchip" + (p.shelf ? " shelf" : ""));
+  chip.type = "button"; chip.dataset.mid = p.mid;
+  const thumb = el("span", "pinchip-thumb"); thumb.innerHTML = p.thumb || "";
+  const text = el("span", "pinchip-text");
+  text.append(el("b", "", p.title), el("small", "", p.line));
+  chip.append(thumb, text);
+  chip.onclick = () => {
+    const m = $("flow").querySelector(`[data-mid="${p.mid}"]`);
+    if (m) m.scrollIntoView({behavior: "smooth", block: "center"});
+    else toast(tr("another conversation"));
+  };
+  chip.onmouseenter = () => previewShow(p, chip);
+  chip.onmouseleave = previewHide;
+  chip.onfocus = () => previewShow(p, chip);
+  chip.onblur = previewHide;
+  return chip;
+}
+function previewShow(p, chip) {
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(() => {
+    const pv = $("pinpreview");
+    const m = DEMO_FEED.find(x => x.id === p.mid);
+    const head = el("div", "pv-head");
+    head.append(el("span", "", p.kind || tr("Pinned")), el("b", "", p.title));
+    const body = el("div", "pv-body");
+    body.innerHTML = p.html || (m && m.html) || "";
+    const hint = el("div", "pv-hint", tr("Go to the message"));
+    pv.replaceChildren(head, body, hint); pv.hidden = false;
+    const r = chip.getBoundingClientRect(), w = pv.offsetWidth, h = pv.offsetHeight;
+    pv.style.left = Math.min(Math.max(12, r.left), innerWidth - w - 12) + "px";
+    pv.style.top = Math.min(r.bottom + 8, innerHeight - h - 12) + "px";
+  }, 120);
+}
+function previewHide() {
+  clearTimeout(previewTimer);
+  $("pinpreview").hidden = true;
+}
 function dockRender() {
   const dock = $("pin-dock");
   if (!dock) return;
-  const pins = [];  // the pin store arrives with F0.5; the shell shows the quiet state
-  dock.replaceChildren(...(pins.length ? pins : [el("div", "dock-empty", tr("Nothing is pinned yet"))]));
+  const pins = [...pinState.trail, ...pinState.shelf];
+  dock.replaceChildren(...(pins.length ? pins.map(pinChip) : [el("div", "dock-empty", tr("Nothing is pinned yet"))]));
+  if (DEMO) dockMeasure();
 }
 dockRender();
+
+function msgEl(m) {
+  const wrap = el("div", "msg " + (m.who === "me" ? "me" : "it") + (m.wide ? " wide" : ""));
+  wrap.dataset.mid = m.id;
+  const meta = el("div", "meta");
+  meta.append(el("b", "", m.who === "me" ? tr("you") : tr("Doka")), el("time", "", m.time || ""));
+  if (m.wide) {
+    const w = el("button", "widebtn", "⤢"); w.type = "button"; w.title = tr("full width");
+    w.onclick = () => { wrap.classList.toggle("wide"); dockMeasure(); };
+    meta.append(w);
+  }
+  const body = el("div", "body"); body.innerHTML = m.html || "";
+  wrap.append(meta, body);
+  return wrap;
+}
+
+const weatherCard = () => `<div class="demo-weather"><div class="dw-top"><span>${tr("Weather")}</span><b>${tr("Burshtyn")}</b><time>${tr("now")}</time></div><div class="dw-main"><b>+1°</b><span>${tr("cloudy · feels like −2°")}</span></div><div class="dw-rows"><div><span>${tr("wind")}</span><b>6 ${tr("km/h")}</b></div><div><span>${tr("humidity")}</span><b>81%</b></div><div><span>${tr("pressure")}</span><b>748 ${tr("mm")}</b></div></div></div>`;
+const photoCard = () => `<figure class="demo-photo"><svg viewBox="0 0 320 180" aria-hidden="true"><rect width="320" height="180" rx="10" fill="#1c1a21"/><rect x="16" y="16" width="288" height="18" rx="6" fill="#242029"/><rect x="16" y="44" width="90" height="120" rx="8" fill="#242029"/><rect x="116" y="44" width="188" height="54" rx="8" fill="#242029"/><rect x="116" y="106" width="90" height="58" rx="8" fill="#242029"/><rect x="214" y="106" width="90" height="58" rx="8" fill="#9d7cff" opacity=".25"/></svg><figcaption>${tr("Mock · 11 November")}</figcaption></figure>`;
+const tableCard = () => `<div class="demo-table"><div class="dt-title">${tr("What changes")}</div><div class="dt-row dt-th"><span>${tr("Was")}</span><span>${tr("Became")}</span></div><div class="dt-row"><span>${tr("A separate board")}</span><span>${tr("A chat and a pinned dock")}</span></div><div class="dt-row"><span>${tr("A canvas grid")}</span><span>${tr("Artifacts as messages")}</span></div><div class="dt-row"><span>${tr("Part cards and chips")}</span><span>${tr("One carousel of the body")}</span></div><div class="dt-row"><span>${tr("The Context tab")}</span><span>${tr("Details in the system column")}</span></div></div>`;
+const askCard = () => `<div class="demo-ask"><span class="da-label">${tr("HANDS ASK FOR PERMISSION")}</span><p>${tr("Run make test in this checkout?")}</p><div class="da-acts"><button type="button" class="da-yes">${tr("Allow")}</button><button type="button">${tr("Not now")}</button></div></div>`;
+const stepCard = () => `<div class="demo-step"><span class="ds-label">${tr("HANDS")}</span><p>make test</p><ol><li>${tr("checked the branch")}</li><li>${tr("built it")}</li></ol></div>`;
+const linkCard = () => `<a class="demo-link" href="#" onclick="return false"><b>${tr("heare design system")}</b><small>heare.local/design</small></a>`;
+
+const DEMO_FEED = [
+  { id: "demo/1", who: "me", time: "21:12", html: `<p>${tr("What is the weather in Burshtyn?")}</p>` },
+  { id: "demo/2", who: "it", time: "21:12", html: `<p>${tr("It is +1° in Burshtyn, feels like −2°. Wind 6 km/h.")}</p>${weatherCard()}` },
+  { id: "demo/3", who: "me", time: "21:13", html: `<p>${tr("Show me the new screen.")}</p>` },
+  { id: "demo/4", who: "it", time: "21:13", html: `<p>${tr("Here is the mock. This is not a board any more — a chat, a pinned dock and the body beside it.")}</p>${photoCard()}` },
+  { id: "demo/5", who: "it", time: "21:14", wide: true, html: `<p>${tr("And the table: what goes away from the old screen.")}</p>${tableCard()}` },
+  { id: "demo/6", who: "it", time: "21:15", html: `<p>${tr("The meeting is at 13:30 — the dentist. I will remind you 25 minutes before.")}</p>` },
+  { id: "demo/7", who: "me", time: "21:16", html: `<p>${tr("Run make test in this checkout?")}</p>` },
+  { id: "demo/8", who: "it", time: "21:16", html: askCard() },
+  { id: "demo/9", who: "it", time: "21:17", html: stepCard() },
+  { id: "demo/10", who: "it", time: "21:17", html: `<p>${tr("Here is the design-system link.")}</p>${linkCard()}` },
+  { id: "demo/11", who: "me", time: "21:18", html: `<p>${tr("Show this at full width.")}</p>` },
+  { id: "demo/12", who: "it", time: "21:18", html: `<p>${tr("Done. The table above is the whole panel wide — use the corner button to bring it back.")}</p>` },
+];
+
+const DEMO_PINS = {
+  trail: [
+    { mid: "demo/2", title: tr("Weather"), line: "+1° · " + tr("Burshtyn"), thumb: "☀" },
+    { mid: "demo/4", title: tr("The new screen"), line: tr("mock · 11 November"), thumb: "▣" },
+    { mid: "demo/5", title: tr("What changes"), line: tr("table · 4 rows"), thumb: "▤" },
+  ],
+  shelf: [
+    { mid: "nov3/1", title: tr("Carpathians"), line: tr("October · 3 November"), thumb: "▲", shelf: true,
+      html: `<figure class="demo-photo"><svg viewBox="0 0 320 180" aria-hidden="true"><rect width="320" height="180" rx="10" fill="#1c1a21"/><path d="M0 140 90 70 160 120 220 60 320 140V180H0Z" fill="#302c37"/><path d="M0 160 80 110 170 150 260 100 320 150V180H0Z" fill="#9d7cff" opacity=".2"/></svg><figcaption>${tr("October · 3 November")}</figcaption></figure>` },
+    { mid: "nov1/2", title: tr("The new screen"), line: tr("November · 2 November"), thumb: "▣", shelf: true, html: photoCard() },
+  ],
+};
+
+function demo() {
+  $("name").textContent = tr("Doka");
+  $("nowtext").textContent = tr("listening to you");
+  $("face").setAttribute("class", "face hearing");
+  const dot = $("dot");
+  if (dot) { dot.hidden = false; dot.className = "hearing"; }
+  $("sessionpick").replaceChildren(el("option", "", tr("Today")));
+  $("sessionpick").value = "demo";
+  $("model").textContent = "deepseek · demo";
+  $("hands").textContent = "demo";
+  $("around").textContent = tr("quiet") + " · " + tr("you are here");
+  $("session").textContent = tr("replies: {n}", {n: 6});
+  $("up").textContent = tr("{m} min", {m: 2}) + " · v0.9.16";
+  feedClear();
+  DEMO_FEED.forEach(m => feedAppend(msgEl(m)));
+  feedToEnd();
+  pinState = DEMO_PINS;
+  dockRender();
+  setTimeout(dockMeasure, 30);
+}
+if ("ResizeObserver" in window) {
+  const ro = new ResizeObserver(dockMeasure);
+  ro.observe($("pin-dock")); ro.observe($("composer"));
+}
+addEventListener("resize", dockMeasure);
+setTimeout(dockMeasure, 60);
 function line(text, who, via) {
   const e = el("div", "line " + who, text);
   if (VIA[via]) e.append(el("span", "via", VIA[via]));
@@ -176,7 +309,7 @@ $("filepick").onchange = async () => {
   }
   $("filepick").value = ""; showPending();
 };
-loadSessions().catch(() => {});
+if (!DEMO) loadSessions().catch(() => {});
 
 /* ── the panel ── */
 function show() {
@@ -1407,7 +1540,7 @@ function drawn(e) {
   }
   few();
 }
-api("canvas").then(c => { restyle(c.css); c.blocks.forEach(block); few(); });
+if (!DEMO) api("canvas").then(c => { restyle(c.css); c.blocks.forEach(block); few(); });
 // The page is a body too: it knocks so the person sees it among the parts,
 // and knocks again whenever its stream reconnects (a brain restarted).
 const knock = () => api("bodies", {method: "POST", body: {
@@ -1417,7 +1550,7 @@ const knock = () => api("bodies", {method: "POST", body: {
     {name: "state", kind: "label", label: "State", value: "online", head: true},
   ]}}).then(answer => { webPid = (answer && answer.pid) || webPid; }).then(() => api("input", {method: "POST", body: {
     kind: "state", channel: "web", values: {aloud}}})).catch(() => {});
-knock();
+if (!DEMO) knock();
 $("live").addEventListener("click", ev => {
   const say = ev.target.closest("[data-say]");
   if (say) ask(say.dataset.say);
@@ -2587,40 +2720,44 @@ function openPart(pid) {
 }
 
 /* ── live ── */
-const stream = new EventSource("/api/events");
-stream.onmessage = m => {
-  const e = JSON.parse(m.data);
-  if (e.kind === "sessions") loadSessions().catch(() => {});
-  else if (e.kind === "heard") { writing = null; askedAt = e.at; const words = e.text.split("\n\n[attached")[0]; chipped(line(words, "me", e.channel), words); }
-  else if (e.kind === "reply") { writing = writing || line("", "it"); writing.firstChild ? writing.firstChild.textContent += e.text : writing.append(e.text); feedToEnd(); }
-  else if (e.kind === "said") { if (!writing && e.text) line(e.text, "it", e.channel); writing = null; const mine = askedHere; askedHere = false; if (e.failed) aside(tr("failure: {why}", {why: e.failed})); else if (mine) speak(e.text, e.channel); }
-  else if (e.kind === "overheard") aside(tr("heard «{text}» — {why}", {text: e.text, why: WHY[e.why] || tr("no name, not answering")}));
-  else if (e.kind === "phase") {
-    phase = e.phase; show();
-    if (e.phase === "speaking" && askedAt) { speeds.push(e.at - askedAt); if (speeds.length > 20) speeds.shift(); askedAt = null; spark(); }
-  }
-  else if (e.kind === "around") refresh();
-  else if (e.kind === "cannot") aside(tr("cannot: {what} ({why})", {what: e.what, why: e.why}));
-  else if (e.kind === "verb") step(e);
-  else if (e.kind === "control" && e.channel === "web" && e.name === "aloud" && (!e.part || e.part === webPid)) setAloud(e.value);
-  else if (e.kind === "canvas") drawn(e);
-  else if (e.kind === "sources") sourceProgress(e);
-  else if (e.kind === "mind") { mindSummary(); if (mindOpen) mindLoad(); }
-  else if (e.kind === "update") drawUpdate(e);
-  else if (e.kind === "feature") { if ($("settings").classList.contains("on")) featureLoad(); }
-  else if (e.kind === "task") noteTask(e);
+if (!DEMO) {
+  const stream = new EventSource("/api/events");
+  stream.onmessage = m => {
+    const e = JSON.parse(m.data);
+    if (e.kind === "sessions") loadSessions().catch(() => {});
+    else if (e.kind === "heard") { writing = null; askedAt = e.at; const words = e.text.split("\n\n[attached")[0]; chipped(line(words, "me", e.channel), words); }
+    else if (e.kind === "reply") { writing = writing || line("", "it"); writing.firstChild ? writing.firstChild.textContent += e.text : writing.append(e.text); feedToEnd(); }
+    else if (e.kind === "said") { if (!writing && e.text) line(e.text, "it", e.channel); writing = null; const mine = askedHere; askedHere = false; if (e.failed) aside(tr("failure: {why}", {why: e.failed})); else if (mine) speak(e.text, e.channel); }
+    else if (e.kind === "overheard") aside(tr("heard «{text}» — {why}", {text: e.text, why: WHY[e.why] || tr("no name, not answering")}));
+    else if (e.kind === "phase") {
+      phase = e.phase; show();
+      if (e.phase === "speaking" && askedAt) { speeds.push(e.at - askedAt); if (speeds.length > 20) speeds.shift(); askedAt = null; spark(); }
+    }
+    else if (e.kind === "around") refresh();
+    else if (e.kind === "cannot") aside(tr("cannot: {what} ({why})", {what: e.what, why: e.why}));
+    else if (e.kind === "verb") step(e);
+    else if (e.kind === "control" && e.channel === "web" && e.name === "aloud" && (!e.part || e.part === webPid)) setAloud(e.value);
+    else if (e.kind === "canvas") drawn(e);
+    else if (e.kind === "sources") sourceProgress(e);
+    else if (e.kind === "mind") { mindSummary(); if (mindOpen) mindLoad(); }
+    else if (e.kind === "update") drawUpdate(e);
+    else if (e.kind === "feature") { if ($("settings").classList.contains("on")) featureLoad(); }
+    else if (e.kind === "task") noteTask(e);
 
-  if (["task", "permission", "permission_closed", "question", "question_closed", "control", "usage", "said", "key", "halted", "part"].includes(e.kind)) refresh();
-};
-stream.onerror = () => {
-  const lost = tr("no connection to heare");
-  $("face").setAttribute("class", "face off");
-  $("nowtext").textContent = lost;
-};
-// One open does both: the page is present among the parts again after a
-// brain restart (a knock re-registers this window), and the state is fresh.
-stream.onopen = () => { knock(); refresh(); };
-
-$("say").onsubmit = ev => { ev.preventDefault(); const text = $("text").value.trim(); if (!text && !pending.length) return; $("text").value = ""; ask(text); };
-refresh(); setInterval(refresh, 15000);
-loadMachines(); setInterval(loadMachines, 15000);
+    if (["task", "permission", "permission_closed", "question", "question_closed", "control", "usage", "said", "key", "halted", "part"].includes(e.kind)) refresh();
+  };
+  stream.onerror = () => {
+    const lost = tr("no connection to heare");
+    $("face").setAttribute("class", "face off");
+    $("nowtext").textContent = lost;
+  };
+  // One open does both: the page is present among the parts again after a
+  // brain restart (a knock re-registers this window), and the state is fresh.
+  stream.onopen = () => { knock(); refresh(); };
+  $("say").onsubmit = ev => { ev.preventDefault(); const text = $("text").value.trim(); if (!text && !pending.length) return; $("text").value = ""; ask(text); };
+  refresh(); setInterval(refresh, 15000);
+  loadMachines(); setInterval(loadMachines, 15000);
+} else {
+  $("say").onsubmit = ev => { ev.preventDefault(); toast(tr("This is a mock")); };
+  demo();
+}

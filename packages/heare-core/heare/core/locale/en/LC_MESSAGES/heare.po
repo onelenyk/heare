@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-11 23:41+0200\n"
+"POT-Creation-Date: 2026-11-11 23:47+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -800,7 +800,168 @@ msgstr ""
 msgid "Say something, or ask for a screen."
 msgstr ""
 
+msgid "another conversation"
+msgstr ""
+
+msgid "Pinned"
+msgstr ""
+
+msgid "Go to the message"
+msgstr ""
+
 msgid "Nothing is pinned yet"
+msgstr ""
+
+msgid "Doka"
+msgstr ""
+
+msgid "full width"
+msgstr ""
+
+msgid "Weather"
+msgstr ""
+
+msgid "Burshtyn"
+msgstr ""
+
+msgid "now"
+msgstr ""
+
+msgid "cloudy · feels like −2°"
+msgstr ""
+
+msgid "wind"
+msgstr ""
+
+msgid "km/h"
+msgstr ""
+
+msgid "humidity"
+msgstr ""
+
+msgid "pressure"
+msgstr ""
+
+msgid "mm"
+msgstr ""
+
+msgid "Mock · 11 November"
+msgstr ""
+
+msgid "What changes"
+msgstr ""
+
+msgid "Was"
+msgstr ""
+
+msgid "Became"
+msgstr ""
+
+msgid "A separate board"
+msgstr ""
+
+msgid "A chat and a pinned dock"
+msgstr ""
+
+msgid "A canvas grid"
+msgstr ""
+
+msgid "Artifacts as messages"
+msgstr ""
+
+msgid "Part cards and chips"
+msgstr ""
+
+msgid "One carousel of the body"
+msgstr ""
+
+msgid "The Context tab"
+msgstr ""
+
+msgid "Details in the system column"
+msgstr ""
+
+msgid "HANDS ASK FOR PERMISSION"
+msgstr ""
+
+msgid "Run make test in this checkout?"
+msgstr ""
+
+msgid "Allow"
+msgstr ""
+
+msgid "Not now"
+msgstr ""
+
+msgid "HANDS"
+msgstr ""
+
+msgid "checked the branch"
+msgstr ""
+
+msgid "built it"
+msgstr ""
+
+msgid "heare design system"
+msgstr ""
+
+msgid "What is the weather in Burshtyn?"
+msgstr ""
+
+msgid "It is +1° in Burshtyn, feels like −2°. Wind 6 km/h."
+msgstr ""
+
+msgid "Show me the new screen."
+msgstr ""
+
+msgid "Here is the mock. This is not a board any more — a chat, a pinned dock and the body beside it."
+msgstr ""
+
+msgid "And the table: what goes away from the old screen."
+msgstr ""
+
+msgid "The meeting is at 13:30 — the dentist. I will remind you 25 minutes before."
+msgstr ""
+
+msgid "Here is the design-system link."
+msgstr ""
+
+msgid "Show this at full width."
+msgstr ""
+
+msgid "Done. The table above is the whole panel wide — use the corner button to bring it back."
+msgstr ""
+
+msgid "The new screen"
+msgstr ""
+
+msgid "mock · 11 November"
+msgstr ""
+
+msgid "table · 4 rows"
+msgstr ""
+
+msgid "Carpathians"
+msgstr ""
+
+msgid "October · 3 November"
+msgstr ""
+
+msgid "November · 2 November"
+msgstr ""
+
+msgid "Today"
+msgstr ""
+
+msgid "you are here"
+msgstr ""
+
+#, python-brace-format
+msgid "replies: {n}"
+msgstr ""
+
+#, python-brace-format
+msgid "{m} min"
 msgstr ""
 
 msgid "looking in memory"
@@ -863,14 +1024,7 @@ msgstr ""
 msgid "not here"
 msgstr ""
 
-msgid "you are here"
-msgstr ""
-
 msgid "just started"
-msgstr ""
-
-#, python-brace-format
-msgid "{m} min"
 msgstr ""
 
 #, python-brace-format
@@ -879,10 +1033,6 @@ msgstr ""
 
 #, python-brace-format
 msgid "commit {c}"
-msgstr ""
-
-#, python-brace-format
-msgid "replies: {n}"
 msgstr ""
 
 #, python-brace-format
@@ -1060,9 +1210,6 @@ msgstr ""
 
 #, python-brace-format
 msgid "page · {host}"
-msgstr ""
-
-msgid "Allow"
 msgstr ""
 
 msgid "Refuse"
@@ -1651,6 +1798,9 @@ msgid "cannot: {what} ({why})"
 msgstr ""
 
 msgid "no connection to heare"
+msgstr ""
+
+msgid "This is a mock"
 msgstr ""
 
 #, python-brace-format
@@ -2407,9 +2557,6 @@ msgid "a board that also has a temperature sensor"
 msgstr ""
 
 msgid "sources: looking at what is outside"
-msgstr ""
-
-msgid "Weather"
 msgstr ""
 
 msgid "City"
