@@ -41,7 +41,7 @@ def test_the_demo_is_a_flag_not_a_second_page():
     assert 'const DEMO = new URLSearchParams(location.search).get("demo") === "1"' in SCRIPT
     assert "const DEMO_FEED =" in SCRIPT and "const DEMO_PINS =" in SCRIPT
     feed = SCRIPT.split("const DEMO_FEED = [")[1].split("const DEMO_PINS")[0]
-    assert feed.count('id: "demo/') == 12
+    assert feed.count('id: "demo/') == 15
     assert SCRIPT.count('mid: "demo/') == 3 and SCRIPT.count('mid: "nov') == 2
     assert "if (!DEMO) { loadSessions()" in SCRIPT
     assert "demo();" in SCRIPT
