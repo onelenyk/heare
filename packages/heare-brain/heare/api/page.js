@@ -1134,6 +1134,35 @@ function parts(map) {
     return one;
   }));
   placeDrawer();
+  drawDots(big);
+}
+
+function drawDots(cards) {
+  const dots = $("dots"), count = $("bodycount"), strip = $("partwidgets");
+  if (!dots || !count || !strip) return;
+  const n = cards.length;
+  if (dots.children.length !== n) {
+    dots.replaceChildren(...cards.map((_, i) => {
+      const b = el("button"); b.type = "button";
+      b.setAttribute("aria-label", tr("part {n}", {n: i + 1}));
+      b.onclick = () => strip.scrollTo({left: i * strip.clientWidth, behavior: "smooth"});
+      return b;
+    }));
+  }
+  const at = () => Math.max(0, Math.min(n - 1, Math.round(strip.scrollLeft / (strip.clientWidth || 1))));
+  const show = () => {
+    const i = at();
+    count.textContent = n ? `${i + 1} / ${n}` : "—";
+    [...dots.children].forEach((d, k) => d.classList.toggle("on", k === i));
+  };
+  show();
+  if (!strip.dataset.dots) {
+    strip.dataset.dots = "1";
+    strip.addEventListener("scroll", () => {
+      if (strip._dotRaf) return;
+      strip._dotRaf = requestAnimationFrame(() => { strip._dotRaf = 0; show(); });
+    }, {passive: true});
+  }
 }
 
 /* The cards are drawn again on every report, and the hands report their ACP
@@ -1196,12 +1225,13 @@ addEventListener("keydown", ev => {
 // costs nothing.
 const FOLD_KEY = "heare.parts.folded";
 function fold(on) {
-  $("partcol").classList.toggle("folded", on);
+  $("partwidgets").hidden = on;
+  $("partchips").hidden = on;
   $("partfoldbtn").textContent = on ? tr("unfold") : tr("fold");
   $("partfoldbtn").setAttribute("aria-expanded", String(!on));
   try { localStorage.setItem(FOLD_KEY, on ? "1" : ""); } catch { /* kept for this visit only */ }
 }
-$("partfoldbtn").onclick = () => fold(!$("partcol").classList.contains("folded"));
+$("partfoldbtn").onclick = () => fold($("partwidgets").hidden);
 try { if (localStorage.getItem(FOLD_KEY)) fold(true); } catch { /* unfolded */ }
 
 // Its text is data, so it only ever goes in through textContent.
@@ -2435,7 +2465,6 @@ function openSheet(title, which = "screen") {
   mindClose();
   $("settings").classList.remove("on");
   $("sheettitle").textContent = title;
-  $("partcol").hidden = which !== "parts";
   $("stage").hidden = which === "parts";
   $("sheet").classList.add("on");
   $("sheet").setAttribute("aria-hidden", "false");
@@ -2492,7 +2521,7 @@ $("sheetclose").onclick = closeSheet;
 const clickTab = page => document.querySelector(`.tabs button[data-page="${page}"]`)?.click();
 $("sysscreen").onclick = () => { openSheet(tr("Screen"), "screen"); clickTab("screen"); };
 $("sysdetails").onclick = () => { openSheet(tr("Details"), "details"); clickTab("context"); };
-$("sysparts").onclick = () => { openSheet(tr("Parts"), "parts"); };
+$("sysparts").onclick = () => { systemOpen(); $("carousel").scrollIntoView({block:"nearest"}); };
 $("sysmemory").onclick = () => mindOpenDrawer();
 $("syssettings").onclick = () => openSettings();
 $("system").inert = true;

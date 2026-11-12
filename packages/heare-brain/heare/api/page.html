@@ -73,6 +73,20 @@
 
       </div>
 
+      <div class="band"><b data-t>Body</b><span id="bodycount">—</span></div>
+      <div class="bodycard">
+        <div id="carousel" tabindex="0" aria-label="Parts">
+          <div id="key-asks"></div>
+          <div id="partwidgets"></div>
+          <div id="partchips"></div>
+        </div>
+        <div class="bodyfoot">
+          <div class="dots" id="dots"></div>
+          <div id="partfold"></div>
+          <button type="button" id="partfoldbtn" aria-expanded="true" data-t>fold</button>
+        </div>
+      </div>
+
       <div class="band"><b data-t>Machines</b><span data-t>what runs where</span></div>
 
       <div id="bodies"><p class="empty" data-t>no part is connected</p></div>
@@ -108,13 +122,6 @@
 <aside id="sheet" aria-hidden="true">
   <div id="sheethead"><b id="sheettitle" data-t>Screen</b><button type="button" id="sheetclose" data-t-aria aria-label="close">×</button></div>
   <div id="sheetbody">
-  <section id="partcol">
-    <div class="band"><b data-t>Parts</b><div id="partfold"></div><button type="button" id="partfoldbtn" aria-expanded="true" data-t>fold</button></div>
-    <div id="key-asks"></div>
-    <div id="partwidgets"></div>
-    <div id="partchips"></div>
-  </section>
-
   <section id="stage">
     <nav class="tabs" role="tablist">
       <button type="button" role="tab" data-page="screen" data-t>Screen</button>

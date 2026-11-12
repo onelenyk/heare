@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-12 08:05+0200\n"
+"POT-Creation-Date: 2026-11-12 17:19+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -599,6 +599,12 @@ msgstr "останній огляд"
 msgid "Open memory"
 msgstr "Відкрити памʼять"
 
+msgid "Body"
+msgstr "Тіло"
+
+msgid "fold"
+msgstr "згорнути"
+
 msgid "Machines"
 msgstr "Машини"
 
@@ -628,9 +634,6 @@ msgstr "чути відповідь уголос"
 
 msgid "hear"
 msgstr "чути"
-
-msgid "fold"
-msgstr "згорнути"
 
 msgid "Context"
 msgstr "Контекст"
@@ -1331,6 +1334,10 @@ msgstr "її віддає мозок"
 
 msgid "no part is connected now"
 msgstr "жодна частина не на зв'язку"
+
+#, python-brace-format
+msgid "part {n}"
+msgstr "частина {n}"
 
 #, python-brace-format
 msgid "settings · {part}"
@@ -2408,9 +2415,6 @@ msgstr "Усе тут"
 
 msgid "the brain and the parts on this computer"
 msgstr "мозок і частини на цій машині"
-
-msgid "Body"
-msgstr "Тіло"
 
 msgid "the brain is elsewhere; here are the parts"
 msgstr "мозок деінде; тут частини"
