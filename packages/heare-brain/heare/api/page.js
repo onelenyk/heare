@@ -347,7 +347,7 @@ function turnMsg(t) {
 const PIN_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6l-.8 5.1 3.3 3.2V13H6.5v-1.7l3.3-3.2L9 3Z"/><path d="M12 13v8"/></svg>`;
 const LABELS = {
   weather: () => tr("Weather"), table: () => tr("Table"), game: () => tr("3D"),
-  card: () => tr("Card"), canvas: () => tr("Card"),
+  card: () => tr("Card"), canvas: () => tr("Card"), app: () => tr("App"),
 };
 const labelOf = a => (LABELS[a.label] ? LABELS[a.label]() : (a.label ? String(a.label) : tr("Card")));
 function artHead(label, title) {
@@ -433,7 +433,11 @@ function renderContent(m) {
       ? `<div class="art-body livebody"><iframe class="liveframe" sandbox="allow-scripts" title="${escapeHtml(title)}" ` +
         `srcdoc="${escapeHtml(framed(html, "m-" + String(m.id || "live").replace(/[^a-z0-9_-]+/gi, "-")))}"></iframe></div>`
       : `<div class="art-body">${html}</div>`;
-    return lead + `<div class="artifact">${artHead(labelOf(a), title)}${inner}</div>`;
+    const head = live
+      ? `<div class="art-head"><span>${escapeHtml(labelOf(a))}</span><b>${escapeHtml(title)}</b><span class="spacer"></span>` +
+        `<button type="button" class="widebtn" data-live-full title="${tr("full screen")}" aria-label="${tr("full screen")}">⤢</button></div>`
+      : artHead(labelOf(a), title);
+    return lead + `<div class="artifact">${head}${inner}</div>`;
   }
   if (m.who === "me") return `<div class="bubble">${escapeHtml(m.text || "")}</div>`;
   return `<div class="say">${m.html || `<p>${escapeHtml(m.text || "")}</p>`}</div>`;
@@ -556,6 +560,15 @@ for (const type of ["play", "pause", "ended"]) {
     if (btn) btn.textContent = (type === "play" && !el.paused) ? "❚❚" : "▶";
   }, true);
 }
+function liveFullClose() {
+  $("livefull").hidden = true;
+  $("livefull-frame").srcdoc = "";
+  document.body.classList.remove("livefull-open");
+}
+$("livefull-close").onclick = liveFullClose;
+document.addEventListener("keydown", ev => {
+  if (ev.key === "Escape" && !$("livefull").hidden) liveFullClose();
+});
 $("flow").addEventListener("click", ev => {
   const wide = ev.target.closest("[data-wide]");
   if (wide) {
@@ -563,6 +576,18 @@ $("flow").addEventListener("click", ev => {
     const on = msg.classList.toggle("wide");
     wide.title = on ? tr("narrow") : tr("full width");
     dockMeasure();
+    return;
+  }
+  const full = ev.target.closest("[data-live-full]");
+  if (full) {
+    const card = full.closest(".artifact"), frame = card && card.querySelector(".liveframe");
+    if (frame) {
+      const title = card.querySelector(".art-head b");
+      $("livefull-title").textContent = title ? title.textContent : "";
+      $("livefull-frame").srcdoc = frame.srcdoc;
+      $("livefull").hidden = false;
+      document.body.classList.add("livefull-open");
+    }
     return;
   }
   const aud = ev.target.closest("[data-audio]");
@@ -845,7 +870,6 @@ function demo() {
     {id: "nov1", title: tr("1 November"), turns: DEMO_SESSIONS.nov1.messages.length},
   ];
   $("name").textContent = tr("Doka");
-  $("bigname").textContent = tr("Doka");
   voice = {mic: true, speaker: false};
   phase = "hearing";
   $("sessionpick").replaceChildren(el("option", "", tr("Today")));
@@ -1072,7 +1096,7 @@ function show() {
     : phase === "thinking" ? tr("thinking")
     : phase === "speaking" ? tr("speaking")
     : voice && voice.mic ? tr("listening") : tr("quiet");
-  for (const id of ["face", "bigface"]) $(id).setAttribute("class", "face " + mood);
+  for (const id of ["face"]) $(id).setAttribute("class", "face " + mood);
   $("nowtext").textContent = said;
   const dot = $("dot");
   if (dot) dot.className = "livedot " + mood;
@@ -1082,7 +1106,7 @@ function show() {
 
 function vitals(s) {
   const m = s.model || {};
-  if (m.name) { $("name").textContent = m.name; $("bigname").textContent = m.name; document.title = m.name + " · heare"; }
+  if (m.name) { $("name").textContent = m.name; document.title = m.name + " · heare"; }
   const box = $("model"); box.replaceChildren();
   if (m.error) box.append(el("b", "bad", tr("no key for any model")));
   else {
@@ -2066,23 +2090,12 @@ async function showContext() {
 }
 setInterval(() => { if (!$("page-context").hidden) showContext(); }, 3000);
 
-const PAGE_KEY = "heare.page";
-function openPage(name) {
-  document.querySelectorAll(".tabs [data-page]").forEach(tab => {
-    const on = tab.dataset.page === name;
-    tab.setAttribute("aria-selected", on);
-    $(`page-${tab.dataset.page}`).hidden = !on;
-  });
-  if (name === "context") showContext();
-  try { localStorage.setItem(PAGE_KEY, name); } catch { /* kept for this visit only */ }
+
+function openDetails() {
+  openSheet(tr("Details"), "details");
+  $("page-context").hidden = false;
+  showContext();
 }
-document.querySelector(".tabs").onclick = e => {
-  const page = e.target.dataset?.page;
-  if (page) openPage(page);
-};
-let openedPage = "screen";
-try { openedPage = localStorage.getItem(PAGE_KEY) || openedPage; } catch { /* the first page */ }
-openPage($(`page-${openedPage}`) ? openedPage : "screen");
 
 let born = null;
 const voiceOf = s => {
@@ -2105,22 +2118,8 @@ const refresh = () => api("state").then(s => {
 /* the canvas: one screen of widgets, changed in place */
 const SHEET = [...document.styleSheets[0].cssRules].filter(r => r.selectorText && r.selectorText.startsWith(".w ")).map(r => r.cssText).join("\n");
 const NAMES = ["--bg","--card","--card-2","--line","--ink","--soft","--accent","--accent-ink","--ok","--warn","--bad","--info","--sans","--mono"];
-// Read from the stage, not the page: a theme the assistant set on the
-// canvas has to reach the inside of live widgets too.
+// Read from the chat, not the page: a live card wears the same colours.
 const vars = () => { const c = getComputedStyle($("chat")); return NAMES.map(v => `${v}:${c.getPropertyValue(v)}`).join(";"); };
-let own = "";
-// The canvas's own stylesheet applies to the canvas and nothing else.
-// @keyframes cannot live inside a scope, so they are lifted out.
-function restyle(css) {
-  own = css || "";
-  const frames = own.match(/@keyframes[^{]+\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g) || [];
-  const rest = frames.reduce((text, f) => text.replace(f, ""), own);
-  // Inside a scope a bare selector means "a descendant of the root", so
-  // the root itself has to be named as :scope or a theme set on #stage
-  // never lands.
-  const scoped = rest.replace(/#stage(?![\w-])/g, ":scope");
-  $("own").textContent = frames.join("\n") + (scoped.trim() ? `\n@scope (#stage) {\n${scoped}\n}` : "");
-}
 // What a live widget may ask for. It runs in a sealed frame and reaches
 // the page only through these: the machine's state, never the person's
 // conversation or memory, and it can never speak as the person.
@@ -2133,282 +2132,8 @@ new ResizeObserver(() => parent.postMessage({heare: "size", h: document.document
 <\/script>`;
 // The frame's body carries the widget's id, so a rule written for
 // `#blk-clock .big` reaches the inside of a live widget too.
-const framed = (html, id) => `<!doctype html><meta charset="utf-8"><style>:root{color-scheme:dark;${vars()}} *{box-sizing:border-box} html,body{margin:0;background:transparent;color:var(--ink);font:14px/1.55 var(--sans);overflow:hidden} ${SHEET}\n${own}</style>${BRIDGE}<body class="w" id="blk-${id}">${html}`;
+const framed = (html, id) => `<!doctype html><meta charset="utf-8"><style>:root{color-scheme:dark;${vars()}} *{box-sizing:border-box} html,body{margin:0;background:transparent;color:var(--ink);font:14px/1.55 var(--sans);overflow:hidden} ${SHEET}</style>${BRIDGE}<body class="w" id="blk-${id}">${html}`;
 
-function block(b) {
-  let node = document.getElementById("blk-" + b.id);
-  if (editing && editing.node === node) editing.stop();
-  if (!node) { node = el("div", "blk"); node.id = "blk-" + b.id; $("live").append(node); }
-  node.className = "blk " + (b.size || "s");
-  const x = el("button", "x", "×"); x.title = tr("remove"); x.onclick = () => api("canvas/remove", {method: "POST", body: {id: b.id}});
-  node.dataset.html = b.html;
-  if (/<script[\s>]|<style[\s>]/i.test(b.html)) {
-    const frame = document.createElement("iframe");
-    frame.setAttribute("sandbox", "allow-scripts"); frame.srcdoc = framed(b.html, b.id);
-    node.replaceChildren(x, frame);
-  } else {
-    const body = el("div", "w"); body.innerHTML = b.html;
-    node.replaceChildren(x, body);
-    if (/<svg[\s>]/i.test(b.html)) {
-      const pen = el("button", "ed", "✎"); pen.title = tr("edit the drawing");
-      pen.onclick = () => editDrawing(node, b.id);
-      node.insertBefore(pen, body);
-    }
-  }
-  if (b.order) for (const key of b.order) { const n = document.getElementById("blk-" + key); if (n) $("live").append(n); }
-  return node;
-}
-
-/* ── a drawing is not a picture: circles move, lines can be drawn again ── */
-const SVGNS = "http://www.w3.org/2000/svg";
-let editing = null;
-const point = (svg, ev) => {
-  const ctm = svg.getScreenCTM();
-  if (!ctm) return null;
-  const p = svg.createSVGPoint(); p.x = ev.clientX; p.y = ev.clientY;
-  return p.matrixTransform(ctm.inverse());
-};
-const num = (shape, name) => Number(shape.getAttribute(name)) || 0;
-const tidy = n => Math.round(n * 10) / 10;
-const curve = pts => {
-  let d = `M ${tidy(pts[0].x)} ${tidy(pts[0].y)}`;
-  for (let i = 1; i < pts.length - 1; i++) {
-    const x = (pts[i].x + pts[i + 1].x) / 2, y = (pts[i].y + pts[i + 1].y) / 2;
-    d += ` Q ${tidy(pts[i].x)} ${tidy(pts[i].y)} ${tidy(x)} ${tidy(y)}`;
-  }
-  const last = pts[pts.length - 1];
-  return d + ` L ${tidy(last.x)} ${tidy(last.y)}`;
-};
-const hex = value => {
-  const c = document.createElement("canvas").getContext("2d");
-  c.fillStyle = value || ""; const out = String(c.fillStyle);
-  return /^#[0-9a-f]{6}$/i.test(out) ? out : "#9d7cff";
-};
-
-function editDrawing(node, id) {
-  const body = node.querySelector(".w"), svg = body && body.querySelector("svg");
-  if (!svg) return;
-  if (editing) editing.cancel();
-  const before = body.innerHTML;
-  const box = svg.viewBox && svg.viewBox.baseVal && svg.viewBox.baseVal.width
-    ? svg.viewBox.baseVal : {x: 0, y: 0, width: svg.clientWidth || 200, height: svg.clientHeight || 120};
-  const span = Math.max(box.width, box.height);
-  const handles = document.createElementNS(SVGNS, "g");
-  handles.setAttribute("class", "ed-handles");
-  svg.append(handles);
-
-  let selected = null, drag = null, preview = null, live = true;
-  const bar = el("div", "edbar");
-  const hint = el("span", "edhint", tr("pick a circle or a line"));
-  const color = document.createElement("input");
-  color.type = "color"; color.value = "#9d7cff"; color.title = tr("colour of the selected"); color.disabled = true;
-  const addCircle = /<circle[\s>]/i.test(body.innerHTML) ? el("button", "", tr("＋ circle")) : null;
-  const addPath = /<path[\s>]/i.test(body.innerHTML) ? el("button", "", tr("＋ line")) : null;
-  const dropBtn = el("button", "", tr("remove")); dropBtn.disabled = true;
-  const cancelBtn = el("button", "", tr("cancel"));
-  const saveBtn = el("button", "edsave", tr("done"));
-  bar.append(hint, color);
-  if (addCircle) bar.append(addCircle);
-  if (addPath) bar.append(addPath);
-  bar.append(dropBtn, cancelBtn, saveBtn);
-  node.append(bar);
-  node.classList.add("editing");
-
-  const placeHandle = () => {
-    handles.replaceChildren();
-    if (!selected || selected.tagName.toLowerCase() !== "circle") return;
-    const h = document.createElementNS(SVGNS, "circle");
-    h.setAttribute("class", "ed-handle");
-    h.setAttribute("cx", num(selected, "cx") + num(selected, "r"));
-    h.setAttribute("cy", num(selected, "cy"));
-    h.setAttribute("r", Math.max(3, span * 0.022));
-    handles.append(h);
-  };
-  const sync = () => {
-    const tag = selected ? selected.tagName.toLowerCase() : "";
-    hint.textContent = tag === "path" ? tr("drag across the field — the line is redrawn")
-      : tag === "circle" ? tr("drag the circle, and the handle to change the radius")
-      : tr("pick a circle or a line");
-    dropBtn.disabled = color.disabled = !selected;
-    if (selected) color.value = hex(tag === "path" ? selected.getAttribute("stroke")
-      : (selected.getAttribute("fill") || "none") !== "none" ? selected.getAttribute("fill")
-      : selected.getAttribute("stroke"));
-  };
-  const select = shape => {
-    if (selected && selected !== shape) selected.classList.remove("ed-sel");
-    selected = shape;
-    if (selected && selected.tagName.toLowerCase() === "path") selected.classList.add("ed-sel");
-    placeHandle(); sync();
-  };
-  const stop = () => {
-    if (!live) return;
-    live = false;
-    document.removeEventListener("keydown", keys);
-    if (preview) preview.remove();
-    handles.remove();
-    bar.remove();
-    node.classList.remove("editing");
-    editing = null;
-  };
-  const cancel = () => { body.innerHTML = before; stop(); };
-  const done = () => {
-    const holder = document.createElement("div");
-    holder.innerHTML = body.innerHTML;
-    holder.querySelectorAll(".ed-handles, .ed-preview").forEach(n => n.remove());
-    holder.querySelectorAll(".ed-sel").forEach(n => n.classList.remove("ed-sel"));
-    const html = holder.innerHTML;
-    saveBtn.disabled = cancelBtn.disabled = dropBtn.disabled = true;
-    saveBtn.textContent = tr("saving…");
-    api("canvas/put", {method: "POST", body: {id, html}}).then(() => {
-      body.innerHTML = html;
-      stop();
-    }, err => {
-      saveBtn.disabled = cancelBtn.disabled = false; saveBtn.textContent = tr("done");
-      const note = bar.querySelector(".ederror") || el("span", "ederror");
-      note.textContent = tr("not saved: {why}", {why: err});
-      bar.append(note);
-    });
-  };
-  const startDraw = (ev, p) => {
-    if (!selected || selected.tagName.toLowerCase() !== "path") return;
-    preview = document.createElementNS(SVGNS, "path");
-    for (const a of ["stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "stroke-dasharray", "opacity"])
-      if (selected.hasAttribute(a)) preview.setAttribute(a, selected.getAttribute(a));
-    preview.setAttribute("fill", "none");
-    preview.setAttribute("class", "ed-preview");
-    svg.append(preview);
-    drag = {kind: "draw", path: selected, pts: [p], id: ev.pointerId};
-    svg.setPointerCapture(ev.pointerId);
-  };
-
-  const down = ev => {
-    if (ev.button !== 0) return;
-    const p = point(svg, ev); if (!p) return;
-    const handle = ev.target.closest && ev.target.closest(".ed-handle");
-    if (handle && selected) {
-      drag = {kind: "resize", shape: selected, id: ev.pointerId};
-      svg.setPointerCapture(ev.pointerId); ev.preventDefault(); return;
-    }
-    const shape = ev.target.closest && ev.target.closest("circle, path, ellipse, rect, line, polyline, polygon");
-    if (shape && !shape.closest(".ed-handles")) {
-      const tag = shape.tagName.toLowerCase();
-      if (tag === "path") {
-        if (selected === shape) startDraw(ev, p); else select(shape);
-      } else if (tag === "circle") {
-        select(shape);
-        drag = {kind: "move", shape, id: ev.pointerId, at: p,
-                cx: num(shape, "cx"), cy: num(shape, "cy")};
-        svg.setPointerCapture(ev.pointerId);
-      } else select(shape);
-      ev.preventDefault(); return;
-    }
-    if (selected && selected.tagName.toLowerCase() === "path") { startDraw(ev, p); ev.preventDefault(); return; }
-    select(null);
-  };
-  const move = ev => {
-    if (!drag || ev.pointerId !== drag.id) return;
-    const p = point(svg, ev); if (!p) return;
-    if (drag.kind === "move") {
-      drag.shape.setAttribute("cx", tidy(drag.cx + p.x - drag.at.x));
-      drag.shape.setAttribute("cy", tidy(drag.cy + p.y - drag.at.y));
-      placeHandle();
-    } else if (drag.kind === "resize") {
-      const d = Math.hypot(p.x - num(drag.shape, "cx"), p.y - num(drag.shape, "cy"));
-      drag.shape.setAttribute("r", tidy(Math.max(1, d)));
-      placeHandle();
-    } else if (drag.kind === "draw") {
-      const last = drag.pts[drag.pts.length - 1];
-      if (Math.hypot(p.x - last.x, p.y - last.y) > span * 0.008) drag.pts.push(p);
-      preview.setAttribute("d", curve(drag.pts));
-    }
-  };
-  const up = ev => {
-    if (!drag || ev.pointerId !== drag.id) return;
-    if (drag.kind === "draw") {
-      if (drag.pts.length > 2) drag.path.setAttribute("d", curve(drag.pts));
-      if (preview) preview.remove();
-      preview = null;
-      select(drag.path);
-    } else placeHandle();
-    drag = null;
-  };
-  const keys = ev => {
-    if (ev.key === "Escape") { ev.preventDefault(); cancel(); }
-    else if (ev.key === "Enter") { ev.preventDefault(); done(); }
-  };
-
-  color.oninput = () => {
-    if (!selected) return;
-    const tag = selected.tagName.toLowerCase();
-    if (tag === "path") selected.setAttribute("stroke", color.value);
-    else {
-      const fill = selected.getAttribute("fill"), stroke = selected.getAttribute("stroke");
-      if (fill && fill !== "none") selected.setAttribute("fill", color.value);
-      if (stroke && stroke !== "none") selected.setAttribute("stroke", color.value);
-      if ((!fill || fill === "none") && (!stroke || stroke === "none"))
-        selected.setAttribute("fill", color.value);
-    }
-  };
-  if (addCircle) addCircle.onclick = () => {
-    const c = document.createElementNS(SVGNS, "circle");
-    c.setAttribute("cx", tidy(box.x + box.width / 2));
-    c.setAttribute("cy", tidy(box.y + box.height / 2));
-    c.setAttribute("r", tidy(span * 0.13));
-    c.setAttribute("fill", "none");
-    c.setAttribute("stroke", color.value);
-    c.setAttribute("stroke-width", "2");
-    svg.insertBefore(c, handles); select(c);
-  };
-  if (addPath) addPath.onclick = () => {
-    const y = box.y + box.height / 2, x0 = box.x + box.width * 0.05, x1 = box.x + box.width * 0.95;
-    const p = document.createElementNS(SVGNS, "path");
-    p.setAttribute("d", `M ${tidy(x0)} ${tidy(y)} Q ${tidy(x0 + (x1 - x0) * 0.25)} ${tidy(y - span * 0.18)} `
-      + `${tidy(x0 + (x1 - x0) * 0.5)} ${tidy(y)} T ${tidy(x1)} ${tidy(y)}`);
-    p.setAttribute("fill", "none");
-    p.setAttribute("stroke", color.value);
-    p.setAttribute("stroke-width", "2");
-    p.setAttribute("stroke-linecap", "round");
-    svg.insertBefore(p, handles); select(p);
-  };
-  dropBtn.onclick = () => { if (selected) { const gone = selected; select(null); gone.remove(); } };
-  cancelBtn.onclick = cancel;
-  saveBtn.onclick = done;
-  svg.addEventListener("pointerdown", down);
-  svg.addEventListener("pointermove", move);
-  svg.addEventListener("pointerup", up);
-  svg.addEventListener("pointercancel", up);
-  document.addEventListener("keydown", keys);
-  editing = {node, stop, cancel};
-}
-const few = () => { $("empty").style.display = $("live").children.length ? "none" : "grid"; };
-function drawn(e) {
-  if (e.op === "clear") { if (editing) editing.stop(); $("live").replaceChildren(); restyle(""); }
-  else if (e.op === "style") {
-    restyle(e.css);
-    // Live widgets carry the sheet inside their frames: give it to them again.
-    for (const f of document.querySelectorAll("#live iframe")) { const card = f.closest(".blk"); f.srcdoc = framed(card.dataset.html, card.id.slice(4)); }
-  }
-  else if (e.op === "remove") {
-    if (editing && editing.node.id === "blk-" + e.id) editing.stop();
-    document.getElementById("blk-" + e.id)?.remove();
-  }
-  else if (e.op === "arrange") for (const key of e.order) {
-    const n = document.getElementById("blk-" + key);
-    if (n) { n.className = "blk " + (e.sizes[key] || "s"); $("live").append(n); n.classList.add("fresh"); setTimeout(() => n.classList.remove("fresh"), 1200); }
-  }
-  else if (e.op === "put") {
-    const node = block(e); node.classList.add("fresh"); setTimeout(() => node.classList.remove("fresh"), 1600);
-    node.scrollIntoView({behavior: "smooth", block: "nearest"});
-    if (!$("sheet").classList.contains("on")) {
-      const note = el("div", "feed-note");
-      const open = el("button", "", "↗ " + tr("new on the screen")); open.type = "button";
-      open.onclick = () => openSheet(tr("Screen"));
-      note.append(open); feedAppend(note);
-    }
-  }
-  few();
-}
-if (!DEMO) api("canvas").then(c => { restyle(c.css); c.blocks.forEach(block); few(); });
 // The page is a body too: it knocks so the person sees it among the parts,
 // and knocks again whenever its stream reconnects (a brain restarted).
 const knock = () => api("bodies", {method: "POST", body: {
@@ -2419,14 +2144,12 @@ const knock = () => api("bodies", {method: "POST", body: {
   ]}}).then(answer => { webPid = (answer && answer.pid) || webPid; }).then(() => api("input", {method: "POST", body: {
     kind: "state", channel: "web", values: {aloud}}})).catch(() => {});
 if (!DEMO) knock();
-$("live").addEventListener("click", ev => {
-  const say = ev.target.closest("[data-say]");
-  if (say) ask(say.dataset.say);
-});
 addEventListener("message", ev => {
-  const m = ev.data, frame = [...document.querySelectorAll("#live iframe, #flow iframe, #pinpreview iframe, #sheet iframe")].find(f => f.contentWindow === ev.source);
+  const m = ev.data, frame = [...document.querySelectorAll("#flow iframe, #pinpreview iframe, #sheet iframe, #livefull iframe")].find(f => f.contentWindow === ev.source);
   if (!m || !m.heare || !frame) return;
-  if (m.heare === "size") frame.style.height = Math.min(Math.max(m.h, 40), 900) + "px";
+  if (m.heare === "size") {
+    if (frame.id !== "livefull-frame") frame.style.height = Math.min(Math.max(m.h, 40), 900) + "px";
+  }
   else if (m.heare === "get") {
     if (!MAY_GET.test(String(m.path))) return ev.source.postMessage({id: m.id, error: "not allowed"}, "*");
     api(m.path).then(data => ev.source.postMessage({id: m.id, data}, "*"), err => ev.source.postMessage({id: m.id, error: String(err)}, "*"));
@@ -3179,7 +2902,7 @@ function systemOpen() {
   setTimeout(() => $("systemclose").focus(), 30);
 }
 function openSheet(title, which = "screen") {
-  hidePreview();
+  previewHide();
   if (narrow.matches && $("system").classList.contains("on")) systemClose();
   mindClose();
   $("settings").classList.remove("on");
@@ -3196,6 +2919,7 @@ function openSheet(title, which = "screen") {
 }
 function closeSheet() {
   sessionOpen = false;
+  $("page-context").hidden = true;
   $("sheet").classList.remove("on");
   $("sheet").setAttribute("aria-hidden", "true");
   $("sheet").inert = true;
@@ -3246,11 +2970,6 @@ $("systemclose").onclick = () => systemClose();
 $("opensettings").onclick = () => openSettings();
 $("settingsclose").onclick = () => shut();
 $("sheetclose").onclick = closeSheet;
-const clickTab = page => document.querySelector(`.tabs button[data-page="${page}"]`)?.click();
-function openDetails() {
-  openSheet(tr("Details"), "details");
-  clickTab("context");
-}
 $("membtn").onclick = () => mindOpenDrawer();
 $("detbtn").onclick = openDetails;
 $("setbtn").onclick = openSettings;
@@ -3660,7 +3379,6 @@ if (!DEMO) {
     else if (e.kind === "cannot") aside(tr("cannot: {what} ({why})", {what: e.what, why: e.why}));
     else if (e.kind === "verb") step(e);
     else if (e.kind === "control" && e.channel === "web" && e.name === "aloud" && (!e.part || e.part === webPid)) setAloud(e.value);
-    else if (e.kind === "canvas") drawn(e);
     else if (e.kind === "sources") sourceProgress(e);
     else if (e.kind === "mind") { mindSummary(); if (mindOpen) mindLoad(); }
     else if (e.kind === "update") drawUpdate(e);

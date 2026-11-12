@@ -71,6 +71,34 @@ def test_show_keeps_the_script_so_the_page_can_run_the_app(tmp_path):
     assert row["artifact"]["live"] is True
 
 
+def test_show_page_reads_only_a_page_under_the_work_root(tmp_path, monkeypatch):
+    import asyncio
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    work = tmp_path / "heare-work"
+    work.mkdir()
+    (work / "app.html").write_text(
+        "<!doctype html><html><head><style>#x{color:#fff}</style></head>"
+        "<body><h3>App</h3><p id='x'>no</p>"
+        "<script>document.getElementById('x').textContent='ran'</script></body></html>",
+        encoding="utf-8")
+    sessions = Sessions(tmp_path / "s")
+    session = sessions.new()
+    timeline = Timeline(sessions)
+    assert asyncio.run(timeline._show_page({"file": "app.html", "say": "Ось."})) == "Ось."
+    row = sessions.read(session)[0]
+    assert row["kind"] == "html" and "<script>" in row["html"] and "<style>" in row["html"]
+    assert row["artifact"]["label"] == "app" and row["width"] == "w"
+    # nothing outside the work root, and nothing that is not a page
+    (tmp_path / "secret.html").write_text("<p>x</p>", encoding="utf-8")
+    before = len(sessions.read(session))
+    assert asyncio.run(timeline._show_page({"file": "../secret.html", "say": "x"}))
+    assert asyncio.run(timeline._show_page({"file": str(tmp_path / "secret.html"), "say": "x"}))
+    (work / "notes.txt").write_text("x", encoding="utf-8")
+    assert asyncio.run(timeline._show_page({"file": "notes.txt", "say": "x"}))
+    assert len(sessions.read(session)) == before
+
+
 def test_show_link_and_media_are_checked(tmp_path):
     import asyncio
 

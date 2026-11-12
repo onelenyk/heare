@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-12 23:49+0200\n"
+"POT-Creation-Date: 2026-11-13 00:11+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -831,6 +831,9 @@ msgstr ""
 msgid "Pin a message — it appears here when you scroll past it."
 msgstr ""
 
+msgid "App"
+msgstr ""
+
 msgid "play"
 msgstr ""
 
@@ -856,6 +859,9 @@ msgid "Allow"
 msgstr ""
 
 msgid "Not now"
+msgstr ""
+
+msgid "full screen"
 msgstr ""
 
 msgid "Doka"
@@ -2029,6 +2035,27 @@ msgid "That link cannot be shown."
 msgstr ""
 
 msgid "That file is not in this conversation."
+msgstr ""
+
+msgid "Which page?"
+msgstr ""
+
+msgid "That page is not under ~/heare-work."
+msgstr ""
+
+msgid "I cannot find that page."
+msgstr ""
+
+msgid "Only an HTML page can be shown."
+msgstr ""
+
+msgid "I cannot read that page."
+msgstr ""
+
+msgid "The page is empty."
+msgstr ""
+
+msgid "That page is too big to show."
 msgstr ""
 
 msgid "could not ask about a new version"

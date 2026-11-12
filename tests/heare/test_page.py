@@ -194,7 +194,7 @@ def test_a_message_with_a_script_runs_in_a_sealed_frame():
     assert "liveframe" in render and 'sandbox="allow-scripts"' in render
     assert "/<script[\\s>]|<style[\\s>]/i" in render
     assert 'srcdoc="${escapeHtml(framed(' in render
-    assert "#live iframe, #flow iframe" in SCRIPT
+    assert "#flow iframe" in SCRIPT and "#livefull iframe" in SCRIPT
 
 
 def test_a_live_widget_cannot_read_memory_or_say():
@@ -204,7 +204,7 @@ def test_a_live_widget_cannot_read_memory_or_say():
     assert {"system", "state", "tasks"} <= set(re.findall(r"[a-z]+", may))
     bridge = SCRIPT.split("const BRIDGE = `", 1)[1].split("<\\/script>`", 1)[0]
     assert "say" not in bridge
-    assert 'frame.setAttribute("sandbox", "allow-scripts")' in SCRIPT
+    assert 'sandbox="allow-scripts"' in SCRIPT
     assert "allow-same-origin" not in SCRIPT
     assert 'heare: "say"' not in SCRIPT and 'm.heare === "say"' not in SCRIPT
 
@@ -212,8 +212,7 @@ def test_a_live_widget_cannot_read_memory_or_say():
 def test_the_page_takes_its_name_from_the_brain():
     # Step 7a writes identity.json («Дока»); /api/state carries it in
     # model.name, so the header is not stuck on the static «heare».
-    assert ('if (m.name) { $("name").textContent = m.name; '
-            '$("bigname").textContent = m.name;' in SCRIPT)
+    assert 'if (m.name) { $("name").textContent = m.name;' in SCRIPT
 
 
 def test_the_hearing_form_says_what_the_marks_are_for():

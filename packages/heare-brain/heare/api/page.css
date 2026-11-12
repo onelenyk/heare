@@ -477,17 +477,8 @@ button { cursor:pointer; }
 #sheetbody { flex:1; min-height:0; overflow-y:auto; }
 #stage { position:relative; min-height:calc(100% - 40px); }
 .sheetnote { font:12.5px/1.6 var(--sans); color:var(--soft); margin-bottom:14px; }
-.tabs { display:none; position:sticky; top:0; z-index:2; gap:2px; padding:8px 0 0; background:var(--card); border-bottom:1px solid var(--line); margin-bottom:12px; }
-.tabs button { border:0; border-bottom:2px solid transparent; background:transparent; color:var(--soft); padding:6px 12px; font-size:12px; }
-.tabs button:hover { color:var(--ink); }
-.tabs button[aria-selected="true"] { color:var(--ink); border-bottom-color:var(--accent); }
 .page { position:relative; min-height:calc(100% - 40px); }
 .page[hidden] { display:none; }
-#live { display:grid; grid-template-columns:repeat(auto-fill, minmax(var(--col,270px), 1fr)); grid-auto-flow:dense; gap:16px; padding:14px 0 18px; align-items:start; }
-#empty { position:absolute; inset:0; display:grid; place-content:center; justify-items:center; gap:14px; text-align:center; color:var(--soft); pointer-events:none; }
-#empty .face { width:150px; height:150px; }
-#empty b { font:700 26px var(--display); color:var(--ink); letter-spacing:-.4px; }
-#empty span { font:12.5px var(--mono); max-width:340px; }
 
 /* sessions: one row each, the current one marked */
 .sessbar { display:flex; align-items:center; gap:6px; margin-bottom:10px; }
@@ -701,34 +692,6 @@ button { cursor:pointer; }
 .legend span.budget::before { display:none; }
 .ctxbit .from { display:block; margin-top:4px; color:var(--soft); font:normal 10px var(--mono); opacity:.75; }
 
-/* ── the screen: the model's own canvas ── */
-#live .blk { position:relative; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px 20px; min-width:0; transition:box-shadow .9s ease, border-color .9s ease; }
-#live .blk.m { grid-column:span 2; }
-#live .blk.l { grid-column:1 / -1; }
-@media (max-width:1100px) { #live .blk.m { grid-column:1 / -1; } }
-#live .blk.fresh { border-color:var(--accent); box-shadow:0 0 0 4px rgba(157,124,255,.14), 0 12px 40px rgba(157,124,255,.12); }
-#live .blk .x { position:absolute; top:8px; right:10px; border:0; background:transparent; color:var(--soft); cursor:pointer; opacity:0; font-size:15px; transition:opacity .15s; }
-#live .blk:hover .x, #live .blk:hover .ed { opacity:.8; }
-#live .blk .x:hover { color:var(--bad); }
-#live .blk .ed { position:absolute; top:8px; right:34px; border:0; background:transparent; color:var(--soft); cursor:pointer; opacity:0; font-size:14px; transition:opacity .15s; }
-#live .blk .ed:hover, #live .blk.editing .ed { color:var(--accent); opacity:1; }
-#live .blk.editing { border-color:var(--accent); }
-#live .blk iframe { width:100%; border:0; display:block; background:transparent; height:60px; }
-#live .blk.editing .w svg { touch-action:none; cursor:crosshair; overflow:visible; }
-#live .blk.editing .w svg circle, #live .blk.editing .w svg path,
-#live .blk.editing .w svg ellipse, #live .blk.editing .w svg rect { cursor:grab; }
-#live .w path.ed-sel { filter:drop-shadow(0 0 4px var(--accent)); }
-#live .w .ed-preview { pointer-events:none; opacity:.7; }
-#live .w .ed-handle { fill:var(--accent); stroke:var(--bg); stroke-width:1.5; vector-effect:non-scaling-stroke; cursor:nwse-resize; }
-.edbar { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:12px; padding-top:10px; border-top:1px dashed var(--line); font:11.5px var(--mono); color:var(--soft); }
-.edbar .edhint { flex:1 1 140px; min-width:120px; }
-.edbar button { padding:4px 9px; border:1px solid var(--line); border-radius:6px; background:transparent; color:inherit; font:inherit; }
-.edbar button:hover:not(:disabled) { border-color:var(--accent); color:var(--accent); }
-.edbar button:disabled { opacity:.4; cursor:default; }
-.edbar .edsave { border-color:var(--accent); color:var(--accent); font-weight:700; }
-.edbar input[type=color] { width:26px; height:22px; padding:0; border:1px solid var(--line); border-radius:6px; background:transparent; }
-.edbar .ederror { flex-basis:100%; color:var(--bad); }
-
 /* what a card the model draws is made of (also given to live frames) */
 .w h3 { font:600 11px var(--mono); letter-spacing:.12em; text-transform:uppercase; color:var(--soft); margin:0 0 12px; }
 .w h2 { font:700 20px/1.25 var(--sans); letter-spacing:-.3px; margin:0 0 8px; }
@@ -764,6 +727,15 @@ button { cursor:pointer; }
 .pdrawer select, .pdrawer input { width:100%; min-width:0; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:4px 7px; font:11px var(--mono); }
 .pdrawer .actions { display:flex; gap:6px; margin-top:10px; justify-content:flex-end; }
 .pdrawer .plog { max-height:160px; overflow:auto; margin:0; padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--soft); font:10.5px/1.45 var(--mono); white-space:pre-wrap; overflow-wrap:anywhere; }
+
+/* a live card, on the whole screen */
+#livefull { position:fixed; inset:0; z-index:85; display:flex; flex-direction:column; gap:8px; padding:12px; background:var(--bg); }
+#livefull[hidden] { display:none; }
+.livefull-bar { display:flex; align-items:center; gap:10px; padding:2px 4px; }
+.livefull-bar b { font:600 13px var(--sans); color:var(--ink); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.livefull-bar button { margin-left:auto; width:30px; height:30px; display:grid; place-content:center; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--soft); font-size:18px; line-height:1; }
+.livefull-bar button:hover { color:var(--ink); border-color:var(--accent); }
+#livefull-frame { flex:1; width:100%; min-height:0; border:1px solid var(--line); border-radius:12px; background:var(--card); }
 
 /* ── toast ── */
 #toast { position:fixed; left:50%; bottom:84px; z-index:60; transform:translateX(-50%) translateY(10px); padding:8px 14px; border:1px solid var(--line); border-radius:999px; background:var(--card-2); color:var(--ink); font-size:11.5px; opacity:0; pointer-events:none; transition:opacity .16s, transform .16s; white-space:nowrap; }

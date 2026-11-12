@@ -80,30 +80,32 @@ def _drop_url(attribute: re.Match[str]) -> str:
 
 
 def _css_block(block: re.Match[str]) -> str:
-    """A live card's own stylesheet: it may animate, but it may not fetch."""
-    css = _IMPORT.sub("", block.group(0))
-    css = _CSS_URL.sub("", css)
-    return _JS_URL.sub("", css)
+    """A live card's own stylesheet: inside its sealed frame it may fetch
+    pictures and fonts; a script URL is still not a style."""
+    return _JS_URL.sub("", block.group(0))
 
 
 def clean(html: str) -> str:
-    """Frames, external sheets, forms, fetching tags, inline handlers and
-    script URLs are taken out. A <script> stays, and with it the card's own
-    <style> and handlers: the page never runs a live card in itself, only
-    inside a sealed frame that can reach nothing of the person's. A card
-    without a script is written into the page, so its styles and handlers
-    go: it must not be able to restyle the pult. The rest is safe as it is."""
+    """Frames, external sheets and forms are taken out everywhere. A card
+    without a script is written into the page itself, so its styles, its
+    handlers and anything that fetches on its own go too: it must not
+    restyle the pult or make the browser load something. A card with a
+    script is never in the page, only inside a sealed frame that can reach
+    nothing of the person's: it may bring its own stylesheet, pictures,
+    media, inputs and handlers. `javascript:` URLs go from both."""
     live = bool(_SCRIPT.search(html))
     html = _LONE.sub("", _PAIRED.sub("", html))
     if live:
         html = _STYLE_BLOCK.sub(_css_block, html)
     else:
         html = _STYLE_LONE.sub("", _STYLE_BLOCK.sub("", html))
-    html = _FORM.sub("", _FETCHING.sub("", _ANIMATION.sub("", html)))
+    html = _FORM.sub("", _ANIMATION.sub("", html))
     if not live:
+        html = _FETCHING.sub("", html)
         html = _HANDLER.sub("", html)
-    html = _URL_ATTR.sub(_drop_url, html)
-    return _CSS_URL.sub("", _JS_URL.sub("", html))
+        html = _URL_ATTR.sub(_drop_url, html)
+        html = _CSS_URL.sub("", html)
+    return _JS_URL.sub("", html)
 
 
 def _text(html: str) -> str:

@@ -82,17 +82,19 @@ def test_a_stored_widget_cannot_style_or_form_the_page(tmp_path):
     assert "safe" in stored
 
 
-def test_a_live_widget_keeps_its_own_animation_but_fetches_nothing(tmp_path):
-    """A card with a script runs in a sealed frame: it may animate itself,
-    and that stylesheet cannot reach outside the frame."""
+def test_a_live_widget_may_bring_its_own_styles_pictures_and_handlers(tmp_path):
+    """A card with a script runs in a sealed frame: it may bring a page of
+    its own — styles, a picture, a handler — and still reach nothing of the
+    person's. A card without one is inlined, so none of that is allowed."""
     canvas = _canvas(tmp_path)
     canvas.put("live", '<style>@keyframes a{to{opacity:0}} '
-                       '#x{background:url("https://evil.example/x")}</style>'
+                       '#x{background:url("https://evil.example/x.png")}</style>'
+                       '<img src="https://evil.example/x.png">'
                        '<button onclick="go()">x</button><script>go()</script>')
     stored = canvas.blocks["live"]
     assert "<style>" in stored and "@keyframes" in stored
-    assert 'onclick="go()"' in stored
-    assert "url(" not in stored and "https://evil" not in stored
+    assert 'onclick="go()"' in stored and "<img" in stored
+    assert "url(" in stored and "https://evil.example" in stored
 
 
 def test_the_canvas_stylesheet_cannot_fetch_anything(tmp_path):

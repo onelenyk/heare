@@ -96,6 +96,26 @@ _SHOW_MEDIA = _verb(
 )
 
 
+_SHOW_PAGE = _verb(
+    "show_page",
+    "Show a page the hands built on this Mac, in the chat. `file` is an "
+    ".html under ~/heare-work — a relative path there, or an absolute one "
+    "inside it. The page runs in the same sealed frame as a live card: its "
+    "CSS, images and script work; it cannot reach memory, keys or the "
+    "conversation. Use it after the hands have written the page.",
+    {"file": {"type": "string",
+              "description": "An .html under ~/heare-work, e.g. 'my-app/index.html'."},
+     "title": {"type": "string", "description": "A short title for the card and the dock."},
+     "say": {"type": "string", "description": "One short sentence to say aloud."},
+     "width": {"type": "string", "enum": ["s", "w"],
+               "description": "s: the reading column; w: the whole panel (default)."}},
+    ["file", "say"],
+)
+# The hands write here; nothing else is reachable through show_page.
+PAGE_ROOT = "heare-work"
+PAGE_CHARS = 200_000
+
+
 class Timeline:
     """The page's feed, and the one place that still knows the old canvas.
 
@@ -143,7 +163,7 @@ class Timeline:
 
     def verbs(self) -> list[tuple[dict, object]]:
         return [(_SHOW, self._show), (_SHOW_LINK, self._show_link),
-                (_SHOW_MEDIA, self._show_media)]
+                (_SHOW_MEDIA, self._show_media), (_SHOW_PAGE, self._show_page)]
 
     async def _show(self, arguments: dict) -> str:
         html = clean(str(arguments.get("html", "")))
@@ -187,6 +207,37 @@ class Timeline:
                            artifact={"file": file_id, "name": meta["name"],
                                      "mime": meta.get("mime", ""), "title": title})
         return say or _("It is on the page.")
+
+    async def _show_page(self, arguments: dict) -> str:
+        root = (Path.home() / PAGE_ROOT).resolve()
+        raw = str(arguments.get("file", "")).strip()
+        if not raw:
+            return _("Which page?")
+        try:
+            path = Path(raw).expanduser()
+            path = (path if path.is_absolute() else root / path).resolve()
+            path.relative_to(root)
+        except (OSError, ValueError):
+            return _("That page is not under ~/heare-work.")
+        if not path.is_file():
+            return _("I cannot find that page.")
+        if path.suffix.lower() not in (".html", ".htm"):
+            return _("Only an HTML page can be shown.")
+        try:
+            html = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return _("I cannot read that page.")
+        if not html.strip():
+            return _("The page is empty.")
+        if len(html) > PAGE_CHARS:
+            return _("That page is too big to show.")
+        say = str(arguments.get("say", "")).strip()
+        title = str(arguments.get("title", "")).strip() or path.stem
+        width = str(arguments.get("width", "")).strip()
+        return await self._show({
+            "html": html, "say": say or title, "title": title,
+            "width": width if width in ("s", "w") else "w", "label": "app",
+        })
 
     async def say(self, pieces: AsyncIterator[str]) -> str:
         async for piece in pieces:

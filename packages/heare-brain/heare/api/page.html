@@ -5,7 +5,6 @@
 <meta name="theme-color" content="#131217">
 <title>heare</title>
 <link rel="stylesheet" href="/page.css">
-<style id="own"></style>
 
 <div id="app">
   <header id="top">
@@ -99,7 +98,7 @@
 <div class="veil" id="veil"></div>
 
 <aside id="sheet" class="sheet" aria-hidden="true">
-  <div class="sheethead"><b id="sheettitle" data-t>Screen</b><button type="button" id="sheetclose" data-t-aria aria-label="close">×</button></div>
+  <div class="sheethead"><b id="sheettitle" data-t>Details</b><button type="button" id="sheetclose" data-t-aria aria-label="close">×</button></div>
   <div id="sheetbody">
     <div id="sessions-panel" hidden>
       <div class="sessbar" hidden>
@@ -112,14 +111,6 @@
       <button type="button" class="newbtn" id="newsession" data-t>＋ New conversation</button>
     </div>
     <section id="stage">
-      <nav class="tabs" role="tablist">
-        <button type="button" role="tab" data-page="screen" data-t>Screen</button>
-        <button type="button" role="tab" data-page="context" data-t>Context</button>
-      </nav>
-      <div class="page" id="page-screen">
-      <div id="live"></div>
-      <div id="empty"><svg class="face" id="bigface" viewBox="0 0 120 120" aria-hidden="true"><rect class="head" x="12" y="16" width="96" height="88" rx="30"/><rect class="eye" x="37" y="42" width="13" height="22" rx="6.5"/><rect class="eye" x="70" y="42" width="13" height="22" rx="6.5"/><g><rect class="bar" x="42" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="50" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="58" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="66" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="74" y="76" width="5" height="14" rx="2.5"/></g></svg><b id="bigname">heare</b><span data-t>This is its screen. It puts here what is better seen than heard — and what you ask to keep in front of you.</span></div>
-      </div>
       <div class="page" id="page-context" hidden></div>
     </section>
   </div>
@@ -213,6 +204,11 @@
     <p class="mind-empty backup-folder" id="backup-folder"></p>
   </div>
 </aside>
+
+<div id="livefull" hidden>
+  <div class="livefull-bar"><b id="livefull-title"></b><button type="button" id="livefull-close" data-t-aria aria-label="close">×</button></div>
+  <iframe id="livefull-frame" sandbox="allow-scripts"></iframe>
+</div>
 
 <div id="pinpreview" class="pinpreview" hidden></div>
 <div id="toast" class="toast" hidden></div>

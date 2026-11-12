@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-12 23:49+0200\n"
+"POT-Creation-Date: 2026-11-13 00:11+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -831,6 +831,9 @@ msgstr "До повідомлення"
 msgid "Pin a message — it appears here when you scroll past it."
 msgstr "Закріпи повідомлення — воно з'явиться тут, коли прокрутиш повз нього."
 
+msgid "App"
+msgstr "Застосунок"
+
 msgid "play"
 msgstr "відтворити"
 
@@ -857,6 +860,9 @@ msgstr "Дозволити"
 
 msgid "Not now"
 msgstr "Не зараз"
+
+msgid "full screen"
+msgstr "на весь екран"
 
 msgid "Doka"
 msgstr "Дока"
@@ -2038,6 +2044,27 @@ msgstr "Це посилання не можна показати."
 
 msgid "That file is not in this conversation."
 msgstr "Цього файлу немає в цій розмові."
+
+msgid "Which page?"
+msgstr "Яку сторінку?"
+
+msgid "That page is not under ~/heare-work."
+msgstr "Ця сторінка не в ~/heare-work."
+
+msgid "I cannot find that page."
+msgstr "Не знайшов такої сторінки."
+
+msgid "Only an HTML page can be shown."
+msgstr "Показати можна лише HTML-сторінку."
+
+msgid "I cannot read that page."
+msgstr "Не можу прочитати цю сторінку."
+
+msgid "The page is empty."
+msgstr "Сторінка порожня."
+
+msgid "That page is too big to show."
+msgstr "Ця сторінка завелика, щоб її показати."
 
 msgid "could not ask about a new version"
 msgstr "не вдалося спитати про нову версію"
