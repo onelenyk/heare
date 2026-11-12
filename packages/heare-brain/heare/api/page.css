@@ -45,6 +45,9 @@ button { cursor:pointer; }
 #name { font:700 16px/1.15 var(--display); letter-spacing:-.2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 #phase { display:flex; align-items:center; gap:5px; color:var(--soft); font:11px/1.2 var(--mono); white-space:nowrap; }
 .livedot { width:5px; height:5px; border-radius:50%; background:var(--info); box-shadow:0 0 8px var(--info); flex:none; }
+.livedot.off { background:var(--soft); box-shadow:none; }
+.livedot.thinking { background:var(--warn); box-shadow:0 0 8px var(--warn); }
+.livedot.speaking { background:var(--accent); box-shadow:0 0 8px var(--accent); }
 #idbtn .chev { color:var(--soft); font-size:9px; flex:none; }
 #idbtn:hover #name { color:var(--accent); }
 .mneed { flex:none; min-width:18px; padding:0 5px; border-radius:999px; background:var(--warn); color:var(--accent-ink); font:700 10.5px/18px var(--mono); text-align:center; }
@@ -55,7 +58,8 @@ button { cursor:pointer; }
 .statepill.on { color:var(--info); border-color:color-mix(in srgb, var(--info) 40%, var(--line)); }
 .statepill .sdot { width:5px; height:5px; border-radius:50%; background:var(--soft); flex:none; }
 .statepill.on .sdot { background:var(--ok); }
-.lastact { display:flex; align-items:center; gap:5px; color:var(--soft); font:9.5px var(--mono); white-space:nowrap; }
+.lastact { display:flex; align-items:center; gap:5px; color:var(--soft); font:9.5px var(--mono); white-space:nowrap; min-width:0; }
+.lastact #lasttext { display:inline-block; max-width:250px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:bottom; }
 .lastact i { width:4px; height:4px; border-radius:50%; background:var(--line); flex:none; }
 .modelchip { font:10.5px var(--mono); color:var(--soft); border:1px solid var(--line); border-radius:999px; padding:4px 9px; white-space:nowrap; }
 .modelchip:empty { display:none; }
@@ -368,7 +372,7 @@ button { cursor:pointer; }
 
 .vid .poster { position:relative; aspect-ratio:16/9; overflow:hidden; background:#0f0e14; display:grid; place-content:center; }
 .vid .poster svg { position:absolute; inset:0; width:100%; height:100%; }
-.vid .poster video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+.vid .poster video, .vid .poster img.vfilm { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
 .vid .poster .pcircle { position:relative; z-index:1; width:52px; height:52px; background:rgba(19,18,23,.72); color:var(--ink); border:1px solid rgba(236,232,226,.3); backdrop-filter:blur(6px); }
 .vid .vlabel, .vid .vtime { position:absolute; bottom:9px; z-index:1; font:10px var(--mono); color:rgba(236,232,226,.8); }
 .vid .vlabel { left:12px; }
@@ -776,6 +780,7 @@ button { cursor:pointer; }
 #pult-data { display:none !important; }
 
 /* ── the phone: one column, the same reading ── */
+@media (max-width:1200px) { .lastact { display:none; } }
 @media (max-width:900px) {
   #app { grid-template-rows:52px minmax(0,1fr); }
   #top { padding:0 10px; gap:6px; }

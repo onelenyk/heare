@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-12 21:56+0200\n"
+"POT-Creation-Date: 2026-11-12 22:02+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -825,7 +825,7 @@ msgstr ""
 msgid "Go to the message"
 msgstr ""
 
-msgid "Nothing is pinned yet"
+msgid "Pin a message — it appears here when you scroll past it."
 msgstr ""
 
 msgid "play"
@@ -1033,6 +1033,10 @@ msgid "And a short audio — how it sounds."
 msgstr ""
 
 msgid "Demo"
+msgstr ""
+
+#, python-brace-format
+msgid "{s} s"
 msgstr ""
 
 msgid "And a short video — how it moves."
@@ -1252,10 +1256,6 @@ msgid "working"
 msgstr ""
 
 msgid "stopped"
-msgstr ""
-
-#, python-brace-format
-msgid "{s} s"
 msgstr ""
 
 msgid "Doing nothing now."
@@ -1574,7 +1574,7 @@ msgstr ""
 msgid "awaiting a decision"
 msgstr ""
 
-msgid "settled facts"
+msgid "facts"
 msgstr ""
 
 msgid "reminders"
@@ -2993,5 +2993,11 @@ msgstr ""
 #~ msgstr ""
 
 #~ msgid "chat"
+#~ msgstr ""
+
+#~ msgid "Nothing is pinned yet"
+#~ msgstr ""
+
+#~ msgid "settled facts"
 #~ msgstr ""
 

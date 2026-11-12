@@ -88,8 +88,13 @@ let toastTimer = 0;
 function toast(text) {
   const t = $("toast");
   t.textContent = text; t.hidden = false;
+  t.classList.remove("on");
+  requestAnimationFrame(() => t.classList.add("on"));
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { t.hidden = true; }, 2400);
+  toastTimer = setTimeout(() => {
+    t.classList.remove("on");
+    setTimeout(() => { t.hidden = true; }, 200);
+  }, 2400);
 }
 function dockMeasure() {
   const chat = $("chat"), dock = $("pin-dock"), composer = $("composer");
@@ -222,7 +227,7 @@ function dockRender() {
   const dock = $("pin-dock");
   if (!dock) return;
   const pins = [...pinState.trail, ...pinState.shelf];
-  dock.replaceChildren(...(pins.length ? pins.map(pinChip) : [el("div", "dock-empty", tr("Nothing is pinned yet"))]));
+  dock.replaceChildren(...(pins.length ? pins.map(pinChip) : [el("div", "dock-empty", tr("Pin a message — it appears here when you scroll past it."))]));
   dockMeasure();
 }
 dockRender();
@@ -294,9 +299,9 @@ function audioCard(m, file) {
 function videoCard(m, file) {
   const a = m.artifact || {};
   return `<div class="artifact vid">${artHead(tr("Video"), m.title || a.title || a.name || "")}` +
-    `<div class="poster"><video preload="metadata" playsinline src="${escapeHtml(file)}"${m.poster ? ` poster="${escapeHtml(m.poster)}"` : ""}></video>` +
+    `<div class="poster">${m.poster ? `<img class="vfilm" src="${escapeHtml(m.poster)}" alt="">` : `<video preload="metadata" playsinline src="${escapeHtml(file)}"></video>`}` +
     `<button type="button" class="pcircle" data-video aria-label="${tr("play")}">▶</button>` +
-    `<span class="vlabel">${escapeHtml(a.name || m.title || "")}</span><span class="vtime" data-dur>—</span>` +
+    `<span class="vlabel">${escapeHtml(m.vlabel || a.name || m.title || "")}</span><span class="vtime" data-dur>${escapeHtml(m.vtime || "—")}</span>` +
     `<div class="vprog"><i></i></div></div></div>`;
 }
 function linkCard(a) {
@@ -315,7 +320,7 @@ function imageCard(m, file) {
     `${a.line || m.caption ? `<figcaption class="cap">${escapeHtml(a.line || m.caption || "")}</figcaption>` : ""}</figure>`;
 }
 function gameCard(m) {
-  return `<div class="artifact game">${artHead(tr("3D"), m.title || tr("3D"))}` +
+  return `<div class="artifact game"><div class="art-head"><span>${tr("3D")}</span><b>${escapeHtml(m.title || tr("3D"))}</b>` +
     `<span class="spacer"></span><button type="button" class="widebtn" data-wide title="${tr("full width")}" aria-label="${tr("full width")}">⤢</button></div>` +
     `<div class="stage"><canvas></canvas><div class="gameover"><span class="glabel">${tr("a little game")}</span>` +
     `<button type="button" class="pcircle" data-play aria-label="${tr("play")}">▶</button>` +
@@ -566,7 +571,7 @@ function landscapeArt(uid) {
     <rect x="0" y="330" width="640" height="30" fill="#0c0b10" opacity=".8"/>
   </svg>`;
 }
-const svgSrc = svg => "data:image/svg+xml;utf8," + encodeURIComponent(svg);
+const svgSrc = svg => "data:image/svg+xml;utf8," + encodeURIComponent(svg.replace(/^<svg /, '<svg xmlns="http://www.w3.org/2000/svg" '));
 const DEMO_PAGE_PID = "window@demo";
 /* The demo's details: one turn, so the timeline and the prompt bits can be
    looked at without a model call. */
@@ -717,7 +722,7 @@ const DEMO_FEED = [
   { id: "demo/8", who: "it", time: "21:17", kind: "step", text: tr("hands · building the mock · step 2 of 3") },
   { id: "demo/9", who: "it", time: "21:17", html: `<p>${tr("And a short audio — how it sounds.")}</p>` },
   { id: "demo/10", who: "it", time: "21:17", kind: "audio", title: tr("Voice") + " · 0:12", src: "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=" },
-  { id: "demo/11", who: "it", time: "21:17", kind: "video", title: tr("Demo") + " · " + tr("The new screen"), src: "data:video/mp4;base64,AAAAHGZ0eXBpc29tAAACAGlzb21pc28ybXA0MQAAAAhmcmVlAAAAAG1kYXQ=", poster: svgSrc(screenArt("vid")), lead: `<p>${tr("And a short video — how it moves.")}</p>` },
+  { id: "demo/11", who: "it", time: "21:17", kind: "video", title: tr("Demo") + " · " + tr("The new screen"), vlabel: tr("Demo") + " · 0:24", vtime: tr("{s} s", {s: 24}), src: "data:video/mp4;base64,AAAAHGZ0eXBpc29tAAACAGlzb21pc28ybXA0MQAAAAhmcmVlAAAAAG1kYXQ=", poster: svgSrc(screenArt("vid")), lead: `<p>${tr("And a short video — how it moves.")}</p>` },
   { id: "demo/12", who: "it", time: "21:18", kind: "game", title: tr("Cube") + " · 3D", wide: true, lead: `<p>${tr("And a small 3D game. Such things live in the chat too — in a sandbox, paused off screen.")}</p>` },
   { id: "demo/13", who: "it", time: "21:18", kind: "link", artifact: {title: tr("heare design system"), url: "https://heare.local/design", host: "heare.local/design"}, lead: `<p>${tr("A link to the design system — so it is not all in my head.")}</p>` },
   { id: "demo/14", who: "it", time: "21:19", kind: "html", artifact: {label: "table", title: tr("What changes")}, html: tableHTML, lead: `<p>${tr("And the table: what goes away from the old screen.")}</p>` },
@@ -756,9 +761,8 @@ function demo() {
   ];
   $("name").textContent = tr("Doka");
   $("bigname").textContent = tr("Doka");
-  $("nowtext").textContent = tr("listening");
-  $("face").setAttribute("class", "face hearing");
-  $("dot").className = "livedot";
+  voice = {mic: true, speaker: false};
+  phase = "hearing";
   $("sessionpick").replaceChildren(el("option", "", tr("Today")));
   $("sessionpick").value = "demo";
   $("sesslabel").textContent = tr("Today");
@@ -776,6 +780,7 @@ function demo() {
   parts(DEMO_BODIES);
   pinState = DEMO_PINS;
   dockRender();
+  show();
   drawTopbar();
   activity.what = "make test"; activity.at = Date.now() - 120000;
   drawLast();
@@ -1864,7 +1869,7 @@ function drawContext() {
     const cause = before ? ctxCause(turn, before) : {fresh: new Set(), files: []};
     const change = before ? size.total - ctxMeasure(before).total : 0;
     const used = size.system + size.talk;
-    main.append(ctxSec(tr("Context"), Math.round(used / Math.max(now.limit, 1) * 100) + "%"));
+    main.append(ctxSec(tr("Context"), (used / Math.max(now.limit, 1) * 100).toFixed(1) + "%"));
     const gauge = el("div", "gauge");
     gauge.append(el("b", "", kNum(size.total)), el("span", "", tr("tokens")));
     if (change) gauge.append(el("span", change > 0 ? "delta up" : "delta down", `${change > 0 ? "+" : ""}${change}`));
@@ -1908,7 +1913,7 @@ function drawContext() {
   const live = state || {}, run = live.running || {}, s = live.session || {};
   side.append(ctxSec(tr("This run")));
   side.append(ctxKv(tr("Session"), tr("turns: {n}", {n: s.turns || 0})),
-             ctxKv(tr("Replies"), tr("replies: {n}", {n: s.turns || 0})),
+             ctxKv(tr("Replies"), String(s.turns || 0)),
              ctxKv(tr("Running"), runningFor(s.started)),
              ctxKv(tr("Version"), run.version ? `v${run.version}${run.commit ? " · " + run.commit : ""}` : "—"));
   side.append(ctxSec(tr("Machines"), machineList.length || ""));
@@ -2303,7 +2308,16 @@ addEventListener("message", ev => {
 });
 
 /* ── controls ── */
-const turn = (part, name, value) => api("controls", {method: "POST", body: {part, name, value}}).catch(() => {});
+const turn = (part, name, value) => DEMO
+  ? Promise.resolve().then(() => {
+      const body = state && state.bodies && state.bodies[part];
+      if (!body) return;
+      body.values = {...(body.values || {}), [name]: value};
+      if (name === "mic" && voice) voice.mic = !!value;
+      parts(state.bodies);
+      show(); drawTopbar();
+    })
+  : api("controls", {method: "POST", body: {part, name, value}}).catch(() => {});
 const confirming = on => { $("stop").hidden = on; $("confirm").hidden = !on; };
 $("stop").onclick = () => confirming(true);
 $("stop-no").onclick = () => confirming(false);
@@ -2420,7 +2434,7 @@ function mindChips(d) {
   };
   $("mind-chips").replaceChildren(
     chip(tr("awaiting a decision"), c.pending),
-    chip(tr("settled facts"), c.confirmed),
+    chip(tr("facts"), c.confirmed),
     chip(tr("reminders"), c.reminders),
     chip(tr("review"), mindReview(d && d.review && d.review.last)),
     chip(tr("consolidated"), mindStamp(d && d.consolidation && d.consolidation.last)),
@@ -3039,6 +3053,8 @@ function systemOpen() {
   setTimeout(() => $("systemclose").focus(), 30);
 }
 function openSheet(title, which = "screen") {
+  hidePreview();
+  if (narrow.matches && $("system").classList.contains("on")) systemClose();
   mindClose();
   $("settings").classList.remove("on");
   $("settings").setAttribute("aria-hidden", "true");

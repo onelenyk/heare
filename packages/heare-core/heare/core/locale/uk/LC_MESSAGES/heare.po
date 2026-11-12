@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-12 21:56+0200\n"
+"POT-Creation-Date: 2026-11-12 22:02+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -825,8 +825,8 @@ msgstr "Це повідомлення не завантажене."
 msgid "Go to the message"
 msgstr "До повідомлення"
 
-msgid "Nothing is pinned yet"
-msgstr "Поки нічого не закріплено"
+msgid "Pin a message — it appears here when you scroll past it."
+msgstr "Закріпи повідомлення — воно з'явиться тут, коли прокрутиш повз нього."
 
 msgid "play"
 msgstr "відтворити"
@@ -1034,6 +1034,10 @@ msgstr "Ще коротке аудіо — як це звучить."
 
 msgid "Demo"
 msgstr "Демо"
+
+#, python-brace-format
+msgid "{s} s"
+msgstr "{s} с"
 
 msgid "And a short video — how it moves."
 msgstr "І коротке відео — як воно рухається."
@@ -1253,10 +1257,6 @@ msgstr "працює"
 
 msgid "stopped"
 msgstr "зупинено"
-
-#, python-brace-format
-msgid "{s} s"
-msgstr "{s} с"
 
 msgid "Doing nothing now."
 msgstr "Зараз нічого не роблю."
@@ -1574,8 +1574,8 @@ msgstr "через {d} дн"
 msgid "awaiting a decision"
 msgstr "чекають рішення"
 
-msgid "settled facts"
-msgstr "сталі факти"
+msgid "facts"
+msgstr "факти"
 
 msgid "reminders"
 msgstr "нагадування"
@@ -1584,7 +1584,7 @@ msgid "review"
 msgstr "огляд"
 
 msgid "consolidated"
-msgstr "зведено"
+msgstr "консолідовано"
 
 msgid "failed — try again"
 msgstr "не вийшло — спробуй ще"
@@ -2999,4 +2999,10 @@ msgstr "я перестав чути {s} секунд тому — схоже, �
 
 #~ msgid "chat"
 #~ msgstr "чат"
+
+#~ msgid "Nothing is pinned yet"
+#~ msgstr "Поки нічого не закріплено"
+
+#~ msgid "settled facts"
+#~ msgstr "сталі факти"
 
