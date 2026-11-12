@@ -132,7 +132,7 @@ def extracted(tmp_path_factory) -> set[str]:
     with pot.open("rb") as handle:
         found = {m.id if isinstance(m.id, str) else m.id[0] for m in read_po(handle) if m.id}
     # A finder that finds nothing would pass every check below.
-    assert {"Stopped.", "Brain", "Next →", "Open heare"} <= found
+    assert {"Stopped.", "Machines", "Next →", "Open heare"} <= found
     return found
 
 

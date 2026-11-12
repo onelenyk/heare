@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-12 21:02+0200\n"
+"POT-Creation-Date: 2026-11-12 21:56+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -518,10 +518,10 @@ msgstr ""
 msgid "sound"
 msgstr ""
 
-msgid "Settings"
+msgid "stop"
 msgstr ""
 
-msgid "■ Stop"
+msgid "Settings"
 msgstr ""
 
 msgid "Stop everything?"
@@ -539,58 +539,22 @@ msgstr ""
 msgid "close"
 msgstr ""
 
-msgid "Sessions"
-msgstr ""
-
-msgid "New"
-msgstr ""
-
-msgid "Rename"
-msgstr ""
-
-msgid "Delete"
-msgstr ""
-
-msgid "Brain"
-msgstr ""
-
-msgid "what it knows itself"
-msgstr ""
-
-msgid "settings: keys, model"
-msgstr ""
-
 msgid "you"
 msgstr ""
 
 msgid "it"
 msgstr ""
 
-msgid "quiet"
-msgstr ""
-
-msgid "more"
-msgstr ""
-
-msgid "this run"
-msgstr ""
-
-msgid "Body"
-msgstr ""
-
-msgid "fold"
-msgstr ""
-
 msgid "Machines"
-msgstr ""
-
-msgid "what runs where"
 msgstr ""
 
 msgid "no part is connected"
 msgstr ""
 
-msgid "Screen"
+msgid "Body"
+msgstr ""
+
+msgid "Sessions"
 msgstr ""
 
 msgid "Details"
@@ -603,6 +567,24 @@ msgid "speak and hear"
 msgstr ""
 
 msgid "Write…"
+msgstr ""
+
+msgid "send"
+msgstr ""
+
+msgid "Screen"
+msgstr ""
+
+msgid "New"
+msgstr ""
+
+msgid "Rename"
+msgstr ""
+
+msgid "Delete"
+msgstr ""
+
+msgid "＋ New conversation"
 msgstr ""
 
 msgid "Context"
@@ -773,6 +755,13 @@ msgstr ""
 msgid "something is playing, and no one called it"
 msgstr ""
 
+msgid "now"
+msgstr ""
+
+#, python-brace-format
+msgid "{m} min"
+msgstr ""
+
 msgid "Nothing here yet"
 msgstr ""
 
@@ -800,6 +789,33 @@ msgstr ""
 msgid "could not pin"
 msgstr ""
 
+msgid "Weather"
+msgstr ""
+
+msgid "Table"
+msgstr ""
+
+msgid "3D"
+msgstr ""
+
+msgid "Photo"
+msgstr ""
+
+msgid "Audio"
+msgstr ""
+
+msgid "Video"
+msgstr ""
+
+msgid "Link"
+msgstr ""
+
+msgid "Card"
+msgstr ""
+
+msgid "Message"
+msgstr ""
+
 msgid "Pinned"
 msgstr ""
 
@@ -812,22 +828,49 @@ msgstr ""
 msgid "Nothing is pinned yet"
 msgstr ""
 
+msgid "play"
+msgstr ""
+
+msgid "full width"
+msgstr ""
+
+msgid "a little game"
+msgstr ""
+
+msgid "mouse control"
+msgstr ""
+
+msgid "pause off screen"
+msgstr ""
+
+msgid "state kept"
+msgstr ""
+
+msgid "HANDS ASK FOR PERMISSION"
+msgstr ""
+
+msgid "Allow"
+msgstr ""
+
+msgid "Not now"
+msgstr ""
+
 msgid "Pin"
 msgstr ""
 
 msgid "Doka"
 msgstr ""
 
-msgid "full width"
+msgid "narrow"
 msgstr ""
 
-msgid "Weather"
+msgid "Allowed"
+msgstr ""
+
+msgid "This is a mock"
 msgstr ""
 
 msgid "Burshtyn"
-msgstr ""
-
-msgid "now"
 msgstr ""
 
 msgid "cloudy · feels like −2°"
@@ -848,10 +891,8 @@ msgstr ""
 msgid "mm"
 msgstr ""
 
-msgid "Mock · 11 November"
-msgstr ""
-
-msgid "What changes"
+#, python-brace-format
+msgid "updated {time} · source: weather"
 msgstr ""
 
 msgid "Was"
@@ -884,73 +925,153 @@ msgstr ""
 msgid "Details in the system column"
 msgstr ""
 
-msgid "HANDS ASK FOR PERMISSION"
+msgid "microphone · level 3 of 5"
 msgstr ""
 
-msgid "Run make test in this checkout?"
+msgid "listening"
 msgstr ""
 
-msgid "Allow"
+#, python-brace-format
+msgid "{h} h"
 msgstr ""
 
-msgid "Not now"
+msgid "Microphone"
 msgstr ""
 
-msgid "HANDS"
+msgid "Hear the answer"
 msgstr ""
 
-msgid "checked the branch"
+msgid "Volume"
 msgstr ""
 
-msgid "built it"
+#, python-brace-format
+msgid "updated {for} ago"
 msgstr ""
 
-msgid "heare design system"
+msgid "2 windows"
 msgstr ""
 
-msgid "What is the weather in Burshtyn?"
+msgid "See the screen"
 msgstr ""
 
-msgid "It is +1° in Burshtyn, feels like −2°. Wind 6 km/h."
+msgid "See around"
 msgstr ""
 
-msgid "Show me the new screen."
+msgid "Refresh now"
 msgstr ""
 
-msgid "Here is the mock. This is not a board any more — a chat, a pinned dock and the body beside it."
+msgid "tests · step 2 of 4"
 msgstr ""
 
-msgid "And the table: what goes away from the old screen."
+msgid "steps"
+msgstr ""
+
+msgid "1 task"
+msgstr ""
+
+msgid "Allow actions"
+msgstr ""
+
+msgid "Tests without asking"
+msgstr ""
+
+msgid "Run the tests"
+msgstr ""
+
+msgid "2 tabs · 1 phone"
+msgstr ""
+
+msgid "this window"
+msgstr ""
+
+msgid "This window"
+msgstr ""
+
+msgid "Disconnect this window"
+msgstr ""
+
+msgid "New window"
+msgstr ""
+
+msgid "weather"
+msgstr ""
+
+msgid "Exchange rates"
+msgstr ""
+
+msgid "Refresh the sources"
+msgstr ""
+
+msgid "this Mac"
+msgstr ""
+
+msgid "What is the weather in Burshtyn? And remind me about the meeting."
+msgstr ""
+
+msgid "It is +1° in Burshtyn, feels like −2°. Wind 6 km/h. Here is the card — pinned, so it stays at hand."
 msgstr ""
 
 msgid "The meeting is at 13:30 — the dentist. I will remind you 25 minutes before."
 msgstr ""
 
-msgid "Here is the design-system link."
+msgid "Show me what the new screen looks like."
 msgstr ""
 
-msgid "Show this at full width."
-msgstr ""
-
-msgid "Done. The table above is the whole panel wide — use the corner button to bring it back."
-msgstr ""
-
-msgid "An image message, and a link message:"
-msgstr ""
-
-msgid "An audio message:"
-msgstr ""
-
-msgid "A video message:"
+msgid "Here is the mock. This is not a board any more — a chat, a pinned dock and the body beside it."
 msgstr ""
 
 msgid "The new screen"
 msgstr ""
 
-msgid "mock · 11 November"
+msgid "Mock · 11 November"
 msgstr ""
 
-msgid "table · 4 rows"
+msgid "hands · building the mock · step 2 of 3"
+msgstr ""
+
+msgid "And a short audio — how it sounds."
+msgstr ""
+
+msgid "Demo"
+msgstr ""
+
+msgid "And a short video — how it moves."
+msgstr ""
+
+msgid "Cube"
+msgstr ""
+
+msgid "And a small 3D game. Such things live in the chat too — in a sandbox, paused off screen."
+msgstr ""
+
+msgid "heare design system"
+msgstr ""
+
+msgid "A link to the design system — so it is not all in my head."
+msgstr ""
+
+msgid "What changes"
+msgstr ""
+
+msgid "And the table: what goes away from the old screen."
+msgstr ""
+
+msgid "hands ask for permission"
+msgstr ""
+
+msgid "Run make test in this checkout?"
+msgstr ""
+
+msgid "Today"
+msgstr ""
+
+msgid "3 November"
+msgstr ""
+
+msgid "Show me the photo from the Carpathians."
+msgstr ""
+
+msgid "Here. It was cold, but beautiful."
 msgstr ""
 
 msgid "Carpathians"
@@ -959,10 +1080,22 @@ msgstr ""
 msgid "October · 3 November"
 msgstr ""
 
-msgid "November · 2 November"
+msgid "1 November"
 msgstr ""
 
-msgid "Today"
+msgid "Remind me about the doctor."
+msgstr ""
+
+msgid "Thursday, 6 November, at 10:00. Noted."
+msgstr ""
+
+msgid "3D game"
+msgstr ""
+
+msgid "cube · pause off screen"
+msgstr ""
+
+msgid "quiet"
 msgstr ""
 
 msgid "you are here"
@@ -970,10 +1103,6 @@ msgstr ""
 
 #, python-brace-format
 msgid "replies: {n}"
-msgstr ""
-
-#, python-brace-format
-msgid "{m} min"
 msgstr ""
 
 msgid "looking in memory"
@@ -1001,19 +1130,6 @@ msgid "New session"
 msgstr ""
 
 msgid "Sure?"
-msgstr ""
-
-#, python-brace-format
-msgid "{name} did not upload"
-msgstr ""
-
-msgid "paused"
-msgstr ""
-
-msgid " · not hearing"
-msgstr ""
-
-msgid " · no voice"
 msgstr ""
 
 msgid "no key for any model"
@@ -1142,9 +1258,6 @@ msgstr ""
 msgid "{s} s"
 msgstr ""
 
-msgid "stop"
-msgstr ""
-
 msgid "Doing nothing now."
 msgstr ""
 
@@ -1172,10 +1285,10 @@ msgstr ""
 msgid "executor"
 msgstr ""
 
-msgid "page"
+msgid "Page"
 msgstr ""
 
-msgid "chat"
+msgid "Chat"
 msgstr ""
 
 msgid "CLI hands"
@@ -1251,21 +1364,7 @@ msgstr ""
 msgid "Forget"
 msgstr ""
 
-#, python-brace-format
-msgid "the part is v{part}, the brain v{brain}"
-msgstr ""
-
-msgid "hide settings"
-msgstr ""
-
-msgid "settings"
-msgstr ""
-
 msgid "just now"
-msgstr ""
-
-#, python-brace-format
-msgid "{h} h"
 msgstr ""
 
 #, python-brace-format
@@ -1283,14 +1382,24 @@ msgstr ""
 msgid "no restarts"
 msgstr ""
 
+#, python-brace-format
+msgid "the part is v{part}, the brain v{brain}"
+msgstr ""
+
+msgid "hide settings"
+msgstr ""
+
+msgid "settings"
+msgstr ""
+
+#, python-brace-format
+msgid "settings · {part}"
+msgstr ""
+
 msgid "hears the whole conversation"
 msgstr ""
 
 msgid "can give leave with a button"
-msgstr ""
-
-#, python-brace-format
-msgid "changes: {skill}"
 msgstr ""
 
 msgid "failure"
@@ -1308,9 +1417,6 @@ msgstr ""
 msgid "Model"
 msgstr ""
 
-msgid "Page"
-msgstr ""
-
 msgid "served by the brain"
 msgstr ""
 
@@ -1321,11 +1427,22 @@ msgstr ""
 msgid "part {n}"
 msgstr ""
 
-#, python-brace-format
-msgid "settings · {part}"
+msgid "system"
 msgstr ""
 
-msgid "unfold"
+msgid "persona"
+msgstr ""
+
+msgid "laws"
+msgstr ""
+
+msgid "memory"
+msgstr ""
+
+msgid "the canvas"
+msgstr ""
+
+msgid "the conversation"
 msgstr ""
 
 msgid "Person"
@@ -1346,10 +1463,33 @@ msgstr ""
 msgid "verbs"
 msgstr ""
 
+msgid "What is in the prompt"
+msgstr ""
+
 msgid "No turn yet."
 msgstr ""
 
-msgid "What heare handed over; the agent's own prompt stays inside the agent."
+msgid "This run"
+msgstr ""
+
+msgid "Session"
+msgstr ""
+
+#, python-brace-format
+msgid "turns: {n}"
+msgstr ""
+
+msgid "Replies"
+msgstr ""
+
+msgid "Running"
+msgstr ""
+
+msgid "Version"
+msgstr ""
+
+#, python-brace-format
+msgid "parts: {n}"
 msgstr ""
 
 msgid "No tasks yet."
@@ -1390,6 +1530,9 @@ msgid "not saved: {why}"
 msgstr ""
 
 msgid "new on the screen"
+msgstr ""
+
+msgid "Hear the reply"
 msgstr ""
 
 msgid "from the old memory"
@@ -1786,28 +1929,22 @@ msgstr ""
 msgid "forget this machine? its parts stop being trusted"
 msgstr ""
 
-msgid "load"
-msgstr ""
-
 msgid "free"
 msgstr ""
 
 msgid "last seen"
 msgstr ""
 
-msgid "pending"
+msgid "load"
 msgstr ""
 
-msgid "restart"
+msgid "pending"
 msgstr ""
 
 msgid "turn off"
 msgstr ""
 
 msgid "turn on"
-msgstr ""
-
-msgid "Windows and other parts"
 msgstr ""
 
 #, python-brace-format
@@ -1826,9 +1963,6 @@ msgid "cannot: {what} ({why})"
 msgstr ""
 
 msgid "no connection to heare"
-msgstr ""
-
-msgid "This is a mock"
 msgstr ""
 
 #, python-brace-format
@@ -2332,13 +2466,7 @@ msgstr ""
 msgid "Almost done"
 msgstr ""
 
-msgid "Allowed"
-msgstr ""
-
 msgid "the microphone is off — turn it on in System Settings → Privacy & Security → Microphone"
-msgstr ""
-
-msgid "Microphone"
 msgstr ""
 
 msgid "the voice listens to you"
@@ -2614,9 +2742,6 @@ msgstr ""
 msgid "Sound"
 msgstr ""
 
-msgid "Volume"
-msgstr ""
-
 msgid "Answers"
 msgstr ""
 
@@ -2630,6 +2755,9 @@ msgid "Keep recordings"
 msgstr ""
 
 msgid "hearing"
+msgstr ""
+
+msgid "paused"
 msgstr ""
 
 msgid "no recognition key: allow it on the page or add GROQ_API_KEY"
@@ -2763,5 +2891,107 @@ msgstr ""
 #~ msgstr ""
 
 #~ msgid "Open memory"
+#~ msgstr ""
+
+#~ msgid "■ Stop"
+#~ msgstr ""
+
+#~ msgid "Brain"
+#~ msgstr ""
+
+#~ msgid "what it knows itself"
+#~ msgstr ""
+
+#~ msgid "settings: keys, model"
+#~ msgstr ""
+
+#~ msgid "more"
+#~ msgstr ""
+
+#~ msgid "this run"
+#~ msgstr ""
+
+#~ msgid "fold"
+#~ msgstr ""
+
+#~ msgid "what runs where"
+#~ msgstr ""
+
+#~ msgid "HANDS"
+#~ msgstr ""
+
+#~ msgid "checked the branch"
+#~ msgstr ""
+
+#~ msgid "built it"
+#~ msgstr ""
+
+#~ msgid "What is the weather in Burshtyn?"
+#~ msgstr ""
+
+#~ msgid "It is +1° in Burshtyn, feels like −2°. Wind 6 km/h."
+#~ msgstr ""
+
+#~ msgid "Show me the new screen."
+#~ msgstr ""
+
+#~ msgid "Here is the design-system link."
+#~ msgstr ""
+
+#~ msgid "Show this at full width."
+#~ msgstr ""
+
+#~ msgid "Done. The table above is the whole panel wide — use the corner button to bring it back."
+#~ msgstr ""
+
+#~ msgid "An image message, and a link message:"
+#~ msgstr ""
+
+#~ msgid "An audio message:"
+#~ msgstr ""
+
+#~ msgid "A video message:"
+#~ msgstr ""
+
+#~ msgid "mock · 11 November"
+#~ msgstr ""
+
+#~ msgid "table · 4 rows"
+#~ msgstr ""
+
+#~ msgid "November · 2 November"
+#~ msgstr ""
+
+#~ msgid "{name} did not upload"
+#~ msgstr ""
+
+#~ msgid " · not hearing"
+#~ msgstr ""
+
+#~ msgid " · no voice"
+#~ msgstr ""
+
+#~ msgid "changes: {skill}"
+#~ msgstr ""
+
+#~ msgid "unfold"
+#~ msgstr ""
+
+#~ msgid "Windows and other parts"
+#~ msgstr ""
+
+#~ msgid "I am here. Ask."
+#~ msgstr ""
+
+#~ msgid "restart"
+#~ msgstr ""
+
+#~ msgid "What heare handed over; the agent's own prompt stays inside the agent."
+#~ msgstr ""
+
+#~ msgid "page"
+#~ msgstr ""
+
+#~ msgid "chat"
 #~ msgstr ""
 

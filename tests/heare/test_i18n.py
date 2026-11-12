@@ -26,5 +26,5 @@ def test_the_page_gets_the_whole_catalog_with_plural_forms():
     from heare.words import catalog
 
     words = catalog("uk")
-    assert words["Stopped."] == "Зупинив." and words["Brain"] == "Мозок"
+    assert words["Stopped."] == "Зупинив." and words["Machines"] == "Машини"
     assert words["{n} fact"] == ["{n} факт", "{n} факти", "{n} фактів"]

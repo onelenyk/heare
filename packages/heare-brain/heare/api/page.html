@@ -9,127 +9,124 @@
 
 <div id="app">
   <header id="top">
-    <button type="button" id="idbtn" aria-expanded="false" aria-controls="system">
+    <button type="button" id="idbtn" title="System" aria-label="System" aria-controls="system" aria-expanded="false">
       <svg class="face" id="face" viewBox="0 0 120 120" aria-hidden="true"><rect class="head" x="12" y="16" width="96" height="88" rx="30"/><rect class="eye" x="37" y="42" width="13" height="22" rx="6.5"/><rect class="eye" x="70" y="42" width="13" height="22" rx="6.5"/><g><rect class="bar" x="42" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="50" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="58" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="66" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="74" y="76" width="5" height="14" rx="2.5"/></g></svg>
-      <span class="who"><b id="name">heare</b><span id="nowtext">…</span></span>
+      <span class="who">
+        <b id="name">heare</b>
+        <span id="phase"><i class="livedot" id="dot"></i><span id="nowtext">…</span></span>
+      </span>
       <span id="mneed" class="mneed" hidden></span>
-      <span id="dot" hidden></span>
       <span class="chev" aria-hidden="true">▾</span>
     </button>
     <div class="topright">
-      <button type="button" id="mic" class="tbtn statepill" aria-pressed="false" data-t-title title="microphone"><span data-t>microphone</span><i class="sdot"></i></button>
-      <button type="button" id="sound" class="tbtn statepill" aria-pressed="false" data-t-title title="sound"><span data-t>sound</span><i class="sdot"></i></button>
-      <span id="last" class="lastact"></span>
-      <span id="modelchip" class="modelchip"></span>
-      <button type="button" id="openmind" class="tbtn" data-t>Memory</button>
-      <button type="button" id="opensettings" class="tbtn" data-t-aria aria-label="Settings" data-t-title title="Settings">⚙</button>
-      <button type="button" id="stop" class="tstop" data-t>■ Stop</button>
+      <button type="button" id="mic" class="statepill" aria-pressed="false" data-t-title title="microphone">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
+        <span class="slabel" data-t>microphone</span><i class="sdot"></i>
+      </button>
+      <button type="button" id="sound" class="statepill" aria-pressed="false" data-t-title title="sound">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5v5h3.5L12 19V5L7.5 9.5H4Z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8 8 0 0 1 0 12"/></svg>
+        <span class="slabel" data-t>sound</span><i class="sdot"></i>
+      </button>
+      <span class="lastact" id="last"><i></i><span id="lasttext"></span></span>
+      <span class="modelchip" id="modelchip"></span>
+      <button type="button" class="iconbtn stop" id="stop" data-t-aria aria-label="stop" data-t-title title="stop">■</button>
+      <button type="button" class="iconbtn" id="opensettings" data-t-aria aria-label="Settings" data-t-title title="Settings">⚙</button>
       <div class="stopask" id="confirm" hidden><span data-t>Stop everything?</span><button class="mini yes" id="stop-yes" data-t>Yes</button><button class="mini" id="stop-no" data-t>No</button></div>
     </div>
   </header>
+
   <div id="main">
-    <aside id="system" aria-hidden="true">
+    <aside id="system" aria-label="System" aria-hidden="true">
       <div class="syshead"><b data-t>System</b><button type="button" id="systemclose" data-t-aria aria-label="close">×</button></div>
-      <div class="sessbar">
-        <select id="sessionpick" data-t-title title="Sessions"></select>
-        <button type="button" id="sessionnew" class="mini" data-t>New</button>
-        <button type="button" id="sessionname" class="mini" data-t>Rename</button>
-        <button type="button" id="sessiondrop" class="mini" data-t>Delete</button>
-      </div>
-      <aside id="pult">
-      <div class="band"><b data-t>Brain</b><span data-t>what it knows itself</span></div>
 
-      <div class="widgets">
-        <section class="widget hero">
-          <div id="who"><span id="up"></span><button id="open-settings" data-t-title title="settings: keys, model">⚙</button></div>
-          <div id="update" class="update" role="status" hidden></div>
-          <div class="lanes">
-            <div class="lane"><span data-t>you</span><div class="bar" id="you"><i></i></div></div>
-            <div class="lane"><span data-t>it</span><div class="bar" id="it"><i></i></div></div>
+      <div class="update" id="update" role="status" hidden></div>
+      <div id="pult-data" hidden>
+        <span id="up"></span><span id="model"></span><span id="around"></span>
+        <span id="speed"></span><svg id="spark" width="70" height="16"></svg><span id="session"></span><span id="hands"></span>
+        <span id="mind-pending"></span><span id="mind-confirmed"></span><span id="mind-reminders"></span><span id="mind-review"></span>
+        <p id="imports-now" hidden></p>
+        <div class="lanes"><div class="lane"><span data-t>you</span><div class="bar" id="you"><i></i></div></div><div class="lane"><span data-t>it</span><div class="bar" id="it"><i></i></div></div></div>
+      </div>
+
+      <section class="syssec">
+        <div class="seclabel"><b data-t>Machines</b><span id="machinecount"></span></div>
+        <div id="bodies"><p class="empty" data-t>no part is connected</p></div>
+      </section>
+
+      <section class="syssec bodysec">
+        <div class="seclabel"><b data-t>Body</b><span id="bodycount">—</span></div>
+        <div id="key-asks"></div>
+        <div class="bodycard">
+          <div class="carousel" id="partwidgets" tabindex="0" aria-label="Parts"></div>
+          <div class="bodyfoot">
+            <div class="dots" id="dots"></div>
           </div>
-        </section>
-
-        <section class="widget state">
-          <div class="line"><b id="model">…</b><i>·</i><span id="around" data-t>quiet</span><i>·</i><span id="speed">—</span><svg id="spark" width="70" height="16"></svg></div>
-          <details>
-            <summary data-t>more</summary>
-            <div class="row"><span data-t>this run</span><span id="session">…</span></div>
-            <span id="hands" hidden></span>
-          </details>
-        </section>
-
-        <section class="widget" id="mind-widget">
-          <div class="line"><span data-t>Memory</span><i>·</i><span id="mind-pending">—</span><i>·</i><span id="mind-confirmed">—</span><i>·</i><span id="mind-reminders">—</span><i>·</i><span id="mind-review">—</span><button type="button" class="keylink" id="open-mind" aria-expanded="false" data-t>Open</button></div>
-          <p id="imports-now" hidden></p>
-        </section>
-
-      </div>
-
-      <div class="band"><b data-t>Body</b><span id="bodycount">—</span></div>
-      <div class="bodycard">
-        <div id="carousel" tabindex="0" aria-label="Parts">
-          <div id="key-asks"></div>
-          <div id="partwidgets"></div>
-          <div id="partchips"></div>
         </div>
-        <div class="bodyfoot">
-          <div class="dots" id="dots"></div>
-          <div id="partfold"></div>
-          <button type="button" id="partfoldbtn" aria-expanded="true" data-t>fold</button>
-        </div>
-      </div>
+        <div id="partchips" hidden></div>
+        <div id="partfold" hidden></div>
+      </section>
 
-      <div class="band"><b data-t>Machines</b><span data-t>what runs where</span></div>
-
-      <div id="bodies"><p class="empty" data-t>no part is connected</p></div>
-    </aside>
       <div class="sysfoot">
-        <button type="button" id="sysscreen" data-t>Screen</button>
-        <button type="button" id="sysparts" data-t>Parts</button>
-        <button type="button" id="sysmemory" data-t>Memory</button>
-        <button type="button" id="sysdetails" data-t>Details</button>
-        <button type="button" id="syssettings" data-t>Settings</button>
+        <button type="button" class="sessbtn" id="sessionsbtn">
+          <span class="sessmain"><b data-t>Sessions</b><small id="sesslabel"></small></span>
+          <span class="chev">›</span>
+        </button>
+        <div class="footrow">
+          <button type="button" class="ghost" id="membtn" data-t>Memory</button>
+          <button type="button" class="ghost" id="detbtn" data-t>Details</button>
+          <button type="button" class="ghost" id="setbtn" data-t>Settings</button>
+        </div>
       </div>
     </aside>
+
     <section id="chat">
       <div id="pin-dock" aria-label="Pinned"></div>
       <div id="feed"><div id="flow"></div></div>
-      <div id="composer">
+      <footer id="composer">
         <div id="chips"></div>
         <form id="say">
-          <button type="button" id="attach" class="talk" data-t-title title="attach a file">＋</button>
-          <button type="button" id="hear" class="talk" data-t-title title="speak and hear">◉</button>
+          <button type="button" id="attach" class="tool" data-t-title title="attach a file">＋</button>
+          <button type="button" id="hear" class="tool" data-t-title title="speak and hear">◉</button>
           <input id="filepick" type="file" multiple hidden>
           <input id="text" data-t-placeholder placeholder="Write…" autocomplete="off">
-          <button>→</button>
+          <button type="submit" class="send" data-t-aria aria-label="send">→</button>
         </form>
-      </div>
+      </footer>
     </section>
   </div>
 </div>
 
 <div class="veil" id="veil"></div>
 
-<aside id="sheet" aria-hidden="true">
-  <div id="sheethead"><b id="sheettitle" data-t>Screen</b><button type="button" id="sheetclose" data-t-aria aria-label="close">×</button></div>
+<aside id="sheet" class="sheet" aria-hidden="true">
+  <div class="sheethead"><b id="sheettitle" data-t>Screen</b><button type="button" id="sheetclose" data-t-aria aria-label="close">×</button></div>
   <div id="sheetbody">
-  <section id="stage">
-    <nav class="tabs" role="tablist">
-      <button type="button" role="tab" data-page="screen" data-t>Screen</button>
-      <button type="button" role="tab" data-page="context" data-t>Context</button>
-    </nav>
-    <div class="page" id="page-screen">
-    <div id="live"></div>
-    <div id="empty"><svg class="face" id="bigface" viewBox="0 0 120 120" aria-hidden="true"><rect class="head" x="12" y="16" width="96" height="88" rx="30"/><rect class="eye" x="37" y="42" width="13" height="22" rx="6.5"/><rect class="eye" x="70" y="42" width="13" height="22" rx="6.5"/><g><rect class="bar" x="42" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="50" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="58" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="66" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="74" y="76" width="5" height="14" rx="2.5"/></g></svg><b id="bigname">heare</b><span data-t>This is its screen. It puts here what is better seen than heard — and what you ask to keep in front of you.</span></div>
+    <div id="sessions-panel" hidden>
+      <div class="sessbar" hidden>
+        <select id="sessionpick" data-t-title title="Sessions"></select>
+        <button type="button" id="sessionnew" class="mini" data-t>New</button>
+        <button type="button" id="sessionname" class="mini" data-t>Rename</button>
+        <button type="button" id="sessiondrop" class="mini" data-t>Delete</button>
+      </div>
+      <div id="sessionrows"></div>
+      <button type="button" class="newbtn" id="newsession" data-t>＋ New conversation</button>
     </div>
-    <div class="page" id="page-context" hidden></div>
-  </section>
-
+    <section id="stage">
+      <nav class="tabs" role="tablist">
+        <button type="button" role="tab" data-page="screen" data-t>Screen</button>
+        <button type="button" role="tab" data-page="context" data-t>Context</button>
+      </nav>
+      <div class="page" id="page-screen">
+      <div id="live"></div>
+      <div id="empty"><svg class="face" id="bigface" viewBox="0 0 120 120" aria-hidden="true"><rect class="head" x="12" y="16" width="96" height="88" rx="30"/><rect class="eye" x="37" y="42" width="13" height="22" rx="6.5"/><rect class="eye" x="70" y="42" width="13" height="22" rx="6.5"/><g><rect class="bar" x="42" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="50" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="58" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="66" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="74" y="76" width="5" height="14" rx="2.5"/></g></svg><b id="bigname">heare</b><span data-t>This is its screen. It puts here what is better seen than heard — and what you ask to keep in front of you.</span></div>
+      </div>
+      <div class="page" id="page-context" hidden></div>
+    </section>
   </div>
 </aside>
 
-<aside id="settings">
-  <h2 data-t>Settings</h2>
+<aside id="settings" class="sheet mid" aria-hidden="true">
+  <div class="sheethead"><b data-t>Settings</b><button type="button" class="sheetclose" id="settingsclose" data-t-aria aria-label="close">×</button></div>
   <h3 data-t>Language</h3>
   <div class="field"><label for="lang" data-t>what you hear and see</label><select id="lang"><option value="uk">Українська</option><option value="en">English</option></select></div>
   <h3 data-t>Model for the conversation</h3>
@@ -152,10 +149,10 @@
   <div id="features" class="features"></div>
 </aside>
 
-<aside id="mind" aria-hidden="true" aria-labelledby="mind-title">
-  <div class="mind-head">
-    <h2 id="mind-title" data-t>Memory</h2>
-    <button type="button" class="mind-x" id="mind-close" data-t-aria aria-label="close">×</button>
+<aside id="mind" class="sheet wide" aria-hidden="true" aria-labelledby="mind-title">
+  <div class="sheethead">
+    <b id="mind-title" data-t>Memory</b>
+    <button type="button" class="sheetclose" id="mind-close" data-t-aria aria-label="close">×</button>
   </div>
   <p class="mind-status" id="mind-status" role="status"></p>
   <div class="mind-chips" id="mind-chips"></div>

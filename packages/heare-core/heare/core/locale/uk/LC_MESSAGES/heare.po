@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-12 21:02+0200\n"
+"POT-Creation-Date: 2026-11-12 21:56+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -410,7 +410,7 @@ msgid "restored from the backup {name}; what was there is in backups/{aside}"
 msgstr "відновлено з копії {name}; що було — у backups/{aside}"
 
 msgid "Memory"
-msgstr "Памʼять"
+msgstr "Пам'ять"
 
 msgid "could not read it"
 msgstr "не вдалося прочитати"
@@ -518,11 +518,11 @@ msgstr "мікрофон"
 msgid "sound"
 msgstr "звук"
 
+msgid "stop"
+msgstr "зупинити"
+
 msgid "Settings"
 msgstr "Налаштування"
-
-msgid "■ Stop"
-msgstr "■ Стоп"
 
 msgid "Stop everything?"
 msgstr "Зупинити все?"
@@ -539,59 +539,23 @@ msgstr "Система"
 msgid "close"
 msgstr "закрити"
 
-msgid "Sessions"
-msgstr "Сесії"
-
-msgid "New"
-msgstr "Нова"
-
-msgid "Rename"
-msgstr "Назва"
-
-msgid "Delete"
-msgstr "Видалити"
-
-msgid "Brain"
-msgstr "Мозок"
-
-msgid "what it knows itself"
-msgstr "що він знає сам"
-
-msgid "settings: keys, model"
-msgstr "налаштування: ключі, модель"
-
 msgid "you"
 msgstr "ти"
 
 msgid "it"
 msgstr "він"
 
-msgid "quiet"
-msgstr "тихо"
-
-msgid "more"
-msgstr "більше"
-
-msgid "this run"
-msgstr "цей запуск"
-
-msgid "Body"
-msgstr "Тіло"
-
-msgid "fold"
-msgstr "згорнути"
-
 msgid "Machines"
 msgstr "Машини"
-
-msgid "what runs where"
-msgstr "що де працює"
 
 msgid "no part is connected"
 msgstr "жодна частина не під'єднана"
 
-msgid "Screen"
-msgstr "Екран"
+msgid "Body"
+msgstr "Тіло"
+
+msgid "Sessions"
+msgstr "Розмови"
 
 msgid "Details"
 msgstr "Деталі"
@@ -603,7 +567,25 @@ msgid "speak and hear"
 msgstr "говорити й почути"
 
 msgid "Write…"
-msgstr "Напиши…"
+msgstr "Написати…"
+
+msgid "send"
+msgstr "надіслати"
+
+msgid "Screen"
+msgstr "Екран"
+
+msgid "New"
+msgstr "Нова"
+
+msgid "Rename"
+msgstr "Назва"
+
+msgid "Delete"
+msgstr "Видалити"
+
+msgid "＋ New conversation"
+msgstr "＋ Нова розмова"
 
 msgid "Context"
 msgstr "Контекст"
@@ -773,6 +755,13 @@ msgstr "вирішив не відповідати"
 msgid "something is playing, and no one called it"
 msgstr "щось грає, а звертання не було"
 
+msgid "now"
+msgstr "зараз"
+
+#, python-brace-format
+msgid "{m} min"
+msgstr "{m} хв"
+
 msgid "Nothing here yet"
 msgstr "Тут поки нічого"
 
@@ -800,6 +789,33 @@ msgstr "закріплено"
 msgid "could not pin"
 msgstr "не вдалося закріпити"
 
+msgid "Weather"
+msgstr "Погода"
+
+msgid "Table"
+msgstr "Таблиця"
+
+msgid "3D"
+msgstr "3D"
+
+msgid "Photo"
+msgstr "Фото"
+
+msgid "Audio"
+msgstr "Аудіо"
+
+msgid "Video"
+msgstr "Відео"
+
+msgid "Link"
+msgstr "Посилання"
+
+msgid "Card"
+msgstr "Картка"
+
+msgid "Message"
+msgstr "Повідомлення"
+
 msgid "Pinned"
 msgstr "Закріплене"
 
@@ -812,23 +828,50 @@ msgstr "До повідомлення"
 msgid "Nothing is pinned yet"
 msgstr "Поки нічого не закріплено"
 
+msgid "play"
+msgstr "відтворити"
+
+msgid "full width"
+msgstr "на всю ширину"
+
+msgid "a little game"
+msgstr "маленька гра"
+
+msgid "mouse control"
+msgstr "керування — мишею"
+
+msgid "pause off screen"
+msgstr "пауза поза екраном"
+
+msgid "state kept"
+msgstr "стан збережено"
+
+msgid "HANDS ASK FOR PERMISSION"
+msgstr "HANDS ПРОСИТЬ ДОЗВІЛ"
+
+msgid "Allow"
+msgstr "Дозволити"
+
+msgid "Not now"
+msgstr "Не зараз"
+
 msgid "Pin"
 msgstr "Закріпити"
 
 msgid "Doka"
 msgstr "Дока"
 
-msgid "full width"
-msgstr "на всю ширину"
+msgid "narrow"
+msgstr "у стрічку"
 
-msgid "Weather"
-msgstr "Погода"
+msgid "Allowed"
+msgstr "Дозволено"
+
+msgid "This is a mock"
+msgstr "Це макет"
 
 msgid "Burshtyn"
 msgstr "Бурштин"
-
-msgid "now"
-msgstr "зараз"
 
 msgid "cloudy · feels like −2°"
 msgstr "хмарно · відчувається −2°"
@@ -848,11 +891,9 @@ msgstr "тиск"
 msgid "mm"
 msgstr "мм"
 
-msgid "Mock · 11 November"
-msgstr "Макет · 11 листопада"
-
-msgid "What changes"
-msgstr "Що змінюється"
+#, python-brace-format
+msgid "updated {time} · source: weather"
+msgstr "оновлено {time} · джерело: погода"
 
 msgid "Was"
 msgstr "Було"
@@ -884,74 +925,154 @@ msgstr "Вкладка Context"
 msgid "Details in the system column"
 msgstr "«Деталі» в системній колонці"
 
-msgid "HANDS ASK FOR PERMISSION"
-msgstr "HANDS ПРОСИТЬ ДОЗВІЛ"
+msgid "microphone · level 3 of 5"
+msgstr "мікрофон · рівень 3 з 5"
 
-msgid "Run make test in this checkout?"
-msgstr "Запустити make test у цьому чекауті?"
+msgid "listening"
+msgstr "слухає"
 
-msgid "Allow"
-msgstr "Дозволити"
+#, python-brace-format
+msgid "{h} h"
+msgstr "{h} год"
 
-msgid "Not now"
-msgstr "Не зараз"
+msgid "Microphone"
+msgstr "Мікрофон"
 
-msgid "HANDS"
-msgstr "РУКИ"
+msgid "Hear the answer"
+msgstr "Чути відповідь"
 
-msgid "checked the branch"
-msgstr "перевірив гілку"
+msgid "Volume"
+msgstr "Гучність"
 
-msgid "built it"
-msgstr "зібрав"
+#, python-brace-format
+msgid "updated {for} ago"
+msgstr "оновлено {for} тому"
 
-msgid "heare design system"
-msgstr "Дизайн-система heare"
+msgid "2 windows"
+msgstr "2 вікна"
 
-msgid "What is the weather in Burshtyn?"
-msgstr "Що там з погодою у Бурштині?"
+msgid "See the screen"
+msgstr "Бачити екран"
 
-msgid "It is +1° in Burshtyn, feels like −2°. Wind 6 km/h."
-msgstr "У Бурштині зараз +1°, відчувається як −2°. Вітер 6 км/год."
+msgid "See around"
+msgstr "Бачити навколо"
 
-msgid "Show me the new screen."
+msgid "Refresh now"
+msgstr "Оновити зараз"
+
+msgid "tests · step 2 of 4"
+msgstr "тести · крок 2 з 4"
+
+msgid "steps"
+msgstr "кроки"
+
+msgid "1 task"
+msgstr "1 задача"
+
+msgid "Allow actions"
+msgstr "Дозволяти дії"
+
+msgid "Tests without asking"
+msgstr "Тести без питання"
+
+msgid "Run the tests"
+msgstr "Запустити тести"
+
+msgid "2 tabs · 1 phone"
+msgstr "2 вкладки · 1 телефон"
+
+msgid "this window"
+msgstr "це вікно"
+
+msgid "This window"
+msgstr "Це вікно"
+
+msgid "Disconnect this window"
+msgstr "Відключити це вікно"
+
+msgid "New window"
+msgstr "Нове вікно"
+
+msgid "weather"
+msgstr "погода"
+
+msgid "Exchange rates"
+msgstr "Курс валют"
+
+msgid "Refresh the sources"
+msgstr "Оновити джерела"
+
+msgid "this Mac"
+msgstr "цей Mac"
+
+msgid "What is the weather in Burshtyn? And remind me about the meeting."
+msgstr "Що там з погодою у Бурштині? І нагадай про зустріч."
+
+msgid "It is +1° in Burshtyn, feels like −2°. Wind 6 km/h. Here is the card — pinned, so it stays at hand."
+msgstr "У Бурштині зараз +1°, відчувається як −2°, вітер 6 км/год. Ось картка — закріпив, щоб була під рукою."
+
+msgid "The meeting is at 13:30 — the dentist. I will remind you 25 minutes before."
+msgstr "Зустріч о 13:30 — дантист. Нагадаю за 25 хвилин."
+
+msgid "Show me what the new screen looks like."
 msgstr "Покажи, як виглядає новий екран."
 
 msgid "Here is the mock. This is not a board any more — a chat, a pinned dock and the body beside it."
 msgstr "Ось макет. Це вже не дошка — чат, док закріпленого і тіло збоку."
 
-msgid "And the table: what goes away from the old screen."
-msgstr "І таблиця: що саме зникає зі старого екрана."
-
-msgid "The meeting is at 13:30 — the dentist. I will remind you 25 minutes before."
-msgstr "Зустріч о 13:30 — дантист. Нагадаю за 25 хвилин."
-
-msgid "Here is the design-system link."
-msgstr "Ось посилання на дизайн-систему."
-
-msgid "Show this at full width."
-msgstr "Покажи це на всю ширину."
-
-msgid "Done. The table above is the whole panel wide — use the corner button to bring it back."
-msgstr "Готово. Таблиця вище — на всю ширину панелі; кутова кнопка поверне її у стрічку."
-
-msgid "An image message, and a link message:"
-msgstr "Повідомлення-картинка і посилання:"
-
-msgid "An audio message:"
-msgstr "Аудіо-повідомлення:"
-
-msgid "A video message:"
-msgstr "Відео-повідомлення:"
-
 msgid "The new screen"
 msgstr "Новий екран"
 
-msgid "mock · 11 November"
-msgstr "макет · 11 листопада"
+msgid "Mock · 11 November"
+msgstr "Макет · 11 листопада"
 
-msgid "table · 4 rows"
-msgstr "таблиця · 4 рядки"
+msgid "hands · building the mock · step 2 of 3"
+msgstr "hands · збираю макет · крок 2 з 3"
+
+msgid "And a short audio — how it sounds."
+msgstr "Ще коротке аудіо — як це звучить."
+
+msgid "Demo"
+msgstr "Демо"
+
+msgid "And a short video — how it moves."
+msgstr "І коротке відео — як воно рухається."
+
+msgid "Cube"
+msgstr "Куб"
+
+msgid "And a small 3D game. Such things live in the chat too — in a sandbox, paused off screen."
+msgstr "І маленька 3D-гра. Такі речі теж житимуть у чаті — у пісочниці, з паузою поза екраном."
+
+msgid "heare design system"
+msgstr "Дизайн-система heare"
+
+msgid "A link to the design system — so it is not all in my head."
+msgstr "Посилання на дизайн-систему — щоб не тримати все в голові."
+
+msgid "What changes"
+msgstr "Що змінюється"
+
+msgid "And the table: what goes away from the old screen."
+msgstr "І таблиця: що саме зникає зі старого екрана."
+
+msgid "hands ask for permission"
+msgstr "hands просить дозвіл"
+
+msgid "Run make test in this checkout?"
+msgstr "Запустити make test у цьому чекауті?"
+
+msgid "Today"
+msgstr "Сьогодні"
+
+msgid "3 November"
+msgstr "3 листопада"
+
+msgid "Show me the photo from the Carpathians."
+msgstr "Покажи фото з Карпат."
+
+msgid "Here. It was cold, but beautiful."
+msgstr "Ось. Було холодно, але гарно."
 
 msgid "Carpathians"
 msgstr "Карпати"
@@ -959,11 +1080,23 @@ msgstr "Карпати"
 msgid "October · 3 November"
 msgstr "Жовтень · 3 листопада"
 
-msgid "November · 2 November"
-msgstr "Листопад · 2 листопада"
+msgid "1 November"
+msgstr "1 листопада"
 
-msgid "Today"
-msgstr "Сьогодні"
+msgid "Remind me about the doctor."
+msgstr "Нагадай про лікаря."
+
+msgid "Thursday, 6 November, at 10:00. Noted."
+msgstr "У четвер, 6 листопада, о 10:00. Записав."
+
+msgid "3D game"
+msgstr "3D-гра"
+
+msgid "cube · pause off screen"
+msgstr "куб · пауза поза екраном"
+
+msgid "quiet"
+msgstr "тихо"
 
 msgid "you are here"
 msgstr "ти тут"
@@ -971,10 +1104,6 @@ msgstr "ти тут"
 #, python-brace-format
 msgid "replies: {n}"
 msgstr "відповідей: {n}"
-
-#, python-brace-format
-msgid "{m} min"
-msgstr "{m} хв"
 
 msgid "looking in memory"
 msgstr "шукаю в памʼяті"
@@ -1002,19 +1131,6 @@ msgstr "Нова сесія"
 
 msgid "Sure?"
 msgstr "Точно?"
-
-#, python-brace-format
-msgid "{name} did not upload"
-msgstr "{name} не завантажився"
-
-msgid "paused"
-msgstr "на паузі"
-
-msgid " · not hearing"
-msgstr " · не чує"
-
-msgid " · no voice"
-msgstr " · без голосу"
 
 msgid "no key for any model"
 msgstr "немає ключа жодної моделі"
@@ -1142,9 +1258,6 @@ msgstr "зупинено"
 msgid "{s} s"
 msgstr "{s} с"
 
-msgid "stop"
-msgstr "зупинити"
-
 msgid "Doing nothing now."
 msgstr "Зараз нічого не роблю."
 
@@ -1172,11 +1285,11 @@ msgstr "вихід"
 msgid "executor"
 msgstr "виконавець"
 
-msgid "page"
-msgstr "сторінка"
+msgid "Page"
+msgstr "Сторінка"
 
-msgid "chat"
-msgstr "чат"
+msgid "Chat"
+msgstr "Чат"
 
 msgid "CLI hands"
 msgstr "Руки CLI"
@@ -1251,22 +1364,8 @@ msgstr "забрати ключ цього вікна"
 msgid "Forget"
 msgstr "Забути"
 
-#, python-brace-format
-msgid "the part is v{part}, the brain v{brain}"
-msgstr "версія частини v{part}, мозку — v{brain}"
-
-msgid "hide settings"
-msgstr "сховати налаштування"
-
-msgid "settings"
-msgstr "налаштування"
-
 msgid "just now"
 msgstr "щойно"
-
-#, python-brace-format
-msgid "{h} h"
-msgstr "{h} год"
 
 #, python-brace-format
 msgid "{d} d"
@@ -1283,15 +1382,25 @@ msgstr "перезапусків: {n}"
 msgid "no restarts"
 msgstr "без перезапусків"
 
+#, python-brace-format
+msgid "the part is v{part}, the brain v{brain}"
+msgstr "версія частини v{part}, мозку — v{brain}"
+
+msgid "hide settings"
+msgstr "сховати налаштування"
+
+msgid "settings"
+msgstr "налаштування"
+
+#, python-brace-format
+msgid "settings · {part}"
+msgstr "налаштування · {part}"
+
 msgid "hears the whole conversation"
 msgstr "чує всю розмову"
 
 msgid "can give leave with a button"
 msgstr "може дати дозвіл кнопкою"
-
-#, python-brace-format
-msgid "changes: {skill}"
-msgstr "змінює: {skill}"
 
 msgid "failure"
 msgstr "збій"
@@ -1308,9 +1417,6 @@ msgstr "журнал, факти, профіль"
 msgid "Model"
 msgstr "Модель"
 
-msgid "Page"
-msgstr "Сторінка"
-
 msgid "served by the brain"
 msgstr "її віддає мозок"
 
@@ -1321,12 +1427,23 @@ msgstr "жодна частина не на зв'язку"
 msgid "part {n}"
 msgstr "частина {n}"
 
-#, python-brace-format
-msgid "settings · {part}"
-msgstr "налаштування · {part}"
+msgid "system"
+msgstr "Система"
 
-msgid "unfold"
-msgstr "розгорнути"
+msgid "persona"
+msgstr "Персона"
+
+msgid "laws"
+msgstr "Закони"
+
+msgid "memory"
+msgstr "Пам'ять"
+
+msgid "the canvas"
+msgstr "Канвас"
+
+msgid "the conversation"
+msgstr "Розмова"
 
 msgid "Person"
 msgstr "Людина"
@@ -1346,11 +1463,34 @@ msgstr "Розмова"
 msgid "verbs"
 msgstr "дієслова"
 
+msgid "What is in the prompt"
+msgstr "Що в промпті"
+
 msgid "No turn yet."
 msgstr "Ще не було ходу."
 
-msgid "What heare handed over; the agent's own prompt stays inside the agent."
-msgstr "Те, що heare передав; власний промпт агента лишається в агенті."
+msgid "This run"
+msgstr "Цей запуск"
+
+msgid "Session"
+msgstr "Сесія"
+
+#, python-brace-format
+msgid "turns: {n}"
+msgstr "реплік: {n}"
+
+msgid "Replies"
+msgstr "Відповідей"
+
+msgid "Running"
+msgstr "Працює"
+
+msgid "Version"
+msgstr "Версія"
+
+#, python-brace-format
+msgid "parts: {n}"
+msgstr "частин: {n}"
 
 msgid "No tasks yet."
 msgstr "Завдань ще не було."
@@ -1391,6 +1531,9 @@ msgstr "не збереглося: {why}"
 
 msgid "new on the screen"
 msgstr "нове на екрані"
+
+msgid "Hear the reply"
+msgstr "Чути відповідь"
 
 msgid "from the old memory"
 msgstr "зі старої памʼяті"
@@ -1786,29 +1929,23 @@ msgstr "забути"
 msgid "forget this machine? its parts stop being trusted"
 msgstr "забути цю машину? її частини більше не довірятимуться"
 
-msgid "load"
-msgstr "навантаження"
-
 msgid "free"
 msgstr "вільно"
 
 msgid "last seen"
 msgstr "востаннє чули"
 
+msgid "load"
+msgstr "навантаження"
+
 msgid "pending"
 msgstr "чекає"
-
-msgid "restart"
-msgstr "перезапустити"
 
 msgid "turn off"
 msgstr "вимкнути"
 
 msgid "turn on"
 msgstr "увімкнути"
-
-msgid "Windows and other parts"
-msgstr "Вікна та інші частини"
 
 #, python-brace-format
 msgid "failure: {why}"
@@ -1827,9 +1964,6 @@ msgstr "не можу: {what} ({why})"
 
 msgid "no connection to heare"
 msgstr "немає зв'язку з heare"
-
-msgid "This is a mock"
-msgstr "Це макет"
 
 #, python-brace-format
 msgid "{n} piece"
@@ -2340,14 +2474,8 @@ msgstr "Що ще"
 msgid "Almost done"
 msgstr "Майже все"
 
-msgid "Allowed"
-msgstr "Дозволено"
-
 msgid "the microphone is off — turn it on in System Settings → Privacy & Security → Microphone"
 msgstr "мікрофон вимкнено — увімкни його: Системні налаштування → Конфіденційність і безпека → Мікрофон"
-
-msgid "Microphone"
-msgstr "Мікрофон"
 
 msgid "the voice listens to you"
 msgstr "голос слухає тебе"
@@ -2622,9 +2750,6 @@ msgstr "місто не знайдено"
 msgid "Sound"
 msgstr "Звук"
 
-msgid "Volume"
-msgstr "Гучність"
-
 msgid "Answers"
 msgstr "Відповідає"
 
@@ -2639,6 +2764,9 @@ msgstr "Зберігати записи"
 
 msgid "hearing"
 msgstr "чує"
+
+msgid "paused"
+msgstr "на паузі"
 
 msgid "no recognition key: allow it on the page or add GROQ_API_KEY"
 msgstr "немає ключа розпізнавання: дозволь його на пульті або додай GROQ_API_KEY"
@@ -2769,4 +2897,106 @@ msgstr "я перестав чути {s} секунд тому — схоже, �
 
 #~ msgid "Open memory"
 #~ msgstr "Відкрити памʼять"
+
+#~ msgid "■ Stop"
+#~ msgstr "■ Стоп"
+
+#~ msgid "Brain"
+#~ msgstr "Мозок"
+
+#~ msgid "what it knows itself"
+#~ msgstr "що він знає сам"
+
+#~ msgid "settings: keys, model"
+#~ msgstr "налаштування: ключі, модель"
+
+#~ msgid "more"
+#~ msgstr "більше"
+
+#~ msgid "this run"
+#~ msgstr "цей запуск"
+
+#~ msgid "fold"
+#~ msgstr "згорнути"
+
+#~ msgid "what runs where"
+#~ msgstr "що де працює"
+
+#~ msgid "HANDS"
+#~ msgstr "РУКИ"
+
+#~ msgid "checked the branch"
+#~ msgstr "перевірив гілку"
+
+#~ msgid "built it"
+#~ msgstr "зібрав"
+
+#~ msgid "What is the weather in Burshtyn?"
+#~ msgstr "Що там з погодою у Бурштині?"
+
+#~ msgid "It is +1° in Burshtyn, feels like −2°. Wind 6 km/h."
+#~ msgstr "У Бурштині зараз +1°, відчувається як −2°. Вітер 6 км/год."
+
+#~ msgid "Show me the new screen."
+#~ msgstr "Покажи, як виглядає новий екран."
+
+#~ msgid "Here is the design-system link."
+#~ msgstr "Ось посилання на дизайн-систему."
+
+#~ msgid "Show this at full width."
+#~ msgstr "Покажи це на всю ширину."
+
+#~ msgid "Done. The table above is the whole panel wide — use the corner button to bring it back."
+#~ msgstr "Готово. Таблиця вище — на всю ширину панелі; кутова кнопка поверне її у стрічку."
+
+#~ msgid "An image message, and a link message:"
+#~ msgstr "Повідомлення-картинка і посилання:"
+
+#~ msgid "An audio message:"
+#~ msgstr "Аудіо-повідомлення:"
+
+#~ msgid "A video message:"
+#~ msgstr "Відео-повідомлення:"
+
+#~ msgid "mock · 11 November"
+#~ msgstr "макет · 11 листопада"
+
+#~ msgid "table · 4 rows"
+#~ msgstr "таблиця · 4 рядки"
+
+#~ msgid "November · 2 November"
+#~ msgstr "Листопад · 2 листопада"
+
+#~ msgid "{name} did not upload"
+#~ msgstr "{name} не завантажився"
+
+#~ msgid " · not hearing"
+#~ msgstr " · не чує"
+
+#~ msgid " · no voice"
+#~ msgstr " · без голосу"
+
+#~ msgid "changes: {skill}"
+#~ msgstr "змінює: {skill}"
+
+#~ msgid "unfold"
+#~ msgstr "розгорнути"
+
+#~ msgid "Windows and other parts"
+#~ msgstr "Вікна та інші частини"
+
+#~ msgid "I am here. Ask."
+#~ msgstr "Я тут. Питай."
+
+#~ msgid "restart"
+#~ msgstr "перезапустити"
+
+#~ msgid "What heare handed over; the agent's own prompt stays inside the agent."
+#~ msgstr "Те, що heare передав; власний промпт агента лишається в агенті."
+
+#~ msgid "page"
+#~ msgstr "сторінка"
+
+#~ msgid "chat"
+#~ msgstr "чат"
 
