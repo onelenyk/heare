@@ -43,10 +43,13 @@ def test_what_could_reach_outside_the_frame_is_taken_out():
              '<iframe src="//evil"></iframe><link rel="stylesheet" href="//evil.css">'
              '<script>setInterval(tick, 1000)</script>')
     cleaned = clean(dirty)
-    for bad in ("onclick", "javascript:", "iframe", "<link"):
+    for bad in ("javascript:", "iframe", "<link"):
         assert bad not in cleaned
-    # A script stays: the page only ever runs it inside a sealed frame.
+    # A script stays, and so do its own handlers: the page only ever runs
+    # this card inside a sealed frame, where they can reach nothing of the
+    # person's. A card without a script is inlined, so its handlers go.
     assert "привіт" in cleaned and "setInterval" in cleaned
+    assert 'onclick="steal()"' in cleaned
 
 
 def test_widgets_stay_side_by_side_each_with_a_size(tmp_path):
@@ -67,15 +70,29 @@ def test_a_stored_widget_cannot_style_or_form_the_page(tmp_path):
     able to restyle the pult, post a form, or make the browser fetch."""
     canvas = _canvas(tmp_path)
     canvas.put("bad", '<style>#pult{display:none}</style>'
+                      '<p onclick="steal()">safe</p>'
                       '<form action="https://evil.example"><input name="x">'
                       '<img src="https://evil.example/beacon"></form>'
-                      '<p>safe</p><a href="https://evil.example">x</a>'
+                      '<a href="https://evil.example">x</a>'
                       '<svg><use href="https://evil.example/x.svg"></use>'
                       '<animate attributeName="href" values="//evil"></animate></svg>')
     stored = canvas.blocks["bad"]
-    for gone in ("<style", "<form", "<input", "<img", "<animate", "https://evil", "action="):
+    for gone in ("<style", "onclick", "<form", "<input", "<img", "<animate", "https://evil", "action="):
         assert gone not in stored
     assert "safe" in stored
+
+
+def test_a_live_widget_keeps_its_own_animation_but_fetches_nothing(tmp_path):
+    """A card with a script runs in a sealed frame: it may animate itself,
+    and that stylesheet cannot reach outside the frame."""
+    canvas = _canvas(tmp_path)
+    canvas.put("live", '<style>@keyframes a{to{opacity:0}} '
+                       '#x{background:url("https://evil.example/x")}</style>'
+                       '<button onclick="go()">x</button><script>go()</script>')
+    stored = canvas.blocks["live"]
+    assert "<style>" in stored and "@keyframes" in stored
+    assert 'onclick="go()"' in stored
+    assert "url(" not in stored and "https://evil" not in stored
 
 
 def test_the_canvas_stylesheet_cannot_fetch_anything(tmp_path):

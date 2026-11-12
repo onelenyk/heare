@@ -102,8 +102,15 @@ class PinStore:
             if pin.get("self") and not pin.get("message"):
                 continue
             item = dict(pin)
-            if self._row(item.get("message", "")) is None:
+            row = self._row(item.get("message", ""))
+            if row is None:
                 item["missing"] = True
+            else:
+                # What the message is: a picture's file, so its chip can show
+                # the picture, and the preview can open it from another session.
+                artifact = row.get("artifact") or {}
+                if artifact:
+                    item["artifact"] = artifact
             out.append(item)
         return out
 

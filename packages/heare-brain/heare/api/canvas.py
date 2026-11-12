@@ -45,6 +45,7 @@ OUTLINE_TOTAL = 2400
 TURN_CHARS = 120
 TURN_TOTAL = 900
 _ID = re.compile(r"[a-z0-9][a-z0-9_-]{0,40}")
+_SCRIPT = re.compile(r"<\s*script\b", re.IGNORECASE)
 _PAIRED = re.compile(r"<\s*(iframe|object|embed)\b.*?</\s*\1\s*>", re.IGNORECASE | re.DOTALL)
 _LONE = re.compile(r"</?\s*(iframe|object|embed|link|meta|base)\b[^>]*>?", re.IGNORECASE)
 SIZES = ("s", "m", "l")
@@ -78,15 +79,30 @@ def _drop_url(attribute: re.Match[str]) -> str:
     return attribute.group(0) if value.startswith("#") else ""
 
 
+def _css_block(block: re.Match[str]) -> str:
+    """A live card's own stylesheet: it may animate, but it may not fetch."""
+    css = _IMPORT.sub("", block.group(0))
+    css = _CSS_URL.sub("", css)
+    return _JS_URL.sub("", css)
+
+
 def clean(html: str) -> str:
-    """Frames, external sheets, styles, forms, fetching tags, inline handlers
-    and script URLs are taken out. A <script> stays: the page never runs it
-    in itself, only inside a sealed frame that can reach nothing of the
-    person's. The rest is safe to put into the page as it is."""
+    """Frames, external sheets, forms, fetching tags, inline handlers and
+    script URLs are taken out. A <script> stays, and with it the card's own
+    <style> and handlers: the page never runs a live card in itself, only
+    inside a sealed frame that can reach nothing of the person's. A card
+    without a script is written into the page, so its styles and handlers
+    go: it must not be able to restyle the pult. The rest is safe as it is."""
+    live = bool(_SCRIPT.search(html))
     html = _LONE.sub("", _PAIRED.sub("", html))
-    html = _STYLE_LONE.sub("", _STYLE_BLOCK.sub("", html))
+    if live:
+        html = _STYLE_BLOCK.sub(_css_block, html)
+    else:
+        html = _STYLE_LONE.sub("", _STYLE_BLOCK.sub("", html))
     html = _FORM.sub("", _FETCHING.sub("", _ANIMATION.sub("", html)))
-    html = _HANDLER.sub("", _URL_ATTR.sub(_drop_url, html))
+    if not live:
+        html = _HANDLER.sub("", html)
+    html = _URL_ATTR.sub(_drop_url, html)
     return _CSS_URL.sub("", _JS_URL.sub("", html))
 
 

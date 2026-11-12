@@ -55,6 +55,22 @@ def test_show_puts_a_card_and_the_context_names_it(tmp_path):
     assert rows[0]["id"] in timeline.context()
 
 
+def test_show_keeps_the_script_so_the_page_can_run_the_app(tmp_path):
+    import asyncio
+
+    sessions = Sessions(tmp_path / "s")
+    session = sessions.new()
+    timeline = Timeline(sessions)
+    said = asyncio.run(timeline._show({
+        "html": '<h3>Mini app</h3><style>#x{animation:pulse 1s infinite}</style>'
+                '<script>document.getElementById("x").textContent = "ran"</script>',
+        "say": "Ось застосунок."}))
+    row = sessions.read(session)[0]
+    assert said == "Ось застосунок."
+    assert "<script>" in row["html"] and "<style>" in row["html"]
+    assert row["artifact"]["live"] is True
+
+
 def test_show_link_and_media_are_checked(tmp_path):
     import asyncio
 

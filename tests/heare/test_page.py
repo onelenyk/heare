@@ -176,6 +176,16 @@ def test_the_stream_reconnects_and_knocks():
     assert "knock()" in opens[0] and "refresh()" in opens[0]
 
 
+def test_a_message_with_a_script_runs_in_a_sealed_frame():
+    """The page cannot run a card's script where it stands; a card that
+    carries one is a sealed frame of its own, sized by its bridge."""
+    render = SCRIPT.split('if (m.kind === "html")')[1].split("if (m.who === \"me\")")[0]
+    assert "liveframe" in render and 'sandbox="allow-scripts"' in render
+    assert "/<script[\\s>]|<style[\\s>]/i" in render
+    assert 'srcdoc="${escapeHtml(framed(' in render
+    assert "#live iframe, #flow iframe" in SCRIPT
+
+
 def test_a_live_widget_cannot_read_memory_or_say():
     may = re.search(r"const MAY_GET = /(.*?)/;", SCRIPT).group(1)
     for forbidden in ("memory", "history", "canvas"):

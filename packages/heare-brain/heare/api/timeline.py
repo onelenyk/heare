@@ -59,10 +59,14 @@ _SHOW = _verb(
     "yourself, without being asked, when something is better seen than heard "
     "(a list, steps, a table, numbers, code) or the person wants something to "
     "keep an eye on. Not for small talk or a one-line answer. The gist goes in "
-    "`say`, the detail in the card. HTML only, no <style>; start with "
-    "<h3>title</h3>. Helpers: class=\"big\", \"muted\", \"row\", "
+    "`say`, the detail in the card. A fragment, not a whole document; start "
+    "with <h3>title</h3>. Helpers: class=\"big\", \"muted\", \"row\", "
     "\"meter\" with style=\"--v:0.42\", \"pill\". A live card carries "
-    "one <script>; it can read heare.get('state'|'tasks').",
+    "one <script> and may bring its own <style>: it runs in a sealed frame "
+    "of its own — canvas, requestAnimationFrame, CSS animation and fetch of "
+    "public services work, and heare.get('system'|'state'|'tasks') reads "
+    "this machine. Without a script a <style> is dropped. To show a page or "
+    "a mini app, pass its HTML and JS in `html`.",
     {
         "html": {"type": "string", "description": "The card's HTML."},
         "title": {"type": "string", "description": "A short title for the card and the dock."},

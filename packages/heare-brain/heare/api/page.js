@@ -113,12 +113,28 @@ const PIN_TICO = {
   game: `<svg class="tico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 3 21 8v8l-9 5-9-5V8Z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>`,
   text: `<svg class="tico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 6h14M5 10h14M5 14h9M5 18h6"/></svg>`,
 };
+function pinImage(p) {
+  if (p.kind !== "image" && !(p.artifact && /^image\//.test(String(p.artifact.mime || "")))) return "";
+  if (p.src) return p.src;
+  const mid = p.message || p.mid;
+  const node = mid ? $("flow").querySelector(`[data-mid="${mid}"]`) : null;
+  const img = node && node.querySelector(".ph img, img.msg-media");
+  if (img) return img.src;
+  const a = p.artifact || {};
+  return a.file && p.session
+    ? `/api/sessions/${encodeURIComponent(p.session)}/files/${encodeURIComponent(a.file)}`
+    : "";
+}
 function pinChip(p) {
   const mid = p.message || p.mid;
   const chip = el("button", "pinchip" + (p.shelf ? " shelf" : "") + (p.missing ? " missing" : ""));
   chip.type = "button"; chip.dataset.mid = mid;
   const thumb = el("span", "pinchip-thumb");
-  if (p.thumbHtml) thumb.innerHTML = p.thumbHtml;
+  const picture = pinImage(p);
+  if (picture) {
+    const img = el("img"); img.src = picture; img.alt = ""; img.loading = "lazy";
+    thumb.append(img);
+  } else if (p.thumbHtml) thumb.innerHTML = p.thumbHtml;
   else thumb.innerHTML = PIN_TICO[p.kind] || PIN_TICO[p.kind === "html" ? "table" : "text"];
   const text = el("span", "pinchip-text");
   text.append(el("b", "", p.missing ? tr("Message unavailable") : p.title),
@@ -235,7 +251,12 @@ function previewShow(p, chip) {
     head.append(el("span", "", kindLabel(p.kind) || tr("Pinned")),
                 el("b", "", p.missing ? tr("Message unavailable") : p.title));
     const body = el("div", "pv-body");
-    body.innerHTML = m ? m.html : `<p>${tr("This message is not loaded.")}</p>`;
+    const picture = !m && pinImage(p);
+    body.innerHTML = m ? m.html
+      : picture
+        ? `<figure class="artifact photo"><div class="ph"><img src="${escapeHtml(picture)}" alt=""></div>` +
+          `${p.line ? `<figcaption class="cap">${escapeHtml(p.line)}</figcaption>` : ""}</figure>`
+        : `<p>${tr("This message is not loaded.")}</p>`;
     const hint = el("div", "pv-hint", tr("Go to the message"));
     pv.replaceChildren(head, body, hint); pv.hidden = false;
     const card = body.querySelector(".game");
@@ -395,7 +416,12 @@ function renderContent(m) {
       if (!title) title = found[2].replace(/<[^>]+>/g, "").trim();
       html = html.slice(found[0].length);
     }
-    return lead + `<div class="artifact">${artHead(labelOf(a), title)}<div class="art-body">${html}</div></div>`;
+    const live = /<script[\s>]|<style[\s>]/i.test(html);
+    const inner = live
+      ? `<div class="art-body livebody"><iframe class="liveframe" sandbox="allow-scripts" title="${escapeHtml(title)}" ` +
+        `srcdoc="${escapeHtml(framed(html, "m-" + String(m.id || "live").replace(/[^a-z0-9_-]+/gi, "-")))}"></iframe></div>`
+      : `<div class="art-body">${html}</div>`;
+    return lead + `<div class="artifact">${artHead(labelOf(a), title)}${inner}</div>`;
   }
   if (m.who === "me") return `<div class="bubble">${escapeHtml(m.text || "")}</div>`;
   return `<div class="say">${m.html || `<p>${escapeHtml(m.text || "")}</p>`}</div>`;
@@ -794,6 +820,7 @@ const DEMO_PINS = {
   ],
   shelf: [
     { mid: "nov3/1", kind: "image", title: tr("Carpathians"), line: tr("October · 3 November"), shelf: true,
+      src: svgSrc(landscapeArt("pv1")),
       html: `<figure class="artifact photo"><div class="ph"><img src="${svgSrc(landscapeArt("pv1"))}" alt=""></div><figcaption class="cap">${tr("October · 3 November")}</figcaption></figure>` },
   ],
 };
@@ -1024,8 +1051,6 @@ $("sessiondrop").onclick = () => {
   if (row) deleteSession(session, row);
 };
 $("newsession").onclick = newSession;
-
-if (!DEMO) { loadSessions().catch(() => {}); loadPins(); }
 
 /* ── the panel ── */
 function show() {
@@ -2063,7 +2088,7 @@ function block(b) {
   node.className = "blk " + (b.size || "s");
   const x = el("button", "x", "×"); x.title = tr("remove"); x.onclick = () => api("canvas/remove", {method: "POST", body: {id: b.id}});
   node.dataset.html = b.html;
-  if (/<script/i.test(b.html)) {
+  if (/<script[\s>]|<style[\s>]/i.test(b.html)) {
     const frame = document.createElement("iframe");
     frame.setAttribute("sandbox", "allow-scripts"); frame.srcdoc = framed(b.html, b.id);
     node.replaceChildren(x, frame);
@@ -2345,7 +2370,7 @@ $("live").addEventListener("click", ev => {
   if (say) ask(say.dataset.say);
 });
 addEventListener("message", ev => {
-  const m = ev.data, frame = [...document.querySelectorAll("#live iframe")].find(f => f.contentWindow === ev.source);
+  const m = ev.data, frame = [...document.querySelectorAll("#live iframe, #flow iframe, #pinpreview iframe, #sheet iframe")].find(f => f.contentWindow === ev.source);
   if (!m || !m.heare || !frame) return;
   if (m.heare === "size") frame.style.height = Math.min(Math.max(m.h, 40), 900) + "px";
   else if (m.heare === "get") {
@@ -3599,6 +3624,8 @@ if (!DEMO) {
   // brain restart (a knock re-registers this window), and the state is fresh.
   stream.onopen = () => { knock(); refresh(); };
   $("say").onsubmit = ev => { ev.preventDefault(); const text = $("text").value.trim(); if (!text && !pending.length) return; $("text").value = ""; ask(text); };
+  loadSessions().catch(() => {});
+  loadPins();
   refresh(); setInterval(refresh, 15000);
   loadMachines(); setInterval(loadMachines, 15000);
 } else {
