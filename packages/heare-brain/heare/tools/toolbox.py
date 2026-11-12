@@ -22,6 +22,7 @@ from heare.tools.schemas import (
     _CANCEL_REMINDER,
     _LIST_REMINDERS,
     _MERGE_PLANS,
+    _PIN,
     _PLANS,
     _READ_BODY,
     _RECALL,
@@ -45,6 +46,7 @@ class Toolbox:
         hands: Callable[[], list[tuple[str, str, str, str]]] = lambda: [],
         bodies: Callable[[], Bodies | None] = lambda: None,
         plans: Plans | None = None,
+        pins: object | None = None,
     ) -> None:
         self._memory = memory
         self._state = state
@@ -57,6 +59,7 @@ class Toolbox:
         self._hands = hands
         self._bodies = bodies
         self._plans = plans
+        self._pins = pins
 
     def verbs(self) -> dict[str, tuple[dict, Callable[[dict], Awaitable[str]]]]:
         verbs: dict[str, tuple[dict, Callable[[dict], Awaitable[str]]]] = {}
@@ -79,6 +82,8 @@ class Toolbox:
             for entry in bodies.skilled().values() for s in entry["skills"]
         ):
             verbs["read_body"] = (_READ_BODY, self._run_read_body)
+        if self._pins is not None:
+            verbs["pin"] = (_PIN, self._run_pin)
         return verbs
 
     def acknowledging(self) -> set[str]:
@@ -90,8 +95,12 @@ class Toolbox:
     def lookup(self, name: str) -> bool:
         # remind and cancel_reminder change something, but only locally and
         # without permission; their answer is worth seeing inside the turn.
-        return name in {"recall", "list_reminders", "read_body",
+        return name in {"recall", "list_reminders", "read_body", "pin",
                         "remind", "cancel_reminder", "plans", "merge_plans"}
+
+    async def _run_pin(self, arguments: dict) -> str:
+        from heare.tools import pins
+        return pins.run(self._pins, arguments)
 
     async def _run_recall(self, arguments: dict) -> str:
         return await recall.run(self._memory, arguments)

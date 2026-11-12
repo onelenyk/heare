@@ -709,6 +709,27 @@ async def test_the_person_can_redraw_a_widget_by_hand(tmp_path):
     await _close(room, client)
 
 
+async def test_a_pin_points_at_a_message_and_can_be_removed(tmp_path):
+    room, client, auth, _ = await _open(tmp_path)
+    active = (await (await client.get("/api/sessions", headers=auth)).json())["active"]
+    from heare.core.forms import Message
+    room.core.hear(Message(text="привіт", channel="screen"))
+    await room.until(lambda: room.core.state.phase == "idle")
+    turns = await (await client.get(f"/api/sessions/{active}/turns", headers=auth)).json()
+    mid = turns[-1]["id"]
+    made = await client.post("/api/pins", json={"message": mid}, headers=auth)
+    assert made.status == 200
+    pin = (await made.json())["pin"]
+    got = await (await client.get("/api/pins", headers=auth)).json()
+    assert got["pins"][0]["id"] == pin["id"] and got["pins"][0]["message"] == mid
+    again = await client.post("/api/pins", json={"message": mid}, headers=auth)
+    assert (await again.json())["pin"]["id"] == pin["id"]
+    removed = await client.delete(f"/api/pins/{pin['id']}", headers=auth)
+    assert await removed.json() == {"ok": True}
+    assert (await (await client.get("/api/pins", headers=auth)).json())["pins"] == []
+    await _close(room, client)
+
+
 async def test_a_new_part_waits_and_is_approved(tmp_path):
     room, client, auth, _ = await _open(tmp_path)
     registration = asyncio.create_task(client.post("/api/bodies", json={
@@ -1044,6 +1065,9 @@ LOCAL_ONLY = frozenset({
     ("POST", "/api/sessions/{id}/rename"),
     ("DELETE", "/api/sessions/{id}"),
     ("GET", "/api/sessions/{id}/turns"),
+    ("GET", "/api/pins"),
+    ("POST", "/api/pins"),
+    ("DELETE", "/api/pins/{id}"),
     ("GET", "/api/sessions/{id}/messages"),
     ("GET", "/api/sessions/{id}/messages/{n}"),
     ("POST", "/api/sessions/{id}/messages/{n}/width"),

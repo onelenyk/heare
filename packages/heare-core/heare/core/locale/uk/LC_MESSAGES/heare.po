@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-12 00:06+0200\n"
+"POT-Creation-Date: 2026-11-12 02:24+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -800,17 +800,41 @@ msgstr "Тут поки нічого"
 msgid "Say something, or ask for a screen."
 msgstr "Скажи щось або попроси екран."
 
+msgid "Message unavailable"
+msgstr "Повідомлення недоступне"
+
+msgid "Unpin"
+msgstr "Зняти"
+
+msgid "Wait for the reply to end."
+msgstr "Зачекай, поки закінчиться відповідь."
+
 msgid "another conversation"
 msgstr "інша розмова"
 
+msgid "unpinned"
+msgstr "знято"
+
+msgid "pinned"
+msgstr "закріплено"
+
+msgid "could not pin"
+msgstr "не вдалося закріпити"
+
 msgid "Pinned"
 msgstr "Закріплене"
+
+msgid "This message is not loaded."
+msgstr "Це повідомлення не завантажене."
 
 msgid "Go to the message"
 msgstr "До повідомлення"
 
 msgid "Nothing is pinned yet"
 msgstr "Поки нічого не закріплено"
+
+msgid "Pin"
+msgstr "Закріпити"
 
 msgid "Doka"
 msgstr "Дока"
@@ -987,9 +1011,6 @@ msgstr "Раніше"
 
 msgid "New session"
 msgstr "Нова сесія"
-
-msgid "Wait for the reply to end."
-msgstr "Зачекай, поки закінчиться відповідь."
 
 msgid "Sure?"
 msgstr "Точно?"

@@ -43,5 +43,5 @@ def test_the_demo_is_a_flag_not_a_second_page():
     feed = SCRIPT.split("const DEMO_FEED = [")[1].split("const DEMO_PINS")[0]
     assert feed.count('id: "demo/') == 12
     assert SCRIPT.count('mid: "demo/') == 3 and SCRIPT.count('mid: "nov') == 2
-    assert "if (!DEMO) loadSessions()" in SCRIPT
+    assert "if (!DEMO) { loadSessions()" in SCRIPT
     assert "demo();" in SCRIPT

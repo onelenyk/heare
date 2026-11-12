@@ -58,7 +58,9 @@ function feedEmpty() {
   box.append(el("b", "", tr("Nothing here yet")), el("span", "", tr("Say something, or ask for a screen.")));
   feedAppend(box);
 }
-let pinState = { trail: [], shelf: [] };
+let pinState = { trail: [], shelf: [], all: [] };
+const THUMB = {text: "¶", html: "▤", table: "▤", weather: "☀", image: "▣",
+  audio: "♫", video: "▶", link: "↗", ask: "?", step: "·", game: "◉", pin: "⌖"};
 let previewTimer = 0;
 let toastTimer = 0;
 function toast(text) {
@@ -74,34 +76,94 @@ function dockMeasure() {
   chat.style.setProperty("--comp-h", composer.offsetHeight + "px");
 }
 function pinChip(p) {
-  const chip = el("button", "pinchip" + (p.shelf ? " shelf" : ""));
-  chip.type = "button"; chip.dataset.mid = p.mid;
-  const thumb = el("span", "pinchip-thumb"); thumb.innerHTML = p.thumb || "";
+  const mid = p.message || p.mid;
+  const chip = el("button", "pinchip" + (p.shelf ? " shelf" : "") + (p.missing ? " missing" : ""));
+  chip.type = "button"; chip.dataset.mid = mid;
+  const thumb = el("span", "pinchip-thumb");
+  thumb.textContent = p.thumb || THUMB[p.kind || "text"] || THUMB.text;
   const text = el("span", "pinchip-text");
-  text.append(el("b", "", p.title), el("small", "", p.line));
-  chip.append(thumb, text);
-  chip.onclick = () => {
-    const m = $("flow").querySelector(`[data-mid="${p.mid}"]`);
-    if (m) m.scrollIntoView({behavior: "smooth", block: "center"});
-    else toast(tr("another conversation"));
-  };
+  text.append(el("b", "", p.missing ? tr("Message unavailable") : p.title),
+              el("small", "", p.line || ""));
+  const x = el("span", "pinchip-x", "×");
+  x.setAttribute("role", "button"); x.setAttribute("tabindex", "0");
+  x.setAttribute("aria-label", tr("Unpin"));
+  x.onclick = async e => { e.stopPropagation(); await togglePin(mid); };
+  chip.append(thumb, text, x);
+  chip.onclick = () => goToPin(p);
   chip.onmouseenter = () => previewShow(p, chip);
   chip.onmouseleave = previewHide;
   chip.onfocus = () => previewShow(p, chip);
   chip.onblur = previewHide;
   return chip;
 }
+function messageFor(p) {
+  const mid = p.message || p.mid;
+  const node = mid ? $("flow").querySelector(`[data-mid="${mid}"]`) : null;
+  if (node) { const body = node.querySelector(".body"); return body ? {html: body.innerHTML} : null; }
+  const demo = DEMO_FEED.find(x => x.id === mid);
+  return demo && demo.html ? demo : null;
+}
+async function goToPin(p) {
+  const mid = p.message || p.mid;
+  if (p.session && p.session !== session) {
+    try {
+      await api(`sessions/${p.session}/open`, {method: "POST"});
+      await loadSessions();
+      loadPins();
+      requestAnimationFrame(() => {
+        const m = $("flow").querySelector(`[data-mid="${mid}"]`);
+        if (m) m.scrollIntoView({behavior: "smooth", block: "center"});
+      });
+    } catch { toast(tr("Wait for the reply to end.")); }
+    return;
+  }
+  const m = $("flow").querySelector(`[data-mid="${mid}"]`);
+  if (m) { m.scrollIntoView({behavior: "smooth", block: "center"}); m.classList.add("flash"); setTimeout(() => m.classList.remove("flash"), 1200); }
+  else toast(tr("another conversation"));
+}
+async function togglePin(mid) {
+  const found = (pinState.all || []).find(p => (p.message || p.mid) === mid);
+  try {
+    if (found) { await api(`pins/${found.id}`, {method: "DELETE"}); toast(tr("unpinned")); }
+    else { await api("pins", {method: "POST", body: {message: mid}}); toast(tr("pinned")); }
+  } catch { toast(tr("could not pin")); return; }
+  await loadPins();
+}
+function passedDock(mid) {
+  const feed = $("feed"), dock = $("pin-dock");
+  const node = mid ? $("flow").querySelector(`[data-mid="${mid}"]`) : null;
+  if (!node || !feed || !dock) return false;
+  const dockH = dock.offsetHeight || 0;
+  return node.getBoundingClientRect().bottom <= feed.getBoundingClientRect().top + dockH + 8;
+}
+function arrangePins() {
+  if (DEMO) return;
+  const all = pinState.all || [];
+  pinState.trail = all.filter(p => p.session === session && !p.missing && passedDock(p.message));
+  pinState.shelf = all.filter(p => p.session !== session || p.missing);
+  dockRender();
+}
+async function loadPins() {
+  if (DEMO) { pinState = DEMO_PINS; dockRender(); return; }
+  try {
+    const got = await api("pins");
+    pinState = {trail: [], shelf: [], all: got.pins || []};
+    arrangePins();
+  } catch { }
+}
 function previewShow(p, chip) {
   clearTimeout(previewTimer);
   previewTimer = setTimeout(() => {
     const pv = $("pinpreview");
-    const m = DEMO_FEED.find(x => x.id === p.mid);
+    const m = messageFor(p);
     const head = el("div", "pv-head");
-    head.append(el("span", "", p.kind || tr("Pinned")), el("b", "", p.title));
+    head.append(el("span", "", p.kind || tr("Pinned")),
+                el("b", "", p.missing ? tr("Message unavailable") : p.title));
     const body = el("div", "pv-body");
-    body.innerHTML = p.html || (m && m.html) || "";
+    body.innerHTML = m ? m.html : `<p>${tr("This message is not loaded.")}</p>`;
     const hint = el("div", "pv-hint", tr("Go to the message"));
     pv.replaceChildren(head, body, hint); pv.hidden = false;
+    hint.onclick = () => { previewHide(); goToPin(p); };
     const r = chip.getBoundingClientRect(), w = pv.offsetWidth, h = pv.offsetHeight;
     pv.style.left = Math.min(Math.max(12, r.left), innerWidth - w - 12) + "px";
     pv.style.top = Math.min(r.bottom + 8, innerHeight - h - 12) + "px";
@@ -116,9 +178,14 @@ function dockRender() {
   if (!dock) return;
   const pins = [...pinState.trail, ...pinState.shelf];
   dock.replaceChildren(...(pins.length ? pins.map(pinChip) : [el("div", "dock-empty", tr("Nothing is pinned yet"))]));
-  if (DEMO) dockMeasure();
+  dockMeasure();
 }
 dockRender();
+let dockFrame = 0;
+$("feed")?.addEventListener("scroll", () => {
+  if (DEMO || dockFrame) return;
+  dockFrame = requestAnimationFrame(() => { dockFrame = 0; arrangePins(); });
+}, {passive: true});
 
 const clock = at => {
   if (!at) return "";
@@ -145,11 +212,22 @@ function turnMsg(t) {
     wide: t.width === "w",
   });
 }
+function isPinned(mid) {
+  return (pinState.all || []).some(p => (p.message || p.mid) === mid);
+}
+function pinButton(m) {
+  const b = el("button", "pinbtn" + (isPinned(m.id) ? " on" : ""));
+  b.type = "button"; b.title = tr("Pin"); b.setAttribute("aria-label", tr("Pin"));
+  b.textContent = THUMB.pin;
+  b.onclick = () => togglePin(m.id);
+  return b;
+}
 function msgEl(m) {
   const wrap = el("div", "msg " + (m.who === "me" ? "me" : "it") + (m.wide ? " wide" : ""));
   wrap.dataset.mid = m.id;
   const meta = el("div", "meta");
   meta.append(el("b", "", m.who === "me" ? tr("you") : tr("Doka")), el("time", "", m.time || ""));
+  if (m.id) meta.append(pinButton(m));
   if (m.wide) {
     const w = el("button", "widebtn", "⤢"); w.type = "button"; w.title = tr("full width");
     w.onclick = () => { wrap.classList.toggle("wide"); dockMeasure(); };
@@ -333,7 +411,7 @@ $("filepick").onchange = async () => {
   }
   $("filepick").value = ""; showPending();
 };
-if (!DEMO) loadSessions().catch(() => {});
+if (!DEMO) { loadSessions().catch(() => {}); loadPins(); }
 
 /* ── the panel ── */
 function show() {
@@ -2748,8 +2826,9 @@ if (!DEMO) {
   const stream = new EventSource("/api/events");
   stream.onmessage = m => {
     const e = JSON.parse(m.data);
-    if (e.kind === "sessions") loadSessions().catch(() => {});
+    if (e.kind === "sessions") { loadSessions().catch(() => {}); loadPins(); }
     else if (e.kind === "message") onMessage(e);
+    else if (e.kind === "pin") loadPins();
     else if (e.kind === "heard") { writing = null; askedAt = e.at; }
     else if (e.kind === "reply") { writing = writing || line("", "it"); writing.firstChild ? writing.firstChild.textContent += e.text : writing.append(e.text); feedToEnd(); }
     else if (e.kind === "said") { writing = null; const mine = askedHere; askedHere = false; if (e.failed) aside(tr("failure: {why}", {why: e.failed})); else if (mine) speak(e.text, e.channel); }

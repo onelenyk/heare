@@ -49,6 +49,7 @@ from heare.api.heard import Recordings
 from heare.api import skills
 from heare.api.machines import Machines
 from heare.api.registry import Registry
+from heare.api.pins import PinStore
 from heare.api.sessions import MAX_FILE_BYTES, Kept, Sessions
 from heare.api.timeline import Timeline
 from heare.hand import Gone
@@ -371,7 +372,8 @@ class Seen:
 def build(core: Core, settings: Any, vitals: Any = None,
           make_executor: Any = None, *, mind: Any = None,
           features: Any = None, engine: Any = None,
-          show_bodies: Callable[[Seen], None] | None = None) -> web.Application:
+          show_bodies: Callable[[Seen], None] | None = None,
+          pins: PinStore | None = None) -> web.Application:
     """vitals: () -> dict of what the app knows and the core does not —
     which model is answering, and whether it is the one that was chosen.
 
@@ -389,9 +391,13 @@ def build(core: Core, settings: Any, vitals: Any = None,
     timeline = Timeline(sessions, emit=core.state.emit,
                         canvas_file=Path(settings.canvas_file))
     timeline.migrate_legacy()
+    pins = pins or PinStore(Path(settings.memory_dir) / "sessions" / "pins.json",
+                            core.state.emit)
+    pins.bind_sessions(sessions)
+    pins.prune()
     core.history.clear()
     core.hydrate(sessions.for_model(sessions.active))
-    kept = Kept(core.memory, sessions) if core.memory is not None else None
+    kept = Kept(core.memory, sessions, pins) if core.memory is not None else None
     if kept is not None:
         core.memory = kept
     tally = Tally(core)
@@ -601,12 +607,38 @@ def build(core: Core, settings: Any, vitals: Any = None,
         session = session_of(request)
         idle()
         sessions.delete(session)
+        pins.drop_session(session)
         if not sessions.active:
             sessions.new()
         return went_to(sessions.active)
 
     async def session_turns(request: web.Request) -> web.Response:
         return web.json_response(sessions.read(session_of(request)))
+
+    async def pins_list(request: web.Request) -> web.Response:
+        return web.json_response({"pins": pins.all(), "active": sessions.active})
+
+    async def pin_add(request: web.Request) -> web.Response:
+        data = await body(request)
+        message = str(data.get("message", ""))
+        session = str(data.get("session") or message.rpartition("/")[0])
+        try:
+            pin = pins.add(session, message, by="person",
+                           title=str(data.get("title", "")),
+                           line=str(data.get("line", "")),
+                           kind=str(data.get("kind", "")))
+        except LookupError:
+            raise web.HTTPNotFound(text="no such message") from None
+        except ValueError as exc:
+            raise web.HTTPBadRequest(text=str(exc)) from None
+        except OverflowError:
+            raise web.HTTPConflict(text="the dock is full") from None
+        return web.json_response({"pin": pin})
+
+    async def pin_remove(request: web.Request) -> web.Response:
+        if not pins.remove(request.match_info["id"]):
+            raise web.HTTPNotFound(text="no such pin")
+        return web.json_response({"ok": True})
 
     async def session_messages(request: web.Request) -> web.Response:
         session = session_of(request)
@@ -1805,6 +1837,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
 
     app = web.Application(middlewares=[guard], client_max_size=MAX_FILE_BYTES)
     app["timeline"] = timeline
+    app["pins"] = pins
     app.on_startup.append(follow_tasks)
     app.cleanup_ctx.append(asking_for_updates)
     app.add_routes([
@@ -1851,6 +1884,9 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.post("/api/sessions/{id}/rename", session_rename),
         web.delete("/api/sessions/{id}", session_delete),
         web.get("/api/sessions/{id}/turns", session_turns),
+        web.get("/api/pins", pins_list),
+        web.post("/api/pins", pin_add),
+        web.delete("/api/pins/{id}", pin_remove),
         web.get("/api/sessions/{id}/messages", session_messages),
         web.get("/api/sessions/{id}/messages/{n:\\d+}", session_message),
         web.post("/api/sessions/{id}/messages/{n:\\d+}/width", session_width),
@@ -1943,7 +1979,8 @@ def _status_view(event: Event) -> dict:
 async def serve(core: Core, settings: Any, vitals: Any = None,
                 make_executor: Any = None, *, mind: Any = None,
                 features: Any = None, engine: Any = None,
-                show_bodies: Callable[[Seen], None] | None = None) -> web.AppRunner:
+                show_bodies: Callable[[Seen], None] | None = None,
+                pins: PinStore | None = None) -> web.AppRunner:
     """Start the API, on this machine only unless ``api_host`` says else.
     Returns the runner to stop it.
 
@@ -1955,7 +1992,7 @@ async def serve(core: Core, settings: Any, vitals: Any = None,
     app = build(core, settings, vitals,
                 make_executor=make_executor, mind=mind,
                 features=features, engine=engine,
-                show_bodies=show_bodies)
+                show_bodies=show_bodies, pins=pins)
     core.add_output(app["timeline"])
     runner = web.AppRunner(app)
     await runner.setup()

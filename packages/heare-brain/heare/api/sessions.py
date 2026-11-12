@@ -267,9 +267,10 @@ class Kept:
     The person's side is written by the door before the turn begins; writing
     it again here would make every question twice."""
 
-    def __init__(self, memory: object, sessions: Sessions) -> None:
+    def __init__(self, memory: object, sessions: Sessions, pins: object = None) -> None:
         self._memory = memory
         self._sessions = sessions
+        self._pins = pins
         self.files: list[dict] = []  # for the next thing the person says
 
     def __getattr__(self, name: str) -> object:
@@ -278,5 +279,7 @@ class Kept:
     async def keep(self, role: str, text: str, channel: str, fields: dict | None = None) -> None:
         files, self.files = (self.files, []) if role == "user" else ([], self.files)
         if role != "user":
-            self._sessions.add(self._sessions.active, role, text, files)
+            message = self._sessions.add(self._sessions.active, role, text, files)
+            if role == "assistant" and self._pins is not None and message:
+                self._pins.bind_self(self._sessions.active, message["id"])
         await self._memory.keep(role, text.split(ATTACHED, 1)[0], channel, fields)

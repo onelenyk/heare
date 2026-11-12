@@ -179,6 +179,9 @@ class Brain:
             attention_path=self.settings.intents_path.with_name("attention.json"),
             open_loop=lambda text: for_language(self.settings.language).open_loop(text),
         )
+        from heare.api.pins import PinStore
+        self.pins = PinStore(Path(self.settings.memory_dir) / "sessions" / "pins.json",
+                             self.core.state.emit)
         self.core.attach_tools(Toolbox(
             memory=self.core.memory, state=self.core.state,
             delegate=self.core.delegate, stop=self.core.stop_all,
@@ -188,6 +191,7 @@ class Brain:
             hands=lambda: [(e.id, e.name, e.machine, e.about)
                            for e in self.core.executors.values()],
             bodies=lambda: self.bodies,
+            pins=self.pins,
             plans=self.engine,
         ))
         self._review_lock = asyncio.Lock()
@@ -307,6 +311,7 @@ class Brain:
             mind=self.mind, features=self.features,
             engine=self.engine,
             show_bodies=lambda skilled: setattr(self, "bodies", skilled),
+            pins=self.pins,
         )
         logs.say(_("the brain is at {url}").format(url=f"http://127.0.0.1:{self.settings.api_port}/"))
         await asyncio.gather(

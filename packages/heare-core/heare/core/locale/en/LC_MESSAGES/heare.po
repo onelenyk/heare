@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-12 00:06+0200\n"
+"POT-Creation-Date: 2026-11-12 02:24+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -800,16 +800,40 @@ msgstr ""
 msgid "Say something, or ask for a screen."
 msgstr ""
 
+msgid "Message unavailable"
+msgstr ""
+
+msgid "Unpin"
+msgstr ""
+
+msgid "Wait for the reply to end."
+msgstr ""
+
 msgid "another conversation"
 msgstr ""
 
+msgid "unpinned"
+msgstr ""
+
+msgid "pinned"
+msgstr ""
+
+msgid "could not pin"
+msgstr ""
+
 msgid "Pinned"
+msgstr ""
+
+msgid "This message is not loaded."
 msgstr ""
 
 msgid "Go to the message"
 msgstr ""
 
 msgid "Nothing is pinned yet"
+msgstr ""
+
+msgid "Pin"
 msgstr ""
 
 msgid "Doka"
@@ -986,9 +1010,6 @@ msgid "Earlier"
 msgstr ""
 
 msgid "New session"
-msgstr ""
-
-msgid "Wait for the reply to end."
 msgstr ""
 
 msgid "Sure?"

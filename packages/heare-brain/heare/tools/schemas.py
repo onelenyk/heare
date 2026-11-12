@@ -84,6 +84,37 @@ _DELEGATE = {
     },
 }
 
+_PIN = {
+    "type": "function",
+    "function": {
+        "name": "pin",
+        "description": (
+            "Pin a message from this conversation so it stays at hand in the "
+            "dock above the talk. Use it when the person says keep/save/pin "
+            "this, or when you draw something worth returning to. Pin the "
+            "message, never a copy: the pin follows the message and dies with "
+            "its session. `message` is «now» for the reply you are writing, "
+            "«latest» for the last message, an id from a previous answer, or a "
+            "few of its words. `title` and `line` are what the person reads on "
+            "the chip, in their language; do not pin small talk, apologies, or "
+            "more than a few things."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "message": {"type": "string",
+                            "description": "now, latest, <session>/<n>, or a few words"},
+                "title": {"type": "string", "description": "the chip's first line"},
+                "line": {"type": "string", "description": "the chip's second line"},
+                "kind": {"type": "string", "enum": [
+                    "text", "html", "table", "weather", "image", "audio",
+                    "video", "link", "ask", "step", "game"]},
+            },
+            "required": ["message"],
+        },
+    },
+}
+
 _REMIND = {
     "type": "function",
     "function": {
