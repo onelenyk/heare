@@ -1001,12 +1001,19 @@ function partHealth(b) {
 }
 
 function partWidget(pid, b) {
-  const card = el("div", "part" + (b.state === "pending" ? " wait" : "") + (drawerPid === pid ? " open" : ""));
+  // The sketch's card: the name on top, the state big, the what, the
+  // controls, the foot. The same data the compact card had, laid out.
+  const card = el("div", "part pcard" + (b.state === "pending" ? " wait" : "") + (drawerPid === pid ? " open" : ""));
   card.dataset.pid = pid;
-  card.append(partHead(pid, b));
+  const top = el("div", "ptop");
+  const head = partHead(pid, b);
+  top.append(head);
+  card.append(top);
+  const state = el("div", "sstate", PART_STATE[b.state] || b.state);
+  card.append(state);
   const what = PART_WHAT[b.channel] || b.about;
-  if (what) card.append(el("p", "about", what));
-  if (b.state === "approved") card.append(...partHealth(b));
+  if (what) card.append(el("p", "sinfo", what));
+  if (b.state === "approved") card.append(el("div", "sfoot", ...[].concat(partHealth(b))));
   // Shown, because it is a wider trust than the rest: this part hears
   // the whole conversation, not only its own channel.
   // The same for a part with a yes of its own: it may allow what he asks.
