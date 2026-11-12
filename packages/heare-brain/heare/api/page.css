@@ -442,7 +442,7 @@
   /* ── settings: over the top, out of the way ── */
   .veil { position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; z-index:10; }
   .veil.on { display:block; }
-  #settings { position:fixed; top:0; left:0; bottom:0; width:min(420px, 100%); background:var(--card); border-right:1px solid var(--line); padding:22px; overflow-y:auto; transform:translateX(-100%); transition:transform .2s ease; z-index:11; }
+  #settings { position:fixed; top:0; right:0; bottom:0; width:min(420px, 100%); background:var(--card); border-left:1px solid var(--line); padding:22px; overflow-y:auto; transform:translateX(100%); transition:transform .2s ease; z-index:11; }
   #settings.on { transform:none; }
   #settings h2 { font-size:18px; margin-bottom:18px; }
   #settings h3 { font:10px var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--soft); margin:22px 0 10px; }
