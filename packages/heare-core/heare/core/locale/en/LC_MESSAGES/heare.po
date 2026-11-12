@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-12 05:44+0200\n"
+"POT-Creation-Date: 2026-11-12 08:05+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -599,9 +599,6 @@ msgstr ""
 msgid "Open memory"
 msgstr ""
 
-msgid "On my mind"
-msgstr ""
-
 msgid "Machines"
 msgstr ""
 
@@ -1127,6 +1124,9 @@ msgstr ""
 
 #, python-brace-format
 msgid "{last} s · median {mid} s"
+msgstr ""
+
+msgid "On my mind"
 msgstr ""
 
 msgid "unfinished"

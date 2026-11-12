@@ -594,7 +594,6 @@ function noteTask(e) {
 let held = [], holding = {live: [], permission: null, question: null};
 const holdShow = () => {
   const waiting = (holding.permission ? 1 : 0) + (holding.question ? 1 : 0) + held.length;
-  $("hold").hidden = !holding.live.length && !waiting;
   const need = $("mneed");
   need.hidden = !waiting;
   need.textContent = waiting > 9 ? "9+" : String(waiting);
@@ -603,7 +602,7 @@ const holdShow = () => {
 function drawIntents() {
   const words = {soma: tr("unfinished"), reminder: tr("a reminder"),
                  task_done: tr("done"), task_failed: tr("failed")};
-  $("intents").replaceChildren(...held.map(i => {
+  [...held].map(i => {
     const row = el("div", "task"), what = el("div");
     what.append(el("p", "", i.what));
     const dots = "●".repeat(i.weight) + "○".repeat(Math.max(0, 3 - i.weight));
@@ -615,7 +614,7 @@ function drawIntents() {
     const acts = el("div", "acts"); acts.append(now, no);
     row.append(what, acts);
     return row;
-  }));
+  });
   holdShow();
 }
 const heldNow = () => api("intents")
@@ -625,7 +624,7 @@ const heldNow = () => api("intents")
 function tasks(list, permission, question) {
   const live = list.filter(t => t.status === "running" || Date.now() / 1000 - (t.ended || 0) < 180);
   holding = {live, permission, question}; holdShow();
-  $("tasks").replaceChildren(...(live.length ? live.reverse().map(t => {
+  [...(live.length ? live.reverse().map(t => {
     const row = el("div", "task"), what = el("div");
     what.append(el("p", "", t.request));
     const how = {running: t.step || tr("working"), done: tr("done"), failed: tr("failed"), stopped: tr("stopped")}[t.status];
@@ -646,8 +645,7 @@ function tasks(list, permission, question) {
     row.append(what);
     if (t.status === "running") { const b = el("button", "mini", tr("stop")); b.onclick = () => api(`tasks/${t.id}/stop`, {method: "POST"}); row.append(b); }
     return row;
-  }) : [el("p", "empty", tr("Doing nothing now."))]));
-  $("ask").replaceChildren();
+  }) : [el("p", "empty", tr("Doing nothing now."))])].filter(Boolean);
   if (question) {
     const box = el("div", "ask");
     box.append(el("p", "", tr("{who} asks: {what}", {who: question.executor, what: question.text})));
@@ -662,7 +660,7 @@ function tasks(list, permission, question) {
     send.onclick = reply;
     field.onkeydown = e => { if (e.key === "Enter") reply(); };
     const row = el("div", "pair"); row.append(field, send);
-    box.append(row); $("ask").append(box);
+    box.append(row);
   }
   if (permission) {
     const box = el("div", "ask");
@@ -671,7 +669,7 @@ function tasks(list, permission, question) {
     const yes = el("button", "mini yes", tr("Yes")), no = el("button", "mini", tr("No"));
     yes.onclick = () => api(`permission/${permission.id}`, {method: "POST", body: {allow: true}});
     no.onclick = () => api(`permission/${permission.id}`, {method: "POST", body: {allow: false}});
-    box.append(yes, no); $("ask").append(box);
+    box.append(yes, no);
   }
 }
 
@@ -1366,7 +1364,7 @@ const SHEET = [...document.styleSheets[0].cssRules].filter(r => r.selectorText &
 const NAMES = ["--bg","--card","--card-2","--line","--ink","--soft","--accent","--accent-ink","--ok","--warn","--bad","--info","--sans","--mono"];
 // Read from the stage, not the page: a theme the assistant set on the
 // canvas has to reach the inside of live widgets too.
-const vars = () => { const c = getComputedStyle($("stage")); return NAMES.map(v => `${v}:${c.getPropertyValue(v)}`).join(";"); };
+const vars = () => { const c = getComputedStyle($("chat")); return NAMES.map(v => `${v}:${c.getPropertyValue(v)}`).join(";"); };
 let own = "";
 // The canvas's own stylesheet applies to the canvas and nothing else.
 // @keyframes cannot live inside a scope, so they are lifted out.
