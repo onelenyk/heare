@@ -869,3 +869,18 @@ body.sysopen #sheet { width:min(760px, calc(100vw - 396px)); }
 .msg-link:hover { border-color:var(--accent); }
 .msg-media { display:block; width:100%; max-height:420px; border-radius:10px; background:var(--card-2); object-fit:contain; }
 audio.msg-media { max-height:none; }
+
+/* ── the system drawer: compact machines, five slides ── */
+#partwidgets { gap: 8px; }
+.pcard { border-radius: 12px; }
+.pcard .phead { padding: 7px 9px; }
+.pcard .pbody { padding: 6px 9px 9px; }
+.pcard .pacts { gap: 5px; }
+.pcard .pacts .mini { height: 24px; padding: 0 7px; font-size: 10.5px; }
+#partchips { flex-wrap: wrap; }
+#sysfoot { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+#sysfoot button { font-size: 10.5px; padding: 6px 2px; }
+@media (max-width: 640px) {
+  #system { width: 100%; }
+  #sysfoot { grid-template-columns: repeat(5, 1fr); }
+}
