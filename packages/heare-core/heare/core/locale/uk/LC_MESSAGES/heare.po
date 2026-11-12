@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-12 18:05+0200\n"
+"POT-Creation-Date: 2026-11-12 20:13+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -566,38 +566,14 @@ msgstr "ти"
 msgid "it"
 msgstr "він"
 
-msgid "State"
-msgstr "Стан"
-
-msgid "model"
-msgstr "модель"
-
-msgid "around"
-msgstr "довкола"
-
 msgid "quiet"
 msgstr "тихо"
 
-msgid "reply"
-msgstr "відповідь"
+msgid "more"
+msgstr "більше"
 
 msgid "this run"
 msgstr "цей запуск"
-
-msgid "awaiting a decision"
-msgstr "чекають рішення"
-
-msgid "settled facts"
-msgstr "сталі факти"
-
-msgid "reminders"
-msgstr "нагадування"
-
-msgid "last review"
-msgstr "останній огляд"
-
-msgid "Open memory"
-msgstr "Відкрити памʼять"
 
 msgid "Body"
 msgstr "Тіло"
@@ -646,6 +622,9 @@ msgstr "Модель для розмови"
 
 msgid "provider"
 msgstr "провайдер"
+
+msgid "model"
+msgstr "модель"
 
 msgid "Save"
 msgstr "Зберегти"
@@ -1440,6 +1419,15 @@ msgstr "через {h} год"
 msgid "in {d} d"
 msgstr "через {d} дн"
 
+msgid "awaiting a decision"
+msgstr "чекають рішення"
+
+msgid "settled facts"
+msgstr "сталі факти"
+
+msgid "reminders"
+msgstr "нагадування"
+
 msgid "review"
 msgstr "огляд"
 
@@ -2006,6 +1994,9 @@ msgstr "Нічого не було запущено."
 
 msgid "Print"
 msgstr "Друкувати"
+
+msgid "State"
+msgstr "Стан"
 
 msgid "listening to the terminal"
 msgstr "слухає термінал"
@@ -2757,4 +2748,16 @@ msgstr "я перестав чути {s} секунд тому — схоже, �
 
 #~ msgid "hear"
 #~ msgstr "чути"
+
+#~ msgid "around"
+#~ msgstr "довкола"
+
+#~ msgid "reply"
+#~ msgstr "відповідь"
+
+#~ msgid "last review"
+#~ msgstr "останній огляд"
+
+#~ msgid "Open memory"
+#~ msgstr "Відкрити памʼять"
 

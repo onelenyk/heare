@@ -49,27 +49,18 @@
           </div>
         </section>
 
-        <section class="widget">
-          <div class="label" data-t>State</div>
-          <div class="rows">
-            <div class="row"><span data-t>model</span><span id="model">…</span></div>
-            <span id="hands" hidden></span>
-            <div class="row"><span data-t>around</span><span id="around" data-t>quiet</span></div>
-            <div class="row"><span data-t>reply</span><span><span id="speed">—</span><svg id="spark" width="70" height="16"></svg></span></div>
+        <section class="widget state">
+          <div class="line"><b id="model">…</b><i>·</i><span id="around" data-t>quiet</span><i>·</i><span id="speed">—</span><svg id="spark" width="70" height="16"></svg></div>
+          <details>
+            <summary data-t>more</summary>
             <div class="row"><span data-t>this run</span><span id="session">…</span></div>
-          </div>
+            <span id="hands" hidden></span>
+          </details>
         </section>
 
         <section class="widget" id="mind-widget">
-          <div class="label" data-t>Memory</div>
-          <div class="rows">
-            <div class="row"><span data-t>awaiting a decision</span><span id="mind-pending">—</span></div>
-            <div class="row"><span data-t>settled facts</span><span id="mind-confirmed">—</span></div>
-            <div class="row"><span data-t>reminders</span><span id="mind-reminders">—</span></div>
-            <div class="row"><span data-t>last review</span><span id="mind-review">—</span></div>
-          </div>
+          <div class="line"><span data-t>Memory</span><i>·</i><span id="mind-pending">—</span><i>·</i><span id="mind-confirmed">—</span><i>·</i><span id="mind-reminders">—</span><i>·</i><span id="mind-review">—</span><button type="button" class="keylink" id="open-mind" aria-expanded="false" data-t>Open</button></div>
           <p id="imports-now" hidden></p>
-          <div class="keys"><button type="button" class="key wide" id="open-mind" aria-expanded="false" data-t>Open memory</button></div>
         </section>
 
       </div>

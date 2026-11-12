@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-12 18:05+0200\n"
+"POT-Creation-Date: 2026-11-12 20:13+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -566,37 +566,13 @@ msgstr ""
 msgid "it"
 msgstr ""
 
-msgid "State"
-msgstr ""
-
-msgid "model"
-msgstr ""
-
-msgid "around"
-msgstr ""
-
 msgid "quiet"
 msgstr ""
 
-msgid "reply"
+msgid "more"
 msgstr ""
 
 msgid "this run"
-msgstr ""
-
-msgid "awaiting a decision"
-msgstr ""
-
-msgid "settled facts"
-msgstr ""
-
-msgid "reminders"
-msgstr ""
-
-msgid "last review"
-msgstr ""
-
-msgid "Open memory"
 msgstr ""
 
 msgid "Body"
@@ -645,6 +621,9 @@ msgid "Model for the conversation"
 msgstr ""
 
 msgid "provider"
+msgstr ""
+
+msgid "model"
 msgstr ""
 
 msgid "Save"
@@ -1440,6 +1419,15 @@ msgstr ""
 msgid "in {d} d"
 msgstr ""
 
+msgid "awaiting a decision"
+msgstr ""
+
+msgid "settled facts"
+msgstr ""
+
+msgid "reminders"
+msgstr ""
+
 msgid "review"
 msgstr ""
 
@@ -1997,6 +1985,9 @@ msgid "Nothing was running."
 msgstr ""
 
 msgid "Print"
+msgstr ""
+
+msgid "State"
 msgstr ""
 
 msgid "listening to the terminal"
@@ -2751,5 +2742,17 @@ msgstr ""
 #~ msgstr ""
 
 #~ msgid "hear"
+#~ msgstr ""
+
+#~ msgid "around"
+#~ msgstr ""
+
+#~ msgid "reply"
+#~ msgstr ""
+
+#~ msgid "last review"
+#~ msgstr ""
+
+#~ msgid "Open memory"
 #~ msgstr ""
 

@@ -96,6 +96,12 @@
   .vol { grid-column:1 / -1; display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:10px; color:var(--soft); }
   input[type=range] { accent-color:var(--accent); width:100%; }
 
+  .line { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .line i { color:var(--line); }
+  .line b { font-weight:600; }
+  #mind-widget .line { color:var(--soft); font-size:12px; }
+  .widget details > summary { color:var(--soft); font-size:11px; cursor:pointer; margin-top:6px; }
+  .keylink { margin-left:auto; background:none; border:0; color:var(--accent); font-size:11px; cursor:pointer; padding:0; }
   .rows { display:grid; gap:var(--s2); }
   .row { display:grid; grid-template-columns:82px 1fr; gap:var(--s3); }
   .row > span:first-child { color:var(--soft); }
