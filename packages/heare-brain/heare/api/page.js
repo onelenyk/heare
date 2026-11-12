@@ -268,8 +268,59 @@ function msgEl(m) {
   return wrap;
 }
 
+/* The generated screens the mock has always had: a chat screen and a
+   landscape, drawn, so the feed shows what a card looks like. */
+function screenArt(uid) {
+  return `<svg viewBox="0 0 640 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+    <defs>
+      <linearGradient id="g${uid}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1d1a25"/><stop offset="1" stop-color="#0f0e14"/></linearGradient>
+      <linearGradient id="a${uid}" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#9d7cff"/><stop offset="1" stop-color="#6fb8d9"/></linearGradient>
+    </defs>
+    <rect width="640" height="360" fill="url(#g${uid})"/>
+    <rect x="18" y="18" width="148" height="324" rx="14" fill="#1c1a21" stroke="#302c37"/>
+    <rect x="38" y="38" width="42" height="42" rx="12" fill="none" stroke="#9d7cff" stroke-width="2"/>
+    <rect x="49" y="54" width="7" height="12" rx="3.5" fill="#9d7cff"/><rect x="62" y="54" width="7" height="12" rx="3.5" fill="#9d7cff"/>
+    <rect x="38" y="96" width="96" height="7" rx="3.5" fill="#ece8e2" opacity=".72"/>
+    <rect x="38" y="112" width="62" height="6" rx="3" fill="#302c37"/>
+    <rect x="38" y="140" width="108" height="34" rx="8" fill="#242029"/>
+    <rect x="38" y="182" width="108" height="34" rx="8" fill="#242029"/>
+    <rect x="38" y="224" width="108" height="34" rx="8" fill="#242029"/>
+    <rect x="48" y="152" width="54" height="6" rx="3" fill="#96909e"/>
+    <rect x="48" y="194" width="42" height="6" rx="3" fill="#96909e"/>
+    <rect x="48" y="236" width="60" height="6" rx="3" fill="#96909e"/>
+    <rect x="180" y="18" width="442" height="324" rx="14" fill="#16141b" stroke="#302c37"/>
+    <rect x="180" y="18" width="442" height="46" rx="14" fill="#1c1a21"/>
+    <circle cx="204" cy="41" r="8" fill="none" stroke="#9d7cff" stroke-width="1.6"/>
+    <rect x="222" y="36" width="46" height="9" rx="4.5" fill="#ece8e2" opacity=".8"/>
+    <rect x="280" y="36" width="68" height="9" rx="4.5" fill="#302c37"/>
+    <rect x="544" y="33" width="60" height="16" rx="8" fill="#242029" stroke="#302c37"/>
+    <rect x="198" y="80" width="74" height="22" rx="11" fill="#242029" stroke="#9d7cff" stroke-opacity=".5"/>
+    <rect x="282" y="80" width="62" height="22" rx="11" fill="#242029" stroke="#302c37"/>
+    <rect x="354" y="80" width="86" height="22" rx="11" fill="transparent" stroke="#302c37" stroke-dasharray="3 3"/>
+    <rect x="432" y="86" width="168" height="10" rx="5" fill="#302c37"/>
+    <rect x="198" y="124" width="250" height="9" rx="4.5" fill="#ece8e2" opacity=".66"/>
+    <rect x="198" y="142" width="300" height="9" rx="4.5" fill="#ece8e2" opacity=".4"/>
+    <rect x="198" y="160" width="214" height="9" rx="4.5" fill="#ece8e2" opacity=".2"/>
+    <rect x="198" y="192" width="250" height="98" rx="12" fill="#1c1a21" stroke="#302c37"/>
+    <rect x="214" y="208" width="52" height="7" rx="3.5" fill="#96909e"/>
+    <rect x="214" y="226" width="72" height="22" rx="5" fill="#ece8e2" opacity=".78"/>
+    <rect x="214" y="258" width="160" height="6" rx="3" fill="#302c37"/>
+    <rect x="214" y="270" width="118" height="6" rx="3" fill="#302c37"/>
+    <rect x="468" y="124" width="132" height="12" rx="6" fill="#9d7cff" opacity=".85"/>
+    <rect x="468" y="146" width="132" height="12" rx="6" fill="#302c37"/>
+    <rect x="468" y="192" width="132" height="98" rx="12" fill="#1c1a21" stroke="#302c37"/>
+    <rect x="484" y="208" width="100" height="7" rx="3.5" fill="#96909e"/>
+    <rect x="484" y="226" width="72" height="7" rx="3.5" fill="#302c37"/>
+    <rect x="484" y="246" width="82" height="7" rx="3.5" fill="#302c37"/>
+    <rect x="484" y="266" width="56" height="7" rx="3.5" fill="#302c37"/>
+    <rect x="198" y="306" width="406" height="22" rx="11" fill="#1c1a21" stroke="#302c37"/>
+    <rect x="210" y="314" width="120" height="6" rx="3" fill="#302c37"/>
+    <circle cx="590" cy="317" r="7" fill="url(#a${uid})"/>
+  </svg>`;
+}
+
 const weatherCard = () => `<div class="demo-weather"><div class="dw-top"><span>${tr("Weather")}</span><b>${tr("Burshtyn")}</b><time>${tr("now")}</time></div><div class="dw-main"><b>+1°</b><span>${tr("cloudy · feels like −2°")}</span></div><div class="dw-rows"><div><span>${tr("wind")}</span><b>6 ${tr("km/h")}</b></div><div><span>${tr("humidity")}</span><b>81%</b></div><div><span>${tr("pressure")}</span><b>748 ${tr("mm")}</b></div></div></div>`;
-const photoCard = () => `<figure class="demo-photo"><svg viewBox="0 0 320 180" aria-hidden="true"><rect width="320" height="180" rx="10" fill="#1c1a21"/><rect x="16" y="16" width="288" height="18" rx="6" fill="#242029"/><rect x="16" y="44" width="90" height="120" rx="8" fill="#242029"/><rect x="116" y="44" width="188" height="54" rx="8" fill="#242029"/><rect x="116" y="106" width="90" height="58" rx="8" fill="#242029"/><rect x="214" y="106" width="90" height="58" rx="8" fill="#9d7cff" opacity=".25"/></svg><figcaption>${tr("Mock · 11 November")}</figcaption></figure>`;
+const photoCard = () => `<figure class="demo-photo">${screenArt("demo")}<rect width="320" height="180" rx="10" fill="#1c1a21"/><rect x="16" y="16" width="288" height="18" rx="6" fill="#242029"/><rect x="16" y="44" width="90" height="120" rx="8" fill="#242029"/><rect x="116" y="44" width="188" height="54" rx="8" fill="#242029"/><rect x="116" y="106" width="90" height="58" rx="8" fill="#242029"/><rect x="214" y="106" width="90" height="58" rx="8" fill="#9d7cff" opacity=".25"/></svg><figcaption>${tr("Mock · 11 November")}</figcaption></figure>`;
 const tableCard = () => `<div class="demo-table"><div class="dt-title">${tr("What changes")}</div><div class="dt-row dt-th"><span>${tr("Was")}</span><span>${tr("Became")}</span></div><div class="dt-row"><span>${tr("A separate board")}</span><span>${tr("A chat and a pinned dock")}</span></div><div class="dt-row"><span>${tr("A canvas grid")}</span><span>${tr("Artifacts as messages")}</span></div><div class="dt-row"><span>${tr("Part cards and chips")}</span><span>${tr("One carousel of the body")}</span></div><div class="dt-row"><span>${tr("The Context tab")}</span><span>${tr("Details in the system column")}</span></div></div>`;
 const askCard = () => `<div class="demo-ask"><span class="da-label">${tr("HANDS ASK FOR PERMISSION")}</span><p>${tr("Run make test in this checkout?")}</p><div class="da-acts"><button type="button" class="da-yes">${tr("Allow")}</button><button type="button">${tr("Not now")}</button></div></div>`;
 const stepCard = () => `<div class="demo-step"><span class="ds-label">${tr("HANDS")}</span><p>make test</p><ol><li>${tr("checked the branch")}</li><li>${tr("built it")}</li></ol></div>`;
