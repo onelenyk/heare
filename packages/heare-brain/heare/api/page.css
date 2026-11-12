@@ -884,3 +884,21 @@ audio.msg-media { max-height:none; }
   #system { width: 100%; }
   #sysfoot { grid-template-columns: repeat(5, 1fr); }
 }
+
+/* ── the sheets: one frame for memory, details, settings, context ── */
+#mind, #settings, #page-context { background: var(--bg); }
+#mind .sheet-head, #settings .sheet-head, #page-context .sheet-head {
+  position: sticky; top: 0; z-index: 2; padding: 12px 16px 10px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(14px);
+}
+#mind .sheet-head b, #settings .sheet-head b, #page-context .sheet-head b { font-size: 15px; }
+#mind .tabs, #settings .tabs, #page-context .tabs { padding: 2px 12px 10px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+#mind .tab, #settings .tab, #page-context .tab { flex: none; }
+#mind .ctx, #settings .ctx, #page-context .ctx { margin: 10px 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card-2); }
+#mind .row, #settings .row, #page-context .row { gap: 8px; }
+@media (max-width: 640px) {
+  #mind, #settings, #page-context { width: 100%; }
+  #mind .sheet-head, #settings .sheet-head, #page-context .sheet-head { padding: 10px 12px 8px; }
+}
