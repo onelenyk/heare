@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-12 02:24+0200\n"
+"POT-Creation-Date: 2026-11-12 03:42+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -510,6 +510,12 @@ msgid "a file in the backup is damaged: {name}"
 msgstr ""
 
 msgid "the file is damaged or not a zip"
+msgstr ""
+
+msgid "microphone"
+msgstr ""
+
+msgid "sound"
 msgstr ""
 
 msgid "Settings"
@@ -1714,6 +1720,9 @@ msgid "memory is unavailable now"
 msgstr ""
 
 msgid "saved"
+msgstr ""
+
+msgid "no microphone"
 msgstr ""
 
 msgid "could not learn where the keys come from"

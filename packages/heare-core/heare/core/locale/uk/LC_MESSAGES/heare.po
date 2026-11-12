@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-12 02:24+0200\n"
+"POT-Creation-Date: 2026-11-12 03:42+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -511,6 +511,12 @@ msgstr "файл у копії пошкоджений: {name}"
 
 msgid "the file is damaged or not a zip"
 msgstr "файл пошкоджений або це не zip"
+
+msgid "microphone"
+msgstr "мікрофон"
+
+msgid "sound"
+msgstr "звук"
 
 msgid "Settings"
 msgstr "Налаштування"
@@ -1715,6 +1721,9 @@ msgstr "памʼять зараз недоступна"
 
 msgid "saved"
 msgstr "збережено"
+
+msgid "no microphone"
+msgstr "немає мікрофона"
 
 msgid "could not learn where the keys come from"
 msgstr "не вдалося дізнатися, звідки ключі"

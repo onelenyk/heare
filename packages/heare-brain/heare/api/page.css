@@ -851,3 +851,13 @@ body.sysopen #sheet { width:min(760px, calc(100vw - 396px)); }
 }
 #pinpreview .pv-body { max-height: 46vh; overflow: auto; }
 #pinpreview .pv-hint { cursor: pointer; }
+
+/* ── top bar: the microphone, the sound, the last activity ── */
+.topright .ticon { width: 32px; padding: 0; font-size: 13px; }
+.topright .ticon.on { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--card-2)); }
+.topright .lastact { color: var(--soft); font: 10.5px var(--mono); white-space: nowrap; }
+@media (max-width: 640px) {
+  .topright .tbtn:not(.ticon):not(#stop) { display: none; }
+  .topright .lastact { display: none; }
+  #mic, #sound { width: 30px; }
+}

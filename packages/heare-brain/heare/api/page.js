@@ -445,6 +445,7 @@ function vitals(s) {
   const up = mins < 1 ? tr("just started") : mins < 60 ? tr("{m} min", {m: mins}) : tr("{h} h {m} min", {h: Math.floor(mins / 60), m: mins % 60});
   const run = s.running || {};
   $("up").textContent = run.version ? `${up} · v${run.version}` : up;
+  if ($("last")) $("last").textContent = $("up").textContent;
   drawUpdate(s.update);
   $("up").title = run.commit ? tr("commit {c}", {c: run.commit}) : "";
   $("session").textContent = tr("replies: {n}", {n: t.turns});
@@ -1331,7 +1332,7 @@ const refresh = () => api("state").then(s => {
   if (born && s.session.started !== born) return location.reload();
   born = s.session.started;
   state = s; phase = s.phase; voice = voiceOf(s);
-  show(); vitals(s); tasks(s.tasks, s.permission, s.question); parts(s.bodies);
+  show(); vitals(s); drawTopbar(); tasks(s.tasks, s.permission, s.question); parts(s.bodies);
   heldNow();
   mindSummary();
 });
@@ -1694,6 +1695,7 @@ const setAloud = on => {
   if (!aloud && speech) speech.cancel();
   if (webPid) api("input", {method: "POST", body: {
     kind: "state", channel: "web", values: {aloud}}}).catch(() => {});
+  drawTopbar();
 };
 $("speak").classList.toggle("yes", aloud);
 $("speak").onclick = () => setAloud(!aloud);
@@ -2433,6 +2435,25 @@ const shut = () => {
 $("veil").onclick = shut;
 document.addEventListener("keydown", e => { if (e.key === "Escape") shut(); });
 
+function voicePid() {
+  const part = Object.entries(state?.bodies || {}).find(([, b]) => b.channel === "voice" && b.state === "approved");
+  return part ? part[0] : null;
+}
+function drawTopbar() {
+  const mic = $("mic"), sound = $("sound"), last = $("last");
+  if (mic) {
+    const on = !!(voice && voice.mic);
+    mic.classList.toggle("on", on); mic.setAttribute("aria-pressed", String(on));
+  }
+  if (sound) { sound.classList.toggle("on", aloud); sound.setAttribute("aria-pressed", String(aloud)); }
+  if (last) last.textContent = $("up") ? $("up").textContent : "";
+}
+$("mic").onclick = () => {
+  const pid = voicePid();
+  if (!pid || !voice) { toast(tr("no microphone")); return; }
+  turn(pid, "mic", !voice.mic);
+};
+$("sound").onclick = () => setAloud(!aloud);
 $("idbtn").onclick = () => { if ($("system").classList.contains("on")) systemClose(); else systemOpen(); };
 $("systemclose").onclick = () => shut();
 $("openmind").onclick = () => mindOpenDrawer();
