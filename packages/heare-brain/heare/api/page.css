@@ -410,6 +410,8 @@
 
   /* ── the face: what it is doing, at a glance ── */
   .face { width:54px; height:54px; flex:none; color:var(--accent); overflow:visible; }
+  .msg .avatar { flex:none; width:18px; height:18px; display:inline-flex; align-items:center; margin-right:2px; }
+  .msg .avatar .face { width:18px; height:18px; }
   .face .head { fill:var(--card-2); stroke:currentColor; stroke-width:2.5; transition:stroke .3s; filter:drop-shadow(0 0 6px rgba(157,124,255,.35)); }
   .face .eye { fill:currentColor; transform-box:fill-box; transform-origin:center; animation:blink 5.2s infinite; transition:transform .25s, fill .3s; }
   .face .bar { fill:currentColor; transform-box:fill-box; transform-origin:center; transform:scaleY(.25); transition:transform .2s, fill .3s; }

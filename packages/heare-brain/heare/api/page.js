@@ -249,6 +249,13 @@ function msgEl(m) {
   const wrap = el("div", "msg " + (m.who === "me" ? "me" : "it") + (m.wide ? " wide" : ""));
   wrap.dataset.mid = m.id;
   const meta = el("div", "meta");
+  // The sketch put its face beside every answer: the person should see who
+  // is speaking, not only read the name.
+  if (m.who !== "me" && $("face")) {
+    const avatar = el("span", "avatar");
+    avatar.innerHTML = $("face").outerHTML.replace(' id="face"', "").replace('id="face"', "");
+    meta.append(avatar);
+  }
   meta.append(el("b", "", m.who === "me" ? tr("you") : tr("Doka")), el("time", "", m.time || ""));
   if (m.id) meta.append(pinButton(m));
   if (m.wide) {
