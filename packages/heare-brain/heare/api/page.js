@@ -84,6 +84,7 @@ let pinState = { trail: [], shelf: [], all: [] };
 const THUMB = {text: "¶", html: "▤", table: "▤", weather: "☀", image: "▣",
   audio: "♫", video: "▶", link: "↗", ask: "?", step: "·", game: "◉", pin: "⌖"};
 let previewTimer = 0;
+let previewCube = null;
 let toastTimer = 0;
 function toast(text) {
   const t = $("toast");
@@ -237,6 +238,16 @@ function previewShow(p, chip) {
     body.innerHTML = m ? m.html : `<p>${tr("This message is not loaded.")}</p>`;
     const hint = el("div", "pv-hint", tr("Go to the message"));
     pv.replaceChildren(head, body, hint); pv.hidden = false;
+    const card = body.querySelector(".game");
+    if (card) {
+      card.querySelector(".gameover")?.remove();
+      const canvas = card.querySelector("canvas");
+      if (canvas) {
+        previewCube = {card, canvas, ctx: canvas.getContext("2d"), playing: true, angle: .7};
+        cubeGames.push(previewCube);
+        requestAnimationFrame(() => drawCube(previewCube));
+      }
+    }
     hint.onclick = () => { previewHide(); goToPin(p); };
     const r = chip.getBoundingClientRect(), w = pv.offsetWidth, h = pv.offsetHeight;
     pv.style.left = Math.min(Math.max(12, r.left), innerWidth - w - 12) + "px";
@@ -245,6 +256,10 @@ function previewShow(p, chip) {
 }
 function previewHide() {
   clearTimeout(previewTimer);
+  if (previewCube) {
+    cubeGames = cubeGames.filter(g => g !== previewCube);
+    previewCube = null;
+  }
   $("pinpreview").hidden = true;
 }
 function applyPins() {
