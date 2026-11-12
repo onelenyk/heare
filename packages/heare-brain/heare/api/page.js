@@ -71,12 +71,18 @@ const stepLog = new Map();   // task id -> {request, steps: [{executor, step}, �
 function feedAppend(node) {
   const empty = $("flow").querySelector(".feed-empty");
   if (empty) empty.remove();
-  $("flow").append(node);
+  const hold = $("hold");
+  if (hold && hold.parentNode === $("flow")) $("flow").insertBefore(node, hold);
+  else $("flow").append(node);
   feedToEnd();
   return node;
 }
 function feedToEnd() { const f = $("feed"); if (f) f.scrollTop = f.scrollHeight; }
-function feedClear() { $("flow").replaceChildren(); }
+function feedClear() {
+  const hold = $("hold");
+  $("flow").replaceChildren();
+  if (hold) $("flow").append(hold);
+}
 function feedEmpty() {
   const box = el("div", "feed-empty");
   const face = el("div", "emptyface");
@@ -1218,6 +1224,7 @@ function noteTask(e) {
 }
 
 let held = [], holding = {live: [], permission: null, question: null};
+let askSeen = "";
 const holdShow = () => {
   const waiting = (holding.permission ? 1 : 0) + (holding.question ? 1 : 0) + held.length;
   const need = $("mneed");
@@ -1225,78 +1232,116 @@ const holdShow = () => {
   need.textContent = waiting > 9 ? "9+" : String(waiting);
   need.title = waiting ? tr("On my mind") : "";
 };
-function drawIntents() {
-  const words = {soma: tr("unfinished"), reminder: tr("a reminder"),
-                 task_done: tr("done"), task_failed: tr("failed")};
-  [...held].map(i => {
-    const row = el("div", "task"), what = el("div");
-    what.append(el("p", "", i.what));
-    const dots = "●".repeat(i.weight) + "○".repeat(Math.max(0, 3 - i.weight));
-    what.append(el("small", "", [words[i.why] || "", dots].filter(Boolean).join(" · ")));
-    const now = el("button", "mini yes", tr("say now"));
-    now.onclick = () => api(`intents/${i.id}/now`, {method: "POST"}).then(heldNow);
-    const no = el("button", "mini", tr("not now"));
-    no.onclick = () => api(`intents/${i.id}/drop`, {method: "POST"}).then(heldNow);
-    const acts = el("div", "acts"); acts.append(now, no);
-    row.append(what, acts);
-    return row;
-  });
-  holdShow();
+const holdTitle = text => {
+  const title = el("div", "atitle");
+  title.append(el("i"), document.createTextNode(text));
+  return title;
+};
+/* What is waiting is a card at the foot of the feed, where the person is
+   already reading: a leave, a question, a running hand, a held thought. */
+function permissionCard(permission) {
+  const box = el("div", "ask hold-card");
+  box.append(holdTitle(tr("HANDS ASK FOR PERMISSION")),
+             el("p", "", tr("{who} wants to: {what}", {who: permission.executor, what: permission.what})));
+  if (permission.why) box.append(el("p", "why", tr("I ask because {why}", {why: permission.why})));
+  const acts = el("div", "acts");
+  const yes = el("button", "btn primary", tr("Allow")), no = el("button", "btn", tr("Not now"));
+  yes.type = "button"; no.type = "button";
+  yes.onclick = () => api(`permission/${permission.id}`, {method: "POST", body: {allow: true}});
+  no.onclick = () => api(`permission/${permission.id}`, {method: "POST", body: {allow: false}});
+  acts.append(yes, no);
+  box.append(acts);
+  return box;
 }
+function questionCard(question) {
+  const box = el("div", "ask hold-card");
+  box.append(holdTitle(tr("HANDS")), el("p", "", tr("{who} asks: {what}", {who: question.executor, what: question.text})));
+  const field = el("input"); field.placeholder = tr("Answer…"); field.autocomplete = "off";
+  const send = el("button", "btn primary", tr("Send"));
+  const reply = () => {
+    const text = field.value.trim();
+    if (!text) return;
+    send.disabled = true;
+    api(`answer/${question.id}`, {method: "POST", body: {text}}).catch(() => { send.disabled = false; });
+  };
+  send.onclick = reply;
+  field.onkeydown = e => { if (e.key === "Enter") reply(); };
+  const row = el("div", "pair"); row.append(field, send);
+  box.append(row);
+  return box;
+}
+function taskCard(t) {
+  const card = el("div", "task hold-card");
+  const line = el("div", "taskline");
+  const how = {running: t.step || tr("working"), done: tr("done"), failed: tr("failed"), stopped: tr("stopped")}[t.status];
+  const secs = Math.round((t.ended || Date.now() / 1000) - t.started);
+  line.append(el("i", "sdot"), el("b", "", t.executor || tr("Hands")), el("span", "", [how, tr("{s} s", {s: secs})].filter(Boolean).join(" · ")));
+  if (t.status === "running") {
+    const stop = el("button", "mini", tr("stop"));
+    stop.type = "button";
+    stop.onclick = () => api(`tasks/${t.id}/stop`, {method: "POST"});
+    line.append(stop);
+  }
+  card.append(line);
+  if (t.request) card.append(el("p", "taskwhat", t.request));
+  const logged = stepLog.get(`${t.id}`);
+  if (logged && logged.request === t.request) {
+    // The title already carries the step in flight; the trail holds the
+    // ones before it, so the card never says the same thing twice.
+    const steps = t.status === "running" && logged.steps.at(-1)?.step === t.step
+      ? logged.steps.slice(0, -1) : logged.steps;
+    if (steps.length) {
+      const trail = el("div", "tsteps");
+      for (const step of steps) trail.append(el("div", "", `· ${step.step}`));
+      card.append(trail);
+    }
+  }
+  return card;
+}
+function intentCard(i) {
+  const words = {soma: tr("unfinished"), reminder: tr("a reminder"), task_done: tr("done"), task_failed: tr("failed")};
+  const card = el("div", "task hold-card");
+  const line = el("div", "taskline");
+  const dots = "●".repeat(i.weight) + "○".repeat(Math.max(0, 3 - i.weight));
+  line.append(el("i", "sdot"), el("b", "", i.what), el("span", "", [words[i.why] || "", dots].filter(Boolean).join(" · ")));
+  card.append(line);
+  const acts = el("div", "acts");
+  const now = el("button", "mini yes", tr("say now")), no = el("button", "mini", tr("not now"));
+  now.type = "button"; no.type = "button";
+  now.onclick = () => api(`intents/${i.id}/now`, {method: "POST"}).then(heldNow);
+  no.onclick = () => api(`intents/${i.id}/drop`, {method: "POST"}).then(heldNow);
+  acts.append(now, no);
+  card.append(acts);
+  return card;
+}
+function renderHold(jump = false) {
+  const hold = $("hold");
+  if (!hold) return;
+  // A question is answered in this card: a refresh must not take the field
+  // out from under the person who is typing in it.
+  if (typingIn(hold)) { holdShow(); return; }
+  const parts = [];
+  if (holding.permission) parts.push(permissionCard(holding.permission));
+  if (holding.question) parts.push(questionCard(holding.question));
+  for (const t of holding.live || []) parts.push(taskCard(t));
+  for (const i of held) parts.push(intentCard(i));
+  hold.replaceChildren(...parts);
+  hold.hidden = !parts.length;
+  holdShow();
+  if (jump) feedToEnd();
+}
+function drawIntents() { renderHold(); }
 const heldNow = () => api("intents")
-  .then(r => { held = r.intents || []; drawIntents(); })
+  .then(r => { held = r.intents || []; renderHold(); })
   .catch(() => {});
 
 function tasks(list, permission, question) {
   const live = list.filter(t => t.status === "running" || Date.now() / 1000 - (t.ended || 0) < 180);
-  holding = {live, permission, question}; holdShow();
-  [...(live.length ? live.reverse().map(t => {
-    const row = el("div", "task"), what = el("div");
-    what.append(el("p", "", t.request));
-    const how = {running: t.step || tr("working"), done: tr("done"), failed: tr("failed"), stopped: tr("stopped")}[t.status];
-    const secs = Math.round((t.ended || Date.now() / 1000) - t.started);
-    what.append(el("small", t.status === "failed" ? "bad" : "", [t.executor, how, tr("{s} s", {s: secs})].filter(Boolean).join(" · ")));
-    const logged = stepLog.get(`${t.id}`);
-    if (logged && logged.request === t.request) {
-      // The header already carries the step in flight; the trail holds the
-      // ones before it, so the card never says the same thing twice.
-      const steps = t.status === "running" && logged.steps.at(-1)?.step === t.step
-        ? logged.steps.slice(0, -1) : logged.steps;
-      if (steps.length) {
-        const trail = el("div", "tsteps");
-        for (const s of steps) trail.append(el("div", "", `· ${s.step}`));
-        what.append(trail);
-      }
-    }
-    row.append(what);
-    if (t.status === "running") { const b = el("button", "mini", tr("stop")); b.onclick = () => api(`tasks/${t.id}/stop`, {method: "POST"}); row.append(b); }
-    return row;
-  }) : [el("p", "empty", tr("Doing nothing now."))])].filter(Boolean);
-  if (question) {
-    const box = el("div", "ask");
-    box.append(el("p", "", tr("{who} asks: {what}", {who: question.executor, what: question.text})));
-    const field = el("input"); field.placeholder = tr("Answer…"); field.autocomplete = "off";
-    const send = el("button", "mini yes", tr("Send"));
-    const reply = () => {
-      const text = field.value.trim();
-      if (!text) return;
-      send.disabled = true;
-      api(`answer/${question.id}`, {method: "POST", body: {text}}).catch(() => { send.disabled = false; });
-    };
-    send.onclick = reply;
-    field.onkeydown = e => { if (e.key === "Enter") reply(); };
-    const row = el("div", "pair"); row.append(field, send);
-    box.append(row);
-  }
-  if (permission) {
-    const box = el("div", "ask");
-    box.append(el("p", "", tr("{who} wants to: {what}", {who: permission.executor, what: permission.what})));
-    if (permission.why) box.append(el("p", "why", tr("I ask because {why}", {why: permission.why})));
-    const yes = el("button", "mini yes", tr("Yes")), no = el("button", "mini", tr("No"));
-    yes.onclick = () => api(`permission/${permission.id}`, {method: "POST", body: {allow: true}});
-    no.onclick = () => api(`permission/${permission.id}`, {method: "POST", body: {allow: false}});
-    box.append(yes, no);
-  }
+  const key = `${permission ? permission.id : ""}/${question ? question.id : ""}`;
+  const jump = key !== askSeen && Boolean(permission || question);
+  askSeen = key;
+  holding = {live, permission, question};
+  renderHold(jump);
 }
 
 /* ── the parts that connect to the brain ── */
@@ -1993,7 +2038,10 @@ function drawContext() {
   side.append(ctxKv(tr("Session"), tr("turns: {n}", {n: s.turns || 0})),
              ctxKv(tr("Replies"), String(s.turns || 0)),
              ctxKv(tr("Running"), runningFor(s.started)),
-             ctxKv(tr("Version"), run.version ? `v${run.version}${run.commit ? " · " + run.commit : ""}` : "—"));
+             ctxKv(tr("Version"), run.version ? `v${run.version}${run.commit ? " · " + run.commit : ""}` : "—"),
+             ctxKv(tr("model"), ($("model").textContent || "—").trim()),
+             ctxKv(tr("around"), ($("around").textContent || "—").trim()),
+             ctxKv(tr("reply"), ($("speed").textContent || "—").trim()));
   side.append(ctxSec(tr("Machines"), machineList.length || ""));
   if (machineList.length) {
     for (const m of machineList) side.append(ctxKv(m.alias || m.name, tr("parts: {n}", {n: (m.parts || []).length})));

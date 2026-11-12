@@ -176,6 +176,17 @@ def test_the_stream_reconnects_and_knocks():
     assert "knock()" in opens[0] and "refresh()" in opens[0]
 
 
+def test_what_waits_is_a_card_at_the_foot_of_the_feed():
+    """A leave, a question, a running hand and a held thought are cards in
+    the feed, not a hidden pult: the person can answer where they read."""
+    assert 'id="hold"' in PAGE
+    for name in ("permissionCard", "questionCard", "taskCard", "intentCard", "renderHold"):
+        assert f"function {name}(" in SCRIPT
+    assert 'hold.replaceChildren(...parts);' in SCRIPT
+    assert 'if (hold && hold.parentNode === $("flow")) $("flow").insertBefore(node, hold);' in SCRIPT
+    assert "#hold { display:grid;" in STYLE
+
+
 def test_a_message_with_a_script_runs_in_a_sealed_frame():
     """The page cannot run a card's script where it stands; a card that
     carries one is a sealed frame of its own, sized by its bridge."""

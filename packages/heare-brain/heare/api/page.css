@@ -830,6 +830,20 @@ body.sysopen .sheet.mid { width:min(560px, calc(100vw - 396px)); }
 @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
 
 /* the words that are not a message: a step, a look, the reply still streaming */
+/* what is waiting: a leave, a question, a running hand, a held thought */
+#hold { display:grid; gap:10px; min-width:0; }
+#hold[hidden] { display:none; }
+#hold .task { border:1px solid var(--line); border-radius:12px; background:var(--card); padding:10px 12px; }
+.taskline { display:flex; align-items:center; gap:8px; min-width:0; font:10.5px var(--mono); color:var(--soft); }
+.taskline b { color:var(--ink); font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.taskline span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.taskline .sdot { width:6px; height:6px; border-radius:50%; background:var(--accent); animation:pulse 1.2s ease infinite; flex:none; }
+.taskline .mini { margin-left:auto; }
+.taskwhat { margin:5px 0 0; color:var(--ink); font:12.5px/1.45 var(--sans); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.tsteps { margin-top:4px; color:var(--soft); font:10px/1.5 var(--mono); }
+#hold .pair { display:grid; grid-template-columns:1fr auto; gap:8px; margin-top:8px; }
+#hold .pair input { min-width:0; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:8px 10px; color:var(--ink); font:13px var(--sans); }
+#hold .acts { margin-top:8px; }
 .line { align-self:flex-start; max-width:70ch; color:var(--ink); font:14.5px/1.7 var(--sans); white-space:pre-wrap; overflow-wrap:anywhere; }
 .line.me { align-self:flex-end; }
 .aside { align-self:flex-start; color:var(--soft); font:10.5px var(--mono); text-align:left; max-width:100%; }

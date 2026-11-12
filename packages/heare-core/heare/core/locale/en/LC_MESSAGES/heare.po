@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-12 22:02+0200\n"
+"POT-Creation-Date: 2026-11-12 23:49+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -783,7 +783,13 @@ msgstr ""
 msgid "unpinned"
 msgstr ""
 
+msgid "Message"
+msgstr ""
+
 msgid "pinned"
+msgstr ""
+
+msgid "Pin"
 msgstr ""
 
 msgid "could not pin"
@@ -811,9 +817,6 @@ msgid "Link"
 msgstr ""
 
 msgid "Card"
-msgstr ""
-
-msgid "Message"
 msgstr ""
 
 msgid "Pinned"
@@ -853,9 +856,6 @@ msgid "Allow"
 msgstr ""
 
 msgid "Not now"
-msgstr ""
-
-msgid "Pin"
 msgstr ""
 
 msgid "Doka"
@@ -1234,31 +1234,15 @@ msgstr ""
 msgid "On my mind"
 msgstr ""
 
-msgid "unfinished"
+#, python-brace-format
+msgid "{who} wants to: {what}"
 msgstr ""
 
-msgid "a reminder"
+#, python-brace-format
+msgid "I ask because {why}"
 msgstr ""
 
-msgid "done"
-msgstr ""
-
-msgid "failed"
-msgstr ""
-
-msgid "say now"
-msgstr ""
-
-msgid "not now"
-msgstr ""
-
-msgid "working"
-msgstr ""
-
-msgid "stopped"
-msgstr ""
-
-msgid "Doing nothing now."
+msgid "HANDS"
 msgstr ""
 
 #, python-brace-format
@@ -1268,12 +1252,28 @@ msgstr ""
 msgid "Answer…"
 msgstr ""
 
-#, python-brace-format
-msgid "{who} wants to: {what}"
+msgid "working"
 msgstr ""
 
-#, python-brace-format
-msgid "I ask because {why}"
+msgid "done"
+msgstr ""
+
+msgid "failed"
+msgstr ""
+
+msgid "stopped"
+msgstr ""
+
+msgid "unfinished"
+msgstr ""
+
+msgid "a reminder"
+msgstr ""
+
+msgid "say now"
+msgstr ""
+
+msgid "not now"
 msgstr ""
 
 msgid "input"
@@ -1486,6 +1486,12 @@ msgid "Running"
 msgstr ""
 
 msgid "Version"
+msgstr ""
+
+msgid "around"
+msgstr ""
+
+msgid "reply"
 msgstr ""
 
 #, python-brace-format
@@ -2999,5 +3005,8 @@ msgstr ""
 #~ msgstr ""
 
 #~ msgid "settled facts"
+#~ msgstr ""
+
+#~ msgid "Doing nothing now."
 #~ msgstr ""
 

@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-12 22:02+0200\n"
+"POT-Creation-Date: 2026-11-12 23:49+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -783,8 +783,14 @@ msgstr "інша розмова"
 msgid "unpinned"
 msgstr "знято"
 
+msgid "Message"
+msgstr "Повідомлення"
+
 msgid "pinned"
 msgstr "закріплено"
+
+msgid "Pin"
+msgstr "Закріпити"
 
 msgid "could not pin"
 msgstr "не вдалося закріпити"
@@ -812,9 +818,6 @@ msgstr "Посилання"
 
 msgid "Card"
 msgstr "Картка"
-
-msgid "Message"
-msgstr "Повідомлення"
 
 msgid "Pinned"
 msgstr "Закріплене"
@@ -854,9 +857,6 @@ msgstr "Дозволити"
 
 msgid "Not now"
 msgstr "Не зараз"
-
-msgid "Pin"
-msgstr "Закріпити"
 
 msgid "Doka"
 msgstr "Дока"
@@ -1234,32 +1234,16 @@ msgstr "{last} с · медіана {mid} с"
 msgid "On my mind"
 msgstr "Тримаю в голові"
 
-msgid "unfinished"
-msgstr "не завершено"
+#, python-brace-format
+msgid "{who} wants to: {what}"
+msgstr "{who} хоче: {what}"
 
-msgid "a reminder"
-msgstr "нагадування"
+#, python-brace-format
+msgid "I ask because {why}"
+msgstr "питаю, бо {why}"
 
-msgid "done"
-msgstr "готово"
-
-msgid "failed"
-msgstr "не вдалося"
-
-msgid "say now"
-msgstr "скажи зараз"
-
-msgid "not now"
-msgstr "не зараз"
-
-msgid "working"
-msgstr "працює"
-
-msgid "stopped"
-msgstr "зупинено"
-
-msgid "Doing nothing now."
-msgstr "Зараз нічого не роблю."
+msgid "HANDS"
+msgstr "HANDS"
 
 #, python-brace-format
 msgid "{who} asks: {what}"
@@ -1268,13 +1252,29 @@ msgstr "{who} питає: {what}"
 msgid "Answer…"
 msgstr "Відповідь…"
 
-#, python-brace-format
-msgid "{who} wants to: {what}"
-msgstr "{who} хоче: {what}"
+msgid "working"
+msgstr "працює"
 
-#, python-brace-format
-msgid "I ask because {why}"
-msgstr "питаю, бо {why}"
+msgid "done"
+msgstr "готово"
+
+msgid "failed"
+msgstr "не вдалося"
+
+msgid "stopped"
+msgstr "зупинено"
+
+msgid "unfinished"
+msgstr "не завершено"
+
+msgid "a reminder"
+msgstr "нагадування"
+
+msgid "say now"
+msgstr "скажи зараз"
+
+msgid "not now"
+msgstr "не зараз"
 
 msgid "input"
 msgstr "вхід"
@@ -1487,6 +1487,12 @@ msgstr "Працює"
 
 msgid "Version"
 msgstr "Версія"
+
+msgid "around"
+msgstr "навколо"
+
+msgid "reply"
+msgstr "відповідь"
 
 #, python-brace-format
 msgid "parts: {n}"
@@ -3005,4 +3011,7 @@ msgstr "я перестав чути {s} секунд тому — схоже, �
 
 #~ msgid "settled facts"
 #~ msgstr "сталі факти"
+
+#~ msgid "Doing nothing now."
+#~ msgstr "Зараз нічого не роблю."
 
