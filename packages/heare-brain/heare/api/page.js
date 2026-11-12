@@ -68,7 +68,13 @@ const speeds = [];
 const stepLog = new Map();   // task id -> {request, steps: [{executor, step}, …]}
 
 /* ── the conversation ── */
-function feedAppend(node) { $("flow").append(node); feedToEnd(); return node; }
+function feedAppend(node) {
+  const empty = $("flow").querySelector(".feed-empty");
+  if (empty) empty.remove();
+  $("flow").append(node);
+  feedToEnd();
+  return node;
+}
 function feedToEnd() { const f = $("feed"); if (f) f.scrollTop = f.scrollHeight; }
 function feedClear() { $("flow").replaceChildren(); }
 function feedEmpty() {
