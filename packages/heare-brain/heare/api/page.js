@@ -291,6 +291,7 @@ function demo() {
   feedToEnd();
   pinState = DEMO_PINS;
   dockRender();
+  drawTopbar();
   setTimeout(dockMeasure, 30);
 }
 if ("ResizeObserver" in window) {
