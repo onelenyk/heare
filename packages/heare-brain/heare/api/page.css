@@ -861,3 +861,11 @@ body.sysopen #sheet { width:min(760px, calc(100vw - 396px)); }
   .topright .lastact { display: none; }
   #mic, #sound { width: 30px; }
 }
+
+/* ── the feed: a link, a picture, a sound, a film ── */
+.msg-link { display:grid; gap:2px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--card-2); color:var(--ink); text-decoration:none; }
+.msg-link b { font-size:13px; }
+.msg-link small { color:var(--soft); font:10.5px var(--mono); }
+.msg-link:hover { border-color:var(--accent); }
+.msg-media { display:block; width:100%; max-height:420px; border-radius:10px; background:var(--card-2); object-fit:contain; }
+audio.msg-media { max-height:none; }

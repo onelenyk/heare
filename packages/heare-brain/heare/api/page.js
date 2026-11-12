@@ -207,10 +207,33 @@ function onMessage(e) {
 }
 function turnMsg(t) {
   return msgEl({
-    id: t.id, who: t.role === "user" ? "me" : "it", time: clock(t.at),
+    id: t.id, session_id: t.session_id, who: t.role === "user" ? "me" : "it",
+    time: clock(t.at), kind: t.kind, artifact: t.artifact, text: t.text,
     html: t.kind === "html" && t.html ? t.html : `<p>${escapeHtml(t.text)}</p>`,
     wide: t.width === "w",
   });
+}
+
+/* What a message is, drawn by its kind: a card, a link, a file. */
+function renderBody(m) {
+  const a = m.artifact || {};
+  const file = m.session_id && a.file
+    ? `/api/sessions/${encodeURIComponent(m.session_id)}/files/${encodeURIComponent(a.file)}`
+    : "";
+  if (m.kind === "link" && a.url) {
+    return `<a class="msg-link" href="${escapeHtml(a.url)}" target="_blank" rel="noopener noreferrer">` +
+      `<b>${escapeHtml(a.title || a.url)}</b><small>${escapeHtml(a.host || "")}</small></a>`;
+  }
+  if (m.kind === "image" && file) {
+    return `<img class="msg-media" src="${file}" alt="${escapeHtml(a.name || "")}" loading="lazy">`;
+  }
+  if (m.kind === "audio" && file) {
+    return `<audio class="msg-media" controls preload="none" src="${file}"></audio>`;
+  }
+  if (m.kind === "video" && file) {
+    return `<video class="msg-media" controls preload="none" src="${file}"></video>`;
+  }
+  return m.html || `<p>${escapeHtml(m.text)}</p>`;
 }
 function isPinned(mid) {
   return (pinState.all || []).some(p => (p.message || p.mid) === mid);
@@ -233,7 +256,7 @@ function msgEl(m) {
     w.onclick = () => { wrap.classList.toggle("wide"); dockMeasure(); };
     meta.append(w);
   }
-  const body = el("div", "body"); body.innerHTML = m.html || "";
+  const body = el("div", "body"); body.innerHTML = renderBody(m);
   wrap.append(meta, body);
   return wrap;
 }
