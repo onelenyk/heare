@@ -2354,7 +2354,7 @@ function mindClose() {
   $("open-mind").setAttribute("aria-expanded", "false");
 }
 function mindOpenDrawer() {
-  shut();
+  rightShut();
   mindOpen = true;
   $("mind").classList.add("on");
   $("mind").setAttribute("aria-hidden", "false");
@@ -2448,6 +2448,14 @@ function closeSheet() {
   $("sheet").inert = true;
   if (!anyOpen()) $("veil").classList.remove("on");
 }
+// A right drawer never closes the left menu: they are two different
+// conversations. The veil and Escape still close everything.
+const rightShut = () => {
+  mindClose();
+  closeSheet();
+  $("settings").classList.remove("on");
+  if (!anyOpen()) $("veil").classList.remove("on");
+};
 const shut = () => {
   mindClose();
   closeSheet();
@@ -2575,7 +2583,7 @@ function fillProviders() {
   $("provider").value = chosen && offers.includes(chosen) ? chosen : (m.wanted || m.provider || "");
 }
 function openSettings() {
-  shut();
+  rightShut();
   fillProviders();
   $("modelcustom").value = "";
   api("settings").then(s => loadModels(s[$("provider").value + "_model"] || ""))
