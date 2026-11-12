@@ -339,6 +339,9 @@ const DEMO_FEED = [
   { id: "demo/10", who: "it", time: "21:17", html: `<p>${tr("Here is the design-system link.")}</p>${linkCard()}` },
   { id: "demo/11", who: "me", time: "21:18", html: `<p>${tr("Show this at full width.")}</p>` },
   { id: "demo/12", who: "it", time: "21:18", html: `<p>${tr("Done. The table above is the whole panel wide — use the corner button to bring it back.")}</p>` },
+  { id: "demo/13", who: "it", time: "21:20", html: `<p>${tr("An image message, and a link message:")}</p><img class="msg-media" alt="" src="data:image/svg+xml;utf8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180"><rect width="320" height="180" fill="#1c1a21"/><path d="M0 140 90 70 160 120 220 60 320 140V180H0Z" fill="#302c37"/><path d="M0 160 80 110 170 150 260 100 320 150V180H0Z" fill="#9d7cff" opacity=".2"/></svg>')}">` },
+  { id: "demo/14", who: "it", time: "21:21", html: `<p>${tr("An audio message:")}</p><audio class="msg-media" controls preload="none" src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA="></audio>` },
+  { id: "demo/15", who: "it", time: "21:22", html: `<p>${tr("A video message:")}</p><video class="msg-media" controls preload="none" src="data:video/mp4;base64,AAAAHGZ0eXBpc29tAAACAGlzb21pc28ybXA0MQAAAAhmcmVlAAAAAG1kYXQ="></video>` },
 ];
 
 const DEMO_PINS = {

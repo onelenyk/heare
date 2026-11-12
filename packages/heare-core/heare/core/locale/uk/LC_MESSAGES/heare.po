@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-12 20:13+0200\n"
+"POT-Creation-Date: 2026-11-12 21:02+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -934,6 +934,15 @@ msgstr "Покажи це на всю ширину."
 
 msgid "Done. The table above is the whole panel wide — use the corner button to bring it back."
 msgstr "Готово. Таблиця вище — на всю ширину панелі; кутова кнопка поверне її у стрічку."
+
+msgid "An image message, and a link message:"
+msgstr "Повідомлення-картинка і посилання:"
+
+msgid "An audio message:"
+msgstr "Аудіо-повідомлення:"
+
+msgid "A video message:"
+msgstr "Відео-повідомлення:"
 
 msgid "The new screen"
 msgstr "Новий екран"
