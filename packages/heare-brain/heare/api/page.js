@@ -1750,15 +1750,11 @@ const speak = (text, channel) => {
 const setAloud = on => {
   aloud = !!on;
   localStorage.setItem("heare.aloud", aloud ? "1" : "0");
-  $("speak").classList.toggle("yes", aloud);
-  if (!aloud && speech) speech.cancel();
+    if (!aloud && speech) speech.cancel();
   if (webPid) api("input", {method: "POST", body: {
     kind: "state", channel: "web", values: {aloud}}}).catch(() => {});
   drawTopbar();
 };
-$("speak").classList.toggle("yes", aloud);
-$("speak").onclick = () => setAloud(!aloud);
-if (!speech) $("speak").hidden = true;
 
 const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 const hear = $("hear");
@@ -2512,7 +2508,9 @@ function drawTopbar() {
     mic.classList.toggle("on", on); mic.setAttribute("aria-pressed", String(on));
   }
   if (sound) { sound.classList.toggle("on", aloud); sound.setAttribute("aria-pressed", String(aloud)); }
-  if (last) last.textContent = $("up") ? $("up").textContent : "";
+  if (last) last.textContent = tr("last") + " · " + ($("up") ? $("up").textContent : "");
+  const chip = $("modelchip"), model = $("model");
+  if (chip) chip.textContent = model && model.textContent ? model.textContent.split(" · ")[0] : "";
 }
 $("mic").onclick = () => {
   const pid = voicePid();

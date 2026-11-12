@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-12 17:19+0200\n"
+"POT-Creation-Date: 2026-11-12 18:02+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -620,19 +620,13 @@ msgstr ""
 msgid "Details"
 msgstr ""
 
-msgid "speak and hear"
-msgstr ""
-
 msgid "attach a file"
 msgstr ""
 
+msgid "speak and hear"
+msgstr ""
+
 msgid "Write…"
-msgstr ""
-
-msgid "hear the reply aloud"
-msgstr ""
-
-msgid "hear"
 msgstr ""
 
 msgid "Context"
@@ -2751,5 +2745,11 @@ msgstr ""
 #~ msgstr ""
 
 #~ msgid "Controls"
+#~ msgstr ""
+
+#~ msgid "hear the reply aloud"
+#~ msgstr ""
+
+#~ msgid "hear"
 #~ msgstr ""
 

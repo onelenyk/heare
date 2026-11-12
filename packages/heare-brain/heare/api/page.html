@@ -17,9 +17,10 @@
       <span class="chev" aria-hidden="true">▾</span>
     </button>
     <div class="topright">
-      <button type="button" id="mic" class="tbtn ticon" aria-pressed="false" data-t-title title="microphone" data-t-aria aria-label="microphone">◉</button>
-      <button type="button" id="sound" class="tbtn ticon" aria-pressed="false" data-t-title title="sound" data-t-aria aria-label="sound">♫</button>
+      <button type="button" id="mic" class="tbtn statepill" aria-pressed="false" data-t-title title="microphone"><span data-t>microphone</span><i class="sdot"></i></button>
+      <button type="button" id="sound" class="tbtn statepill" aria-pressed="false" data-t-title title="sound"><span data-t>sound</span><i class="sdot"></i></button>
       <span id="last" class="lastact"></span>
+      <span id="modelchip" class="modelchip"></span>
       <button type="button" id="openmind" class="tbtn" data-t>Memory</button>
       <button type="button" id="opensettings" class="tbtn" data-t-aria aria-label="Settings" data-t-title title="Settings">⚙</button>
       <button type="button" id="stop" class="tstop" data-t>■ Stop</button>
@@ -105,11 +106,10 @@
       <div id="composer">
         <div id="chips"></div>
         <form id="say">
-          <button type="button" id="hear" class="talk" data-t-title title="speak and hear">◉</button>
           <button type="button" id="attach" class="talk" data-t-title title="attach a file">＋</button>
+          <button type="button" id="hear" class="talk" data-t-title title="speak and hear">◉</button>
           <input id="filepick" type="file" multiple hidden>
           <input id="text" data-t-placeholder placeholder="Write…" autocomplete="off">
-          <button type="button" id="speak" class="mini" data-t-title title="hear the reply aloud" data-t>hear</button>
           <button>→</button>
         </form>
       </div>

@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-12 17:19+0200\n"
+"POT-Creation-Date: 2026-11-12 18:02+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -620,20 +620,14 @@ msgstr "Екран"
 msgid "Details"
 msgstr "Деталі"
 
-msgid "speak and hear"
-msgstr "говорити й почути"
-
 msgid "attach a file"
 msgstr "додати файл"
 
+msgid "speak and hear"
+msgstr "говорити й почути"
+
 msgid "Write…"
 msgstr "Напиши…"
-
-msgid "hear the reply aloud"
-msgstr "чути відповідь уголос"
-
-msgid "hear"
-msgstr "чути"
 
 msgid "Context"
 msgstr "Контекст"
@@ -2757,4 +2751,10 @@ msgstr "я перестав чути {s} секунд тому — схоже, �
 
 #~ msgid "Controls"
 #~ msgstr "Керування"
+
+#~ msgid "hear the reply aloud"
+#~ msgstr "чути відповідь уголос"
+
+#~ msgid "hear"
+#~ msgstr "чути"
 
