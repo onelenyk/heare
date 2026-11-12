@@ -133,7 +133,9 @@ button { cursor:pointer; }
 #bodies .mbrain { flex:none; margin-left:4px; padding:1px 5px; border-radius:999px; background:var(--accent); color:var(--accent-ink); font:600 8px/1.5 var(--sans); }
 #bodies .mstate { margin-left:auto; color:var(--soft); font:9px var(--mono); white-space:nowrap; }
 #bodies .mmeta { margin-top:1px; color:var(--soft); font:8.5px var(--mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-#bodies .mactions { display:flex; gap:2px; flex:none; margin-left:4px; }
+#bodies .mactions { display:flex; gap:2px; flex:none; margin-left:4px; opacity:0; transition:opacity .12s; }
+#bodies .mtop:hover .mactions, #bodies .mtop:focus-within .mactions { opacity:1; }
+@media (hover: none) { #bodies .mactions { opacity:1; } }
 #bodies .mact { padding:0 4px; line-height:1.5; font-size:10px; border:0; background:transparent; color:var(--soft); }
 #bodies .mact:hover { color:var(--accent); }
 #bodies .mrename { min-width:0; width:100%; padding:1px 4px; border:1px solid var(--accent); border-radius:5px; background:var(--bg); color:var(--ink); font:600 12px var(--sans); }
@@ -246,7 +248,7 @@ button { cursor:pointer; }
 /* ── the chat: a reading column between a rail and a composer ── */
 #chat { position:relative; height:100%; min-height:0; min-width:0; border:1px solid var(--line); border-radius:18px; overflow:hidden; background:radial-gradient(1100px 460px at 72% -12%, rgba(157,124,255,.055), transparent 62%), var(--bg); container-type:inline-size; --flow:900px; --flow-pad:30px; --dock-h:58px; --comp-h:62px; --wing:0px; }
 @supports (container-type:inline-size) { #chat { --wing:max(0px, calc((100cqw - (var(--flow) + 2 * var(--flow-pad))) / 2 - 12px)); } }
-#pin-dock { position:absolute; top:12px; left:50%; transform:translateX(-50%); z-index:7; width:min(calc(var(--flow) + 2 * var(--flow-pad)), calc(100% - 24px)); min-height:var(--dock-h); display:flex; align-items:center; gap:6px; padding:5px 6px; border:1px solid var(--line); border-radius:14px; background:color-mix(in srgb, var(--bg) 84%, transparent); backdrop-filter:blur(14px); box-shadow:0 14px 34px rgba(0,0,0,.3); overflow-x:auto; scrollbar-width:none; }
+#pin-dock { position:absolute; top:12px; left:50%; transform:translateX(-50%); z-index:7; width:min(var(--flow), calc(100% - 24px)); min-height:var(--dock-h); display:flex; align-items:center; gap:6px; padding:5px 6px; border:1px solid var(--line); border-radius:14px; background:color-mix(in srgb, var(--bg) 84%, transparent); backdrop-filter:blur(14px); box-shadow:0 14px 34px rgba(0,0,0,.3); overflow-x:auto; scrollbar-width:none; }
 #pin-dock::-webkit-scrollbar { display:none; }
 .rail-empty, .dock-empty { padding:6px 8px; color:var(--soft); font-size:10.5px; font-family:var(--mono); letter-spacing:.01em; }
 .pinchip { display:flex; align-items:center; gap:8px; height:46px; max-width:284px; padding:5px 4px 5px 6px; border:1px solid var(--line); border-radius:12px; background:var(--card); color:var(--ink); flex:none; transition:border-color .15s; cursor:pointer; text-align:left; position:relative; }
@@ -436,7 +438,7 @@ button { cursor:pointer; }
 .pv-body { max-height:46vh; overflow:auto; }
 
 /* ── the composer: one bar, always at hand ── */
-#composer { position:absolute; bottom:12px; left:50%; transform:translateX(-50%); z-index:7; width:min(calc(var(--flow) + 2 * var(--flow-pad)), calc(100% - 24px)); padding:6px; border:1px solid var(--line); border-radius:14px; background:color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter:blur(14px); box-shadow:0 14px 34px rgba(0,0,0,.3); }
+#composer { position:absolute; bottom:12px; left:50%; transform:translateX(-50%); z-index:7; width:min(var(--flow), calc(100% - 24px)); padding:6px; border:1px solid var(--line); border-radius:14px; background:color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter:blur(14px); box-shadow:0 14px 34px rgba(0,0,0,.3); }
 #composer #chips { padding:0 2px 6px; }
 #composer #chips:empty { display:none; }
 #say { max-width:none; margin:0; padding:0; display:flex; align-items:center; gap:8px; min-width:0; }

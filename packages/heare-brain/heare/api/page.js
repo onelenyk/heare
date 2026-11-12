@@ -160,6 +160,30 @@ async function goToPin(p) {
   else toast(tr("another conversation"));
 }
 async function togglePin(mid) {
+  if (DEMO) {
+    const all = [...(pinState.trail || []), ...(pinState.shelf || [])];
+    const found = all.find(p => (p.message || p.mid) === mid);
+    if (found) {
+      pinState.trail = (pinState.trail || []).filter(p => p !== found);
+      pinState.shelf = (pinState.shelf || []).filter(p => p !== found);
+      toast(tr("unpinned"));
+    } else {
+      const m = DEMO_FEED.find(x => x.id === mid) || {};
+      const kind = m.kind === "html" ? (m.artifact || {}).label || "html" : (m.kind || "text");
+      const title = m.title || (m.artifact || {}).title || String(m.text || "").slice(0, 46) || tr("Message");
+      pinState.trail = [...(pinState.trail || []), {mid, kind, title, line: m.time || ""}];
+      toast(tr("pinned"));
+    }
+    const node = $("flow").querySelector(`[data-mid="${mid}"]`);
+    if (node) {
+      const on = !found;
+      node.classList.toggle("pinned", on);
+      const b = node.querySelector(".pinbtn");
+      if (b) { b.classList.toggle("on", on); b.title = on ? tr("Unpin") : tr("Pin"); }
+    }
+    dockRender();
+    return;
+  }
   const found = (pinState.all || []).find(p => (p.message || p.mid) === mid);
   try {
     if (found) { await api(`pins/${found.id}`, {method: "DELETE"}); toast(tr("unpinned")); }
@@ -223,9 +247,15 @@ function previewHide() {
   clearTimeout(previewTimer);
   $("pinpreview").hidden = true;
 }
+function applyPins() {
+  $("flow").querySelectorAll(".msg").forEach(node => {
+    node.classList.toggle("pinned", isPinned(node.dataset.mid));
+  });
+}
 function dockRender() {
   const dock = $("pin-dock");
   if (!dock) return;
+  applyPins();
   const pins = [...pinState.trail, ...pinState.shelf];
   dock.replaceChildren(...(pins.length ? pins.map(pinChip) : [el("div", "dock-empty", tr("Pin a message — it appears here when you scroll past it."))]));
   dockMeasure();
@@ -356,7 +386,8 @@ function renderContent(m) {
   return `<div class="say">${m.html || `<p>${escapeHtml(m.text || "")}</p>`}</div>`;
 }
 function isPinned(mid) {
-  return (pinState.all || []).some(p => (p.message || p.mid) === mid);
+  const all = pinState.all || [...(pinState.trail || []), ...(pinState.shelf || [])];
+  return all.some(p => (p.message || p.mid) === mid);
 }
 function pinButton(m) {
   const b = el("button", "pinbtn" + (isPinned(m.id) ? " on" : ""));
@@ -772,6 +803,7 @@ function demo() {
   $("hands").textContent = "demo";
   $("around").textContent = tr("quiet") + " · " + tr("you are here");
   $("session").textContent = tr("replies: {n}", {n: 6});
+  pinState = DEMO_PINS;
   feedClear();
   DEMO_FEED.forEach(m => feedAppend(msgEl(m)));
   feedToEnd();
