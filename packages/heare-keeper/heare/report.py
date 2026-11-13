@@ -1,7 +1,7 @@
 """What this machine tells the brain: its parts, its load, and what to run.
 
-The brain keeps the desired state, the keeper the actual one. Every half
-minute the keeper posts what it has and turns manifests to match the answer.
+The brain keeps the desired state, the keeper the actual one. Every few
+seconds the keeper posts what it has and turns manifests to match the answer.
 The brain never writes a manifest: a machine's parts are its own, and a
 switch on the page is a wish until the keeper has made it true.
 """
@@ -26,11 +26,11 @@ from heare.core.i18n import _
 
 logger = logging.getLogger("heare.keeper.report")
 
-# The page's switch is not a keystroke: half a minute is soon enough, and a
-# machine that was asleep catches up on its next word.
-EVERY_S = 30.0
+# A switch should land while the hand is still on it: five seconds, not
+# half a minute. A machine that was asleep catches up on its next word.
+EVERY_S = 5.0
 # A brain that is away, or has forgotten this machine, is asked less often:
-# a refused report every half minute is a busy loop, not a heartbeat.
+# a refused report every few seconds is a busy loop, not a heartbeat.
 BACKOFF_MAX_S = 5 * 60.0
 TIMEOUT = httpx.Timeout(15.0, connect=5.0)
 
@@ -109,7 +109,7 @@ def apply(folder: Path, desired: object) -> list[str]:
 
     A name this machine does not know is ignored — the brain may be newer
     than the machine — and a part it cannot run is skipped with the reason
-    it already reported: retrying it every half minute would be a loop,
+    it already reported: retrying it every few seconds would be a loop,
     not an attempt. A part that cannot be turned on at all is recorded as
     unwell, so the page shows why instead of «pending» forever.
     """
@@ -141,7 +141,7 @@ def apply(folder: Path, desired: object) -> list[str]:
 
 
 class Report:
-    """The keeper's half of the conversation, once every half minute."""
+    """The keeper's half of the conversation, every five seconds."""
 
     def __init__(self, settings: Settings, folder: Path, *,
                  on_restart: Callable[[str], None] | None = None,

@@ -19,7 +19,8 @@ import json
 import re
 from pathlib import Path
 
-# A keeper reports this often; a report older than three of these is away.
+# The brain expects a keeper at least this often (the keeper itself reports
+# every five seconds); a report older than three of these is away.
 REPORT_EVERY_S = 30.0
 AWAY_AFTER_S = 3 * REPORT_EVERY_S
 
