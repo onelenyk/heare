@@ -98,6 +98,22 @@ async def test_a_voice_body_talks_to_the_core_over_the_door(tmp_path):
     await _close(room, client)
 
 
+async def test_a_spoken_phrase_is_kept_in_the_chat(tmp_path):
+    """What the person said stays in the talk, not only in the stream: a
+    page loaded again must show both sides of the conversation."""
+    room, client, auth, _ = await _open(tmp_path)
+    room.model.will_say("Привіт.")
+    heard = await client.post(
+        "/api/input", json={"kind": "heard", "channel": "voice", "text": "привіт"},
+        headers=auth)
+    assert heard.status == 200
+    await room.settled()
+    active = (await (await client.get("/api/sessions", headers=auth)).json())["active"]
+    turns = await (await client.get(f"/api/sessions/{active}/turns", headers=auth)).json()
+    assert [t["text"] for t in turns if t["role"] == "user"] == ["привіт"]
+    await _close(room, client)
+
+
 async def test_a_heard_line_carries_the_machine_that_heard_it(tmp_path, monkeypatch):
     (tmp_path / "parts.json").write_text('["voice@mac"]', encoding="utf-8")
     room, client, auth, settings = await _open(tmp_path)

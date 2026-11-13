@@ -1166,6 +1166,12 @@ def build(core: Core, settings: Any, vitals: Any = None,
             pid = str(request.get("part") or "")
             entry = bodies.get(pid) or {}
             origin = "" if pid.startswith("window@") else str(entry.get("host") or "")
+            # The person's words are the talk's, whatever heard them: the
+            # chat keeps what was said, not only what was answered. Before
+            # 14 November a spoken phrase lived in the event stream alone,
+            # so a page loaded again showed a one-sided conversation.
+            if sessions.active:
+                sessions.add(sessions.active, "user", text)
             core.port.heard(Message(
                 text=text, channel=channel,
                 addressed=bool(data.get("addressed", True)),
