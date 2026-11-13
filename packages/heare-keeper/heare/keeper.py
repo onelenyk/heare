@@ -33,7 +33,9 @@ from heare.updating import Updating
 
 logger = logging.getLogger("heare.keeper")
 
-POLL_S = 5.0
+# How often the manifests and settings are looked at. The report every
+# five seconds is the switch's wish; this only makes the wish land.
+POLL_S = 2.0
 # A part that falls is asked again after this, doubling to the ceiling: a
 # broken part must not turn into a three-second loop that fills the log.
 BACKOFF_S = 3.0
@@ -41,8 +43,9 @@ BACKOFF_MAX_S = 60.0
 # A part that lived this long was not crashing at start; the next fall begins
 # the backoff from the beginning again, as Child.swift does for the app.
 HEALTHY_S = 30.0
-# How long a part has to go when asked before it is killed.
-STOP_S = 5.0
+# How long a part has to go when asked before it is killed. A part has
+# nothing to save; two seconds is a courtesy, not a negotiation.
+STOP_S = 2.0
 LOCK_NAME = "keeper.lock"
 # A part the person rejected, or the brain refused the key of, is not asked
 # again by itself: a trust question every backoff is a yes clicked out of
