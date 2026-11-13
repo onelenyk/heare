@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-13 16:22+0200\n"
+"POT-Creation-Date: 2026-11-13 17:09+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -938,6 +938,9 @@ msgstr ""
 msgid "{h} h"
 msgstr ""
 
+msgid "14:55 the brain rejected the key (403)"
+msgstr ""
+
 msgid "Microphone"
 msgstr ""
 
@@ -1006,6 +1009,9 @@ msgid "Refresh the sources"
 msgstr ""
 
 msgid "this Mac"
+msgstr ""
+
+msgid "the brain rejected this machine's key (403) — it may be paired with another brain"
 msgstr ""
 
 msgid "What is the weather in Burshtyn? And remind me about the meeting."
@@ -1914,6 +1920,15 @@ msgid "last seen"
 msgstr ""
 
 msgid "load"
+msgstr ""
+
+msgid "a part did not start"
+msgstr ""
+
+msgid "re-pair"
+msgstr ""
+
+msgid "Forget this machine and pair it again?"
 msgstr ""
 
 msgid "turn off"

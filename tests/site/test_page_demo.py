@@ -116,11 +116,18 @@ def run() -> int:
                 page.keyboard.press("Escape")
                 page.wait_for_timeout(150)
                 check(page.locator("#chatmenu").is_hidden(), f"{name}: Escape closes the chat menu")
+                # the error: the keeper's reason on the machine, the part's own on its card
+                page.click("#idbtn")
+                page.wait_for_timeout(350)
+                check(page.locator(".malert").is_visible(), f"{name}: the machine shows the error")
+                check(page.locator("#partwidgets .ptrouble").count() >= 1, f"{name}: the part shows its last error")
+                page.screenshot(path=str(EVIDENCE / f"page-demo-error-{name}.png"))
+                page.click("#systemclose")
                 page.close()
             browser.close()
     finally:
         server.shutdown()
-    print("screenshots: .sisyphus/evidence/page-demo-1440.png, page-demo-390.png, page-demo-menu-1440.png, page-demo-menu-390.png")
+    print("screenshots: .sisyphus/evidence/page-demo-1440.png, page-demo-390.png, page-demo-menu-1440.png, page-demo-menu-390.png, page-demo-error-1440.png, page-demo-error-390.png")
     return 0 if not failures else 1
 
 

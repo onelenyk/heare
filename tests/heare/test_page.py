@@ -202,6 +202,17 @@ def test_the_body_counts_one_page_not_every_window():
     assert "b.channel === part.channel && live(pid)" in SCRIPT
 
 
+def test_a_part_shows_its_error_and_the_reason():
+    """A refused key is shown in two places: a strip with the keeper's full
+    reason on the machine, and the part's own last error on its card."""
+    assert "function repairMachine" in SCRIPT
+    assert "a part did not start" in SCRIPT
+    assert "ptrouble" in SCRIPT
+    assert ".malert" in STYLE and ".ptrouble" in STYLE
+    assert 'bad && part.why ? tr("error")' in SCRIPT
+    assert "the brain rejected this machine's key" in SCRIPT
+
+
 def test_the_chat_selector_is_in_the_bar():
     """The chat's name and its list live on the main screen, not only in
     the system's sessions sheet."""

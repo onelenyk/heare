@@ -743,7 +743,8 @@ const DEMO_BODIES = {
     channel: "voice", state: "approved", host: "this Mac", version: "0.9.16",
     about: "listens and speaks", info: tr("microphone · level 3 of 5"), foot: tr("listening") + " · " + tr("{h} h", {h: 2}),
     started: Date.now() / 1000 - 7200,
-    values: {state: "on", mic: true, hear: false, volume: .4},
+    values: {state: "on", mic: true, hear: false, volume: .4,
+             trouble: tr("14:55 the brain rejected the key (403)")},
     ui: [
       {kind: "label", head: true, name: "state", value: "on"},
       {kind: "toggle", name: "mic", label: tr("Microphone")},
@@ -804,7 +805,8 @@ const DEMO_MACHINES = [
   { pid: "machine@mac", name: "this Mac", alias: tr("this Mac"), brain: true, keyed: true,
     reported: true, state: "online", version: "0.9.16", platform: "macOS",
     parts: [
-      {name: "voice", channel: "voice", on: true, pids: ["voice"]},
+      {name: "voice", channel: "voice", on: true, pids: ["voice"], state: "unwell",
+       why: tr("the brain rejected this machine's key (403) — it may be paired with another brain")},
       {name: "eyes", channel: "eyes", on: true, pids: ["eyes"]},
       {name: "hands", channel: "opencode", on: true, pids: ["opencode"]},
       {name: "page", channel: "web", on: true, pids: [DEMO_PAGE_PID]},
@@ -1752,6 +1754,12 @@ function partWidget(pid, b) {
   card.append(stateLine);
   const what = b.info || PART_WHAT[b.channel] || b.about;
   if (what) card.append(el("p", "sinfo", what));
+  const trouble = b.values && b.values.trouble;
+  if (trouble) {
+    const line = el("p", "ptrouble", "! " + trouble);
+    line.title = trouble;
+    card.append(line);
+  }
   const controls = moving ? null : bodyControls(pid, b);
   if (controls) card.append(controls);
   if (b.state === "pending") {
@@ -1792,8 +1800,6 @@ function partWidget(pid, b) {
     if (!line) line = [now, up].filter(Boolean).join(" · ") || health;
     const text = el("span", "", line);
     text.title = health;
-    const trouble = b.values && b.values.trouble;
-    if (trouble) { text.textContent = "! " + trouble; text.title = trouble; text.classList.add("fell"); }
     foot.append(text);
     card.append(foot);
   }
@@ -3379,7 +3385,43 @@ function machineCard(machine) {
     meta.onclick = () => { meta.title = [free, ram, seen].filter(Boolean).join(" · "); toast(meta.title); };
     card.append(meta);
   }
+  const unwell = (machine.parts || []).filter(p => p.state === "unwell" && p.why);
+  if (unwell.length) {
+    const alert = el("div", "malert");
+    alert.append(el("b", "", tr("a part did not start")));
+    for (const part of unwell) {
+      const why = el("div", "mwhy");
+      why.append(el("b", "", PART_LABEL[part.channel] || tr(part.label || part.name)),
+                 el("span", "why", " — " + part.why));
+      alert.append(why);
+    }
+    const repair = el("button", "mini", tr("re-pair"));
+    repair.type = "button";
+    repair.onclick = ev => { ev.stopPropagation(); repairMachine(machine, repair); };
+    alert.append(repair);
+    card.append(alert);
+  }
   return card;
+}
+
+// A refused key is not a dead end: forget the machine here, then the
+// keeper's own form pairs it again with the brain's code. Two clicks,
+// like Delete — the app's window has no dialogs to spare.
+const repairAt = {};
+async function repairMachine(machine, button) {
+  const now = Date.now();
+  if (!repairAt[machine.name] || now - repairAt[machine.name] > 4000) {
+    repairAt[machine.name] = now;
+    button.textContent = tr("Sure?");
+    setTimeout(() => {
+      if (button.isConnected) button.textContent = tr("re-pair");
+      delete repairAt[machine.name];
+    }, 4000);
+    return;
+  }
+  delete repairAt[machine.name];
+  await machineForget(machine.name).catch(() => {});
+  window.open("http://127.0.0.1:9791/", "_blank", "noopener");
 }
 
 /* One part on one machine: the keeper's state, the registry's state, and
@@ -3409,7 +3451,7 @@ function machineRow(machine, part, entries) {
   const head = entry && (entry.ui || []).find(c => c.head && c.kind === "label");
   const now = entry && entry.state === "approved" && head ? tr(String(truth(entry, head) ?? "")) : "";
   const label = pending ? PART_STATE.pending
-    : bad && part.why ? part.why
+    : bad && part.why ? tr("error")
     : cannot ? cannot
     : starting ? tr("starting")
     : stopping ? tr("stopping")
@@ -3440,7 +3482,7 @@ function machineRow(machine, part, entries) {
   }
   row.append(end);
   if (entries.length) {
-    row.title = entries.map(([pid]) => pid).join(" · ");
+    row.title = [entries.map(([pid]) => pid).join(" · "), bad ? part.why : ""].filter(Boolean).join(" · ");
     row.onclick = () => openPart(entries[0][0]);
   }
   return row;

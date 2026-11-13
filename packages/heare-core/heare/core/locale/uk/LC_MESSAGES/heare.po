@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-13 16:22+0200\n"
+"POT-Creation-Date: 2026-11-13 17:09+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -416,7 +416,7 @@ msgid "could not read it"
 msgstr "не вдалося прочитати"
 
 msgid "error"
-msgstr "помилка"
+msgstr "Помилка"
 
 msgid "off"
 msgstr "вимкнено"
@@ -938,6 +938,9 @@ msgstr "слухає"
 msgid "{h} h"
 msgstr "{h} год"
 
+msgid "14:55 the brain rejected the key (403)"
+msgstr "14:55 мозок відкинув ключ (403)"
+
 msgid "Microphone"
 msgstr "Мікрофон"
 
@@ -1007,6 +1010,9 @@ msgstr "Оновити джерела"
 
 msgid "this Mac"
 msgstr "цей Mac"
+
+msgid "the brain rejected this machine's key (403) — it may be paired with another brain"
+msgstr "мозок відкинув ключ цієї машини (403) — можливо, вона спарована з іншим мозком"
 
 msgid "What is the weather in Burshtyn? And remind me about the meeting."
 msgstr "Що там з погодою у Бурштині? І нагадай про зустріч."
@@ -1915,6 +1921,15 @@ msgstr "востаннє чули"
 
 msgid "load"
 msgstr "навантаження"
+
+msgid "a part did not start"
+msgstr "Частина не запустилася"
+
+msgid "re-pair"
+msgstr "Перепарувати"
+
+msgid "Forget this machine and pair it again?"
+msgstr "Забути цю машину й спарувати знову?"
 
 msgid "turn off"
 msgstr "вимкнути"
