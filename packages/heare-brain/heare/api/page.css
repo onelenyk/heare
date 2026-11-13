@@ -194,6 +194,8 @@ button { cursor:pointer; }
 .sw::after { content:""; position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%; background:var(--soft); transition:left .15s, background .15s; }
 .sw.on { background:var(--accent); }
 .sw.on::after { left:16px; background:var(--accent-ink); }
+.pcard .ctrlrow select, .pcard .ctrlrow input[type=text] { margin-left:auto; min-width:0; max-width:60%; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:2px 6px; color:var(--ink); font:10.5px var(--mono); }
+.pcard .ctrlrow select:focus, .pcard .ctrlrow input[type=text]:focus { border-color:var(--accent); outline:none; }
 .ctrlslider { display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:7px; min-height:31px; font-size:11px; color:var(--soft); }
 .ctrlslider input[type=range] { width:100%; accent-color:var(--accent); }
 .ctrlslider b { font:10.5px var(--mono); color:var(--ink); }

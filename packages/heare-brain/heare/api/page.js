@@ -3324,7 +3324,9 @@ function drawFleet(all) {
   const frag = document.createDocumentFragment();
   for (const machine of machineList) {
     const card = machineCard(machine);
-    for (const part of machine.parts || []) {
+    const parts = [...(machine.parts || [])].sort((a, b) =>
+      (PART_PLACE[a.channel] ?? 6) - (PART_PLACE[b.channel] ?? 6));
+    for (const part of parts) {
       const entries = (part.pids || []).map(pid => [pid, byPid.get(pid)]).filter(([, b]) => b);
       for (const [pid] of entries) used.add(pid);
       card.append(machineRow(machine, part, entries));
