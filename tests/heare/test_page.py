@@ -176,6 +176,20 @@ def test_the_stream_reconnects_and_knocks():
     assert "knock()" in opens[0] and "refresh()" in opens[0]
 
 
+def test_a_machine_switch_says_what_it_is_doing():
+    """A switch that was just flipped must not be silenced by its own focus:
+    the row shows the wish, a spinner, and which way it is moving."""
+    machine = SCRIPT.split("function machineRow")[1].split("/* The fleet")[0]
+    assert 'const starting = wish === true && !part.on;' in machine
+    assert 'const stopping = wish === false && connected;' in machine
+    assert 'const connecting = wish === true && part.on && !connected' in machine
+    assert 'state.prepend(el("i", "spin"))' in machine
+    assert 'sw.checked = wish' in machine
+    assert "function pollMachines(" in SCRIPT
+    assert "A checkbox is not typing" in SCRIPT
+    assert "#bodies .spin" in STYLE
+
+
 def test_what_waits_is_a_card_at_the_foot_of_the_feed():
     """A leave, a question, a running hand and a held thought are cards in
     the feed, not a hidden pult: the person can answer where they read."""

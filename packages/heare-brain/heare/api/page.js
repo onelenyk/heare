@@ -1765,7 +1765,11 @@ function partChip(pid, b) {
    focus to go showed the old value until the page was reloaded. */
 const typingIn = node => {
   const now = document.activeElement;
-  return Boolean(now && node.contains(now) && /^(INPUT|SELECT|TEXTAREA)$/.test(now.tagName));
+  if (!now || !node.contains(now)) return false;
+  if (now.tagName === "TEXTAREA" || now.tagName === "SELECT") return true;
+  // A checkbox is not typing: a redraw may replace it, and must, or a
+  // switch that was just flipped never shows what it is doing.
+  return now.tagName === "INPUT" && !["checkbox", "radio", "button", "submit", "reset"].includes(now.type);
 };
 
 /* ── features: the brain's own capabilities, in the settings drawer ── */
@@ -3281,10 +3285,12 @@ function machineRow(machine, part, entries) {
   // The switch says what the person asked for; the report says what is.
   // While the two disagree, the row says which way it is moving.
   const wish = part.desired === true || part.desired === false ? part.desired : part.on;
-  const starting = wish === true && !part.on;
-  const stopping = wish === false && part.on;
   const bad = part.state === "unwell";
   const connected = entries.some(([, b]) => b.state === "approved");
+  const starting = wish === true && !part.on;
+  // The manifest can be gone while the process still holds its stream, so
+  // the row keeps saying it is going until the registry lets go.
+  const stopping = wish === false && connected;
   const connecting = wish === true && part.on && !connected && !pending && !bad && !cannot;
   const working = starting || stopping || connecting;
   if (pending || working) row.classList.add("pending");
