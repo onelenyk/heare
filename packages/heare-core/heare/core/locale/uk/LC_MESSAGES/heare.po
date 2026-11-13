@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-13 00:11+0200\n"
+"POT-Creation-Date: 2026-11-13 13:46+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -572,9 +572,6 @@ msgstr "Написати…"
 msgid "send"
 msgstr "надіслати"
 
-msgid "Screen"
-msgstr "Екран"
-
 msgid "New"
 msgstr "Нова"
 
@@ -586,12 +583,6 @@ msgstr "Видалити"
 
 msgid "＋ New conversation"
 msgstr "＋ Нова розмова"
-
-msgid "Context"
-msgstr "Контекст"
-
-msgid "This is its screen. It puts here what is better seen than heard — and what you ask to keep in front of you."
-msgstr "Це його екран. Він сам ставить сюди те, що краще побачити, ніж почути — і те, що ти попросиш тримати перед очима."
 
 msgid "Language"
 msgstr "Мова"
@@ -1336,9 +1327,6 @@ msgstr "відхилено"
 msgid "timed out"
 msgstr "не дочекався"
 
-msgid "this page"
-msgstr "ця сторінка"
-
 #, python-brace-format
 msgid "page · {host}"
 msgstr "сторінка · {host}"
@@ -1457,6 +1445,9 @@ msgstr "Людина"
 msgid "Assistant"
 msgstr "Асистент"
 
+msgid "Context"
+msgstr "Контекст"
+
 msgid "tokens"
 msgstr "токенів"
 
@@ -1506,43 +1497,6 @@ msgstr "частин: {n}"
 
 msgid "No tasks yet."
 msgstr "Завдань ще не було."
-
-msgid "remove"
-msgstr "прибрати"
-
-msgid "edit the drawing"
-msgstr "редагувати малюнок"
-
-msgid "pick a circle or a line"
-msgstr "вибери коло чи лінію"
-
-msgid "colour of the selected"
-msgstr "колір вибраного"
-
-msgid "＋ circle"
-msgstr "＋ коло"
-
-msgid "＋ line"
-msgstr "＋ лінія"
-
-msgid "cancel"
-msgstr "скасувати"
-
-msgid "drag across the field — the line is redrawn"
-msgstr "потягни по полю — лінія перемалюється"
-
-msgid "drag the circle, and the handle to change the radius"
-msgstr "тягни коло, а вузол — щоб змінити радіус"
-
-msgid "saving…"
-msgstr "зберігаю…"
-
-#, python-brace-format
-msgid "not saved: {why}"
-msgstr "не збереглося: {why}"
-
-msgid "new on the screen"
-msgstr "нове на екрані"
 
 msgid "Hear the reply"
 msgstr "Чути відповідь"
@@ -3041,4 +2995,49 @@ msgstr "я перестав чути {s} секунд тому — схоже, �
 
 #~ msgid "Doing nothing now."
 #~ msgstr "Зараз нічого не роблю."
+
+#~ msgid "Screen"
+#~ msgstr "Екран"
+
+#~ msgid "This is its screen. It puts here what is better seen than heard — and what you ask to keep in front of you."
+#~ msgstr "Це його екран. Він сам ставить сюди те, що краще побачити, ніж почути — і те, що ти попросиш тримати перед очима."
+
+#~ msgid "this page"
+#~ msgstr "ця сторінка"
+
+#~ msgid "remove"
+#~ msgstr "прибрати"
+
+#~ msgid "edit the drawing"
+#~ msgstr "редагувати малюнок"
+
+#~ msgid "pick a circle or a line"
+#~ msgstr "вибери коло чи лінію"
+
+#~ msgid "colour of the selected"
+#~ msgstr "колір вибраного"
+
+#~ msgid "＋ circle"
+#~ msgstr "＋ коло"
+
+#~ msgid "＋ line"
+#~ msgstr "＋ лінія"
+
+#~ msgid "cancel"
+#~ msgstr "скасувати"
+
+#~ msgid "drag across the field — the line is redrawn"
+#~ msgstr "потягни по полю — лінія перемалюється"
+
+#~ msgid "drag the circle, and the handle to change the radius"
+#~ msgstr "тягни коло, а вузол — щоб змінити радіус"
+
+#~ msgid "saving…"
+#~ msgstr "зберігаю…"
+
+#~ msgid "not saved: {why}"
+#~ msgstr "не збереглося: {why}"
+
+#~ msgid "new on the screen"
+#~ msgstr "нове на екрані"
 

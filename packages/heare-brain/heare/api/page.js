@@ -871,6 +871,7 @@ function demo() {
   ];
   $("name").textContent = tr("Doka");
   voice = {mic: true, speaker: false};
+  webPid = DEMO_PAGE_PID;
   phase = "hearing";
   $("sessionpick").replaceChildren(el("option", "", tr("Today")));
   $("sessionpick").value = "demo";
@@ -1386,14 +1387,14 @@ const PART_STATE = {pending: tr("waiting"), approved: tr("connected"), away: tr(
 const PART_ORDER = {pending: 0, approved: 1, away: 2, rejected: 3, expired: 4};
 // Where a card stands on the strip. Always the same order, so a part that
 // drops out or comes back moves nothing; only a part that asks comes first.
-const PART_PLACE = {voice: 1, "native-hands": 2, opencode: 2, eyes: 3, sources: 3, text: 4};
+const PART_PLACE = {voice: 1, eyes: 2, "native-hands": 3, opencode: 3, sources: 6, text: 7};
 const placeOf = (pid, b) => b.state === "pending" ? 0
-  : pid === webPid ? 8 : pid.startsWith("window@") ? 9
-  : PART_PLACE[b.channel] ?? ((b.forms || []).includes("executor") ? 2 : 5);
+  : pid === webPid ? 4 : pid.startsWith("window@") ? 5
+  : PART_PLACE[b.channel] ?? ((b.forms || []).includes("executor") ? 3 : 8);
 // A page has one switch, and a part that is away has none to offer: both
 // are a chip in one line under the cards, not a card.
 const isChip = (pid, b) => !["approved", "pending"].includes(b.state);
-const nameOf = (pid, b) => pid === webPid ? tr("this page")
+const nameOf = (pid, b) => pid === webPid ? tr("Page")
   : pid.startsWith("window@") ? tr("page · {host}", {host: b.host || pid.slice(7)})
   : PART_LABEL[b.channel] || b.channel || pid;
 
@@ -1724,7 +1725,15 @@ function partWidget(pid, b) {
   if (b.state === "approved") {
     const foot = el("div", "sfoot");
     foot.append(el("i", "dot"));
-    const text = el("span", "", b.foot || healthText(b).join(" · "));
+    const health = healthText(b).join(" · ");
+    const up = b.started ? tr("up {for}", {for: lasted(Date.now() / 1000 - b.started)}) : "";
+    let line = b.foot || "";
+    if (!line && b.channel === "web") line = b.host || "";
+    if (!line && b.channel === "opencode" && b.values && b.values.agent)
+      line = [b.values.agent, up].filter(Boolean).join(" · ");
+    if (!line) line = [now, up].filter(Boolean).join(" · ") || health;
+    const text = el("span", "", line);
+    text.title = health;
     const trouble = b.values && b.values.trouble;
     if (trouble) { text.textContent = "! " + trouble; text.title = trouble; text.classList.add("fell"); }
     foot.append(text);
@@ -2140,7 +2149,7 @@ const knock = () => api("bodies", {method: "POST", body: {
   channel: "web", forms: ["input", "output"], about: "a page in the browser",
   ui: [
     {name: "aloud", kind: "toggle", label: tr("Hear the reply"), value: aloud},
-    {name: "state", kind: "label", label: "State", value: "online", head: true},
+    {name: "state", kind: "label", label: "State", value: "this window", head: true},
   ]}}).then(answer => { webPid = (answer && answer.pid) || webPid; }).then(() => api("input", {method: "POST", body: {
     kind: "state", channel: "web", values: {aloud}}})).catch(() => {});
 if (!DEMO) knock();

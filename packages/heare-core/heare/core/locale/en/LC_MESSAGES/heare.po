@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-13 00:11+0200\n"
+"POT-Creation-Date: 2026-11-13 13:46+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -572,9 +572,6 @@ msgstr ""
 msgid "send"
 msgstr ""
 
-msgid "Screen"
-msgstr ""
-
 msgid "New"
 msgstr ""
 
@@ -585,12 +582,6 @@ msgid "Delete"
 msgstr ""
 
 msgid "＋ New conversation"
-msgstr ""
-
-msgid "Context"
-msgstr ""
-
-msgid "This is its screen. It puts here what is better seen than heard — and what you ask to keep in front of you."
 msgstr ""
 
 msgid "Language"
@@ -1336,9 +1327,6 @@ msgstr ""
 msgid "timed out"
 msgstr ""
 
-msgid "this page"
-msgstr ""
-
 #, python-brace-format
 msgid "page · {host}"
 msgstr ""
@@ -1457,6 +1445,9 @@ msgstr ""
 msgid "Assistant"
 msgstr ""
 
+msgid "Context"
+msgstr ""
+
 msgid "tokens"
 msgstr ""
 
@@ -1505,43 +1496,6 @@ msgid "parts: {n}"
 msgstr ""
 
 msgid "No tasks yet."
-msgstr ""
-
-msgid "remove"
-msgstr ""
-
-msgid "edit the drawing"
-msgstr ""
-
-msgid "pick a circle or a line"
-msgstr ""
-
-msgid "colour of the selected"
-msgstr ""
-
-msgid "＋ circle"
-msgstr ""
-
-msgid "＋ line"
-msgstr ""
-
-msgid "cancel"
-msgstr ""
-
-msgid "drag across the field — the line is redrawn"
-msgstr ""
-
-msgid "drag the circle, and the handle to change the radius"
-msgstr ""
-
-msgid "saving…"
-msgstr ""
-
-#, python-brace-format
-msgid "not saved: {why}"
-msgstr ""
-
-msgid "new on the screen"
 msgstr ""
 
 msgid "Hear the reply"
@@ -3035,5 +2989,50 @@ msgstr ""
 #~ msgstr ""
 
 #~ msgid "Doing nothing now."
+#~ msgstr ""
+
+#~ msgid "Screen"
+#~ msgstr ""
+
+#~ msgid "This is its screen. It puts here what is better seen than heard — and what you ask to keep in front of you."
+#~ msgstr ""
+
+#~ msgid "this page"
+#~ msgstr ""
+
+#~ msgid "remove"
+#~ msgstr ""
+
+#~ msgid "edit the drawing"
+#~ msgstr ""
+
+#~ msgid "pick a circle or a line"
+#~ msgstr ""
+
+#~ msgid "colour of the selected"
+#~ msgstr ""
+
+#~ msgid "＋ circle"
+#~ msgstr ""
+
+#~ msgid "＋ line"
+#~ msgstr ""
+
+#~ msgid "cancel"
+#~ msgstr ""
+
+#~ msgid "drag across the field — the line is redrawn"
+#~ msgstr ""
+
+#~ msgid "drag the circle, and the handle to change the radius"
+#~ msgstr ""
+
+#~ msgid "saving…"
+#~ msgstr ""
+
+#~ msgid "not saved: {why}"
+#~ msgstr ""
+
+#~ msgid "new on the screen"
 #~ msgstr ""
 
