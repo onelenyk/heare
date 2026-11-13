@@ -194,6 +194,14 @@ def test_a_machine_switch_says_what_it_is_doing():
     assert "#bodies .spin" in STYLE
 
 
+def test_the_body_counts_one_page_not_every_window():
+    """Only this page is a slide; every other browser window is a chip, or
+    the carousel's total moves under the hand when a tab comes or goes."""
+    assert 'pid.startsWith("window@") && pid !== webPid' in SCRIPT
+    assert 'const live = b => map[b] && ["approved", "pending"].includes(map[b].state);' in SCRIPT
+    assert "b.channel === part.channel && live(pid)" in SCRIPT
+
+
 def test_what_waits_is_a_card_at_the_foot_of_the_feed():
     """A leave, a question, a running hand and a held thought are cards in
     the feed, not a hidden pult: the person can answer where they read."""

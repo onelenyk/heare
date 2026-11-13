@@ -1393,7 +1393,11 @@ const placeOf = (pid, b) => b.state === "pending" ? 0
   : PART_PLACE[b.channel] ?? ((b.forms || []).includes("executor") ? 3 : 8);
 // A page has one switch, and a part that is away has none to offer: both
 // are a chip in one line under the cards, not a card.
-const isChip = (pid, b) => !["approved", "pending"].includes(b.state);
+// The body has one page slide — this page. Other browser windows are
+// chips, not slides: counting every window made the carousel's total
+// move under the person's hand when a tab came or went.
+const isChip = (pid, b) => !["approved", "pending"].includes(b.state)
+  || (pid.startsWith("window@") && pid !== webPid);
 const nameOf = (pid, b) => pid === webPid ? tr("Page")
   : pid.startsWith("window@") ? tr("page · {host}", {host: b.host || pid.slice(7)})
   : PART_LABEL[b.channel] || b.channel || pid;
@@ -1906,8 +1910,9 @@ function withTransitions(map) {
       if (part.desired !== true || part.why_not || part.state === "unwell") continue;
       // The registry can still hold an away entry for a moment; only a
       // live card counts as connected, or the waiting slide never shows.
-      const connected = (part.pids || []).some(pid =>
-        map[pid] && ["approved", "pending"].includes(map[pid].state));
+      const live = b => map[b] && ["approved", "pending"].includes(map[b].state);
+      const connected = (part.pids || []).some(live)
+        || Object.entries(map).some(([pid, b]) => b.channel === part.channel && live(pid));
       if (connected) continue;
       all[`starting@${machine.name}-${part.name}`] = {
         channel: part.channel, state: "approved", starting: true,
