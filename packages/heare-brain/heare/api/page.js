@@ -3157,6 +3157,14 @@ let machineList = [], updateState = null;
 const machineTurn = (name, part, on) => api(
   `machines/${encodeURIComponent(name)}/parts/${encodeURIComponent(part)}`,
   {method: "POST", body: {on}});
+// The keeper reports every few seconds; while a switch is moving, look
+// more often than the page's fifteen, so the loader ends when it is true.
+let machinePoll = 0;
+function pollMachines(tries = 12) {
+  clearTimeout(machinePoll);
+  if (tries <= 0) return;
+  machinePoll = setTimeout(() => loadMachines().then(() => pollMachines(tries - 1)), 1500);
+}
 const machineRestart = (name, part) => api(
   `machines/${encodeURIComponent(name)}/parts/${encodeURIComponent(part)}/restart`,
   {method: "POST", body: {}});
@@ -3268,13 +3276,19 @@ function machineRow(machine, part, entries) {
   const row = el("div", "mrow");
   const pending = entries.find(([, b]) => b.state === "pending");
   // A part this machine cannot run at all: the keeper says why, and the
-  // wish is not shown as «pending» forever — its switch would lie.
+  // wish is not shown as a transition forever — its switch would lie.
   const cannot = part.why_not ? tr(part.why_not) : "";
-  const desired = part.desired !== null && part.desired !== undefined
-    && part.desired !== part.on && !cannot;
+  // The switch says what the person asked for; the report says what is.
+  // While the two disagree, the row says which way it is moving.
+  const wish = part.desired === true || part.desired === false ? part.desired : part.on;
+  const starting = wish === true && !part.on;
+  const stopping = wish === false && part.on;
   const bad = part.state === "unwell";
-  if (pending || desired) row.classList.add("pending");
-  row.append(el("span", "mdot" + (pending || desired || bad || cannot ? " warn" : part.on ? " on" : "")));
+  const connected = entries.some(([, b]) => b.state === "approved");
+  const connecting = wish === true && part.on && !connected && !pending && !bad && !cannot;
+  const working = starting || stopping || connecting;
+  if (pending || working) row.classList.add("pending");
+  row.append(el("span", "mdot" + (pending || working || bad || cannot ? " warn" : part.on ? " on" : "")));
   row.append(el("span", "name", PART_LABEL[part.channel] || tr(part.label || part.name)));
   if (entries.length > 1) row.append(el("span", "pin", "×" + entries.length));
   const entry = entries[0] && entries[0][1];
@@ -3283,9 +3297,13 @@ function machineRow(machine, part, entries) {
   const label = pending ? PART_STATE.pending
     : bad && part.why ? part.why
     : cannot ? cannot
-    : desired ? tr("pending")
+    : starting ? tr("starting")
+    : stopping ? tr("stopping")
+    : connecting ? tr("connecting")
     : now || (part.on ? tr("on") : tr("off"));
-  row.append(el("span", "state" + ((bad && part.why) || cannot ? " why" : ""), label));
+  const state = el("span", "state" + ((bad && part.why) || cannot ? " why" : ""), label);
+  if (working && !pending && !bad && !cannot) state.prepend(el("i", "spin"));
+  row.append(state);
 
   const end = el("span", "end");
   if (pending) {
@@ -3298,12 +3316,12 @@ function machineRow(machine, part, entries) {
     end.append(yes, no);
   } else {
     const sw = el("input", "mcsw");
-    sw.type = "checkbox"; sw.checked = !!part.on;
+    sw.type = "checkbox"; sw.checked = wish;
     sw.disabled = !machine.reported || Boolean(cannot);
-    sw.title = cannot || (part.on ? tr("turn off") : tr("turn on"));
+    sw.title = cannot || (wish ? tr("turn off") : tr("turn on"));
     sw.onclick = ev => ev.stopPropagation();
     sw.onchange = () => machineTurn(machine.name, part.name, sw.checked)
-      .then(loadMachines)
+      .then(() => { loadMachines(); pollMachines(); })
       .catch(() => { sw.checked = !sw.checked; });
     end.append(sw);
   }

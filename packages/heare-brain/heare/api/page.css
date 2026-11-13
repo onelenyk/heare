@@ -144,7 +144,9 @@ button { cursor:pointer; }
 #bodies .mrow .mdot { width:5px; height:5px; }
 #bodies .mrow .name { font-size:10.5px; font-weight:500; color:var(--ink); white-space:nowrap; }
 #bodies .mrow .pin { font:9px var(--mono); color:var(--soft); }
-#bodies .mrow .state { margin-left:auto; color:var(--soft); font:9px var(--mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#bodies .mrow .state { display:inline-flex; align-items:center; gap:5px; margin-left:auto; min-width:0; color:var(--soft); font:9px var(--mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#bodies .spin { width:9px; height:9px; flex:none; border:1.5px solid var(--line); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
 #bodies .mrow.pending .state { color:var(--warn); }
 #bodies .mrow .state.why { color:var(--bad); }
 #bodies .mrow .end { display:flex; align-items:center; gap:3px; flex:none; }

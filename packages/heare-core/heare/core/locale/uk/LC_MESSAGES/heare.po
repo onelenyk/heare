@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-13 13:46+0200\n"
+"POT-Creation-Date: 2026-11-13 13:54+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -1904,8 +1904,14 @@ msgstr "востаннє чули"
 msgid "load"
 msgstr "навантаження"
 
-msgid "pending"
-msgstr "чекає"
+msgid "starting"
+msgstr "вмикається…"
+
+msgid "stopping"
+msgstr "вимикається…"
+
+msgid "connecting"
+msgstr "підключається…"
 
 msgid "turn off"
 msgstr "вимкнути"
@@ -3040,4 +3046,7 @@ msgstr "я перестав чути {s} секунд тому — схоже, �
 
 #~ msgid "new on the screen"
 #~ msgstr "нове на екрані"
+
+#~ msgid "pending"
+#~ msgstr "чекає"
 

@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-13 13:46+0200\n"
+"POT-Creation-Date: 2026-11-13 13:54+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -1904,7 +1904,13 @@ msgstr ""
 msgid "load"
 msgstr ""
 
-msgid "pending"
+msgid "starting"
+msgstr ""
+
+msgid "stopping"
+msgstr ""
+
+msgid "connecting"
 msgstr ""
 
 msgid "turn off"
@@ -3034,5 +3040,8 @@ msgstr ""
 #~ msgstr ""
 
 #~ msgid "new on the screen"
+#~ msgstr ""
+
+#~ msgid "pending"
 #~ msgstr ""
 
