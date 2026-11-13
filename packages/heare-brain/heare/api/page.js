@@ -3288,7 +3288,7 @@ function machineRow(machine, part, entries) {
     no.onclick = ev => { ev.stopPropagation(); partCall(pending[0], "reject", no); };
     end.append(yes, no);
   } else {
-    const sw = el("input", "sw");
+    const sw = el("input", "mcsw");
     sw.type = "checkbox"; sw.checked = !!part.on;
     sw.disabled = !machine.reported || Boolean(cannot);
     sw.title = cannot || (part.on ? tr("turn off") : tr("turn on"));
