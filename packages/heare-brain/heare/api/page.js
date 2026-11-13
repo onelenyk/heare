@@ -88,7 +88,7 @@ function feedEmpty() {
   const face = el("div", "emptyface");
   if ($("face")) face.innerHTML = $("face").outerHTML.replace(' id="face"', "").replace('class="face', 'class="face');
   const svg = face.querySelector("svg");
-  if (svg) svg.setAttribute("class", "face");
+  if (svg) svg.setAttribute("class", $("face") ? ($("face").getAttribute("class") || "face") : "face");
   box.append(face, el("b", "", tr("Nothing here yet")), el("span", "", tr("Say something, or ask for a screen.")));
   feedAppend(box);
 }
@@ -1098,6 +1098,10 @@ function show() {
     : phase === "speaking" ? tr("speaking")
     : voice && voice.mic ? tr("listening") : tr("quiet");
   for (const id of ["face"]) $(id).setAttribute("class", "face " + mood);
+  // The big face of the empty room is the same face: it hears, thinks and
+  // speaks with the top one instead of breathing alone.
+  for (const f of document.querySelectorAll(".feed-empty .emptyface .face"))
+    f.setAttribute("class", "face " + mood);
   $("nowtext").textContent = said;
   const dot = $("dot");
   if (dot) dot.className = "livedot " + mood;
@@ -3478,6 +3482,8 @@ if (!DEMO) {
   stream.onerror = () => {
     const lost = tr("no connection to heare");
     $("face").setAttribute("class", "face off");
+    for (const f of document.querySelectorAll(".feed-empty .emptyface .face"))
+      f.setAttribute("class", "face off");
     $("nowtext").textContent = lost;
   };
   // One open does both: the page is present among the parts again after a

@@ -202,6 +202,15 @@ def test_the_body_counts_one_page_not_every_window():
     assert "b.channel === part.channel && live(pid)" in SCRIPT
 
 
+def test_the_empty_room_has_the_same_breathing_face():
+    """The big face of the empty conversation follows the phase of the top
+    one: hearing, thinking, speaking — not a still picture."""
+    assert ".feed-empty .emptyface .face" in STYLE
+    assert 'f.setAttribute("class", "face " + mood)' in SCRIPT
+    assert 'f.setAttribute("class", "face off")' in SCRIPT
+    assert 'animation:breathe' in STYLE
+
+
 def test_what_waits_is_a_card_at_the_foot_of_the_feed():
     """A leave, a question, a running hand and a held thought are cards in
     the feed, not a hidden pult: the person can answer where they read."""
