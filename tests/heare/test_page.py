@@ -180,10 +180,14 @@ def test_a_machine_switch_says_what_it_is_doing():
     """A switch that was just flipped must not be silenced by its own focus:
     the row shows the wish, a spinner, and which way it is moving."""
     machine = SCRIPT.split("function machineRow")[1].split("/* The fleet")[0]
-    assert 'const starting = wish === true && !part.on;' in machine
-    assert 'const stopping = wish === false && connected;' in machine
-    assert 'const connecting = wish === true && part.on && !connected' in machine
+    assert 'const starting = wish === true && !connected;' in machine
+    assert 'const stopping = wish === false && (connected || part.on);' in machine
     assert 'state.prepend(el("i", "spin"))' in machine
+    assert "function withTransitions" in SCRIPT
+    assert "body.stopping = want === false;" in SCRIPT
+    assert "all[`starting@${machine.name}-${part.name}`]" in SCRIPT
+    assert 'b.starting ? tr("starting") : b.stopping ? tr("stopping")' in SCRIPT
+    assert ".pcard.stopping" in STYLE
     assert 'sw.checked = wish' in machine
     assert "function pollMachines(" in SCRIPT
     assert "A checkbox is not typing" in SCRIPT

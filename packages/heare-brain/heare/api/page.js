@@ -1666,7 +1666,9 @@ function bodyControls(pid, b, group = "") {
 }
 
 function partWidget(pid, b) {
-  const card = el("div", "part pcard" + (b.state === "pending" ? " wait" : "") + (drawerPid === pid ? " open" : ""));
+  const moving = b.starting || b.stopping;
+  const card = el("div", "part pcard" + (b.state === "pending" ? " wait" : "") +
+    (moving ? (b.starting ? " starting" : " stopping") : "") + (drawerPid === pid ? " open" : ""));
   card.dataset.pid = pid;
   const top = el("div", "ptop");
   const tile = el("span", "ptile");
@@ -1681,7 +1683,7 @@ function partWidget(pid, b) {
     odd.title = tr("the part is v{part}, the brain v{brain}", {part: b.version, brain});
     top.append(odd);
   }
-  if (b.state === "approved" && (b.ui || []).some(c => c.group === "settings")) {
+  if (!moving && b.state === "approved" && (b.ui || []).some(c => c.group === "settings")) {
     const open = drawerPid === pid;
     const gear = el("button", "gear" + (open ? " on" : ""), "⚙");
     gear.type = "button";
@@ -1693,13 +1695,15 @@ function partWidget(pid, b) {
   }
   card.append(top);
   const head = (b.ui || []).find(c => c.head && c.kind === "label");
-  const now = b.state === "approved" && head ? tr(String(truth(b, head) ?? "")) : PART_STATE[b.state] || b.state;
+  const now = b.starting ? tr("starting") : b.stopping ? tr("stopping")
+    : b.state === "approved" && head ? tr(String(truth(b, head) ?? "")) : PART_STATE[b.state] || b.state;
   const stateLine = el("div", "sstate", now);
-  if (b.state === "pending") stateLine.classList.add("wait");
+  if (b.state === "pending" || moving) stateLine.classList.add("wait");
+  if (moving) stateLine.prepend(el("i", "spin"));
   card.append(stateLine);
   const what = b.info || PART_WHAT[b.channel] || b.about;
   if (what) card.append(el("p", "sinfo", what));
-  const controls = bodyControls(pid, b);
+  const controls = moving ? null : bodyControls(pid, b);
   if (controls) card.append(controls);
   if (b.state === "pending") {
     card.append(el("p", "phost", b.host || ""));
@@ -1726,6 +1730,11 @@ function partWidget(pid, b) {
     const foot = el("div", "sfoot");
     foot.append(el("i", "dot"));
     const health = healthText(b).join(" · ");
+    if (b.starting || b.stopping) {
+      foot.append(el("span", "", b.foot || (b.starting ? tr("starting") : tr("stopping"))));
+      card.append(foot);
+      return card;
+    }
     const up = b.started ? tr("up {for}", {for: lasted(Date.now() / 1000 - b.started)}) : "";
     let line = b.foot || "";
     if (!line && b.channel === "web") line = b.host || "";
@@ -1870,9 +1879,50 @@ function builtIn() {
 const cards = new Map();
 let drawerPid = null;
 
+// The body must say what the switches say: a part on its way out stays
+// on its slide, dimmed and saying so, and a part on its way in gets a
+// slide at once, so waiting is visible and not a blank column.
+function machineWishes() {
+  const byPid = new Map(), byChannel = new Map();
+  for (const machine of machineList) {
+    for (const part of machine.parts || []) {
+      const want = part.desired === true || part.desired === false ? part.desired : null;
+      if (want === null) continue;
+      for (const pid of part.pids || []) byPid.set(pid, want);
+      if (!byChannel.has(part.channel)) byChannel.set(part.channel, want);
+    }
+  }
+  return {byPid, byChannel};
+}
+function withTransitions(map) {
+  const all = {...map};
+  const {byPid, byChannel} = machineWishes();
+  for (const [pid, body] of Object.entries(all)) {
+    const want = byPid.has(pid) ? byPid.get(pid) : byChannel.get(body.channel);
+    body.stopping = want === false;
+  }
+  for (const machine of machineList) {
+    for (const part of machine.parts || []) {
+      if (part.desired !== true || part.why_not || part.state === "unwell") continue;
+      // The registry can still hold an away entry for a moment; only a
+      // live card counts as connected, or the waiting slide never shows.
+      const connected = (part.pids || []).some(pid =>
+        map[pid] && ["approved", "pending"].includes(map[pid].state));
+      if (connected) continue;
+      all[`starting@${machine.name}-${part.name}`] = {
+        channel: part.channel, state: "approved", starting: true,
+        name: part.name, label: part.label, about: part.what,
+        host: machine.host, values: {}, ui: [], foot: tr("starting"),
+      };
+    }
+  }
+  return all;
+}
+
 function parts(map) {
-  const grid = $("partwidgets"), all = Object.entries(map || {});
-  drawFleet(all);
+  const bodies = map || {};
+  const grid = $("partwidgets"), all = Object.entries(withTransitions(bodies));
+  drawFleet(Object.entries(bodies));
   $("partchips").replaceChildren();
   if (!all.length) {
     grid.replaceChildren(el("p", "empty", tr("no part is connected")));
@@ -3287,12 +3337,11 @@ function machineRow(machine, part, entries) {
   const wish = part.desired === true || part.desired === false ? part.desired : part.on;
   const bad = part.state === "unwell";
   const connected = entries.some(([, b]) => b.state === "approved");
-  const starting = wish === true && !part.on;
+  const starting = wish === true && !connected;
   // The manifest can be gone while the process still holds its stream, so
   // the row keeps saying it is going until the registry lets go.
-  const stopping = wish === false && connected;
-  const connecting = wish === true && part.on && !connected && !pending && !bad && !cannot;
-  const working = starting || stopping || connecting;
+  const stopping = wish === false && (connected || part.on);
+  const working = starting || stopping;
   if (pending || working) row.classList.add("pending");
   row.append(el("span", "mdot" + (pending || working || bad || cannot ? " warn" : part.on ? " on" : "")));
   row.append(el("span", "name", PART_LABEL[part.channel] || tr(part.label || part.name)));
@@ -3305,7 +3354,6 @@ function machineRow(machine, part, entries) {
     : cannot ? cannot
     : starting ? tr("starting")
     : stopping ? tr("stopping")
-    : connecting ? tr("connecting")
     : now || (part.on ? tr("on") : tr("off"));
   const state = el("span", "state" + ((bad && part.why) || cannot ? " why" : ""), label);
   if (working && !pending && !bad && !cannot) state.prepend(el("i", "spin"));

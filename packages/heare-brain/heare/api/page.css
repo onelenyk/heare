@@ -186,6 +186,8 @@ button { cursor:pointer; }
 .gear:hover, .gear.on { color:var(--accent); background:var(--card-2); }
 .pcard .sstate { margin-top:10px; font:600 21px/1.15 var(--display); letter-spacing:-.3px; color:var(--ink); }
 .pcard .sstate.wait { color:var(--warn); }
+.pcard.stopping { opacity:.6; }
+.pcard .sstate .spin { display:inline-block; width:11px; height:11px; margin-right:8px; vertical-align:middle; border:1.5px solid var(--line); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; }
 .pcard .sinfo { margin-top:5px; color:var(--soft); font-size:11.5px; line-height:1.45; }
 .pcard .ctrls { margin-top:10px; padding-top:4px; border-top:1px solid var(--line); }
 .ctrlrow { display:flex; align-items:center; gap:8px; min-height:29px; font-size:11.5px; color:var(--ink); border-bottom:1px solid color-mix(in srgb, var(--line) 50%, transparent); }
