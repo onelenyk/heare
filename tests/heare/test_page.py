@@ -202,6 +202,18 @@ def test_the_body_counts_one_page_not_every_window():
     assert "b.channel === part.channel && live(pid)" in SCRIPT
 
 
+def test_the_chat_selector_is_in_the_bar():
+    """The chat's name and its list live on the main screen, not only in
+    the system's sessions sheet."""
+    assert 'id="chatbtn"' in PAGE
+    assert 'id="chatmenu"' in PAGE
+    assert 'id="chatrows"' in PAGE
+    assert "function openChatMenu" in SCRIPT
+    assert "function drawChatRows" in SCRIPT
+    assert "setChatTitle();" in SCRIPT
+    assert ".chatbtn" in STYLE and ".chatmenu" in STYLE
+
+
 def test_the_empty_room_has_the_same_breathing_face():
     """The big face of the empty conversation follows the phase of the top
     one: hearing, thinking, speaking — not a still picture."""

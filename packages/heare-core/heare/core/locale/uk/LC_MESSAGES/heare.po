@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-13 13:54+0200\n"
+"POT-Creation-Date: 2026-11-13 16:22+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -512,6 +512,15 @@ msgstr "файл у копії пошкоджений: {name}"
 msgid "the file is damaged or not a zip"
 msgstr "файл пошкоджений або це не zip"
 
+msgid "Chats"
+msgstr "Розмови"
+
+msgid "New"
+msgstr "Нова"
+
+msgid "All conversations"
+msgstr "Усі розмови"
+
 msgid "microphone"
 msgstr "мікрофон"
 
@@ -571,9 +580,6 @@ msgstr "Написати…"
 
 msgid "send"
 msgstr "надіслати"
-
-msgid "New"
-msgstr "Нова"
 
 msgid "Rename"
 msgstr "Назва"
@@ -1386,6 +1392,12 @@ msgstr "сховати налаштування"
 msgid "settings"
 msgstr "налаштування"
 
+msgid "starting"
+msgstr "вмикається…"
+
+msgid "stopping"
+msgstr "вимикається…"
+
 #, python-brace-format
 msgid "settings · {part}"
 msgstr "налаштування · {part}"
@@ -1903,15 +1915,6 @@ msgstr "востаннє чули"
 
 msgid "load"
 msgstr "навантаження"
-
-msgid "starting"
-msgstr "вмикається…"
-
-msgid "stopping"
-msgstr "вимикається…"
-
-msgid "connecting"
-msgstr "підключається…"
 
 msgid "turn off"
 msgstr "вимкнути"
@@ -3049,4 +3052,7 @@ msgstr "я перестав чути {s} секунд тому — схоже, �
 
 #~ msgid "pending"
 #~ msgstr "чекає"
+
+#~ msgid "connecting"
+#~ msgstr "підключається…"
 

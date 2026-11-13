@@ -38,7 +38,7 @@ button { cursor:pointer; }
 #app { display:grid; grid-template-rows:56px minmax(0,1fr); height:100vh; height:100dvh; overflow:hidden; }
 
 /* ── the bar: who speaks, what it hears, and the last thing it did ── */
-#top { position:relative; z-index:5; display:flex; align-items:center; gap:12px; padding:0 16px; border-bottom:1px solid var(--line); background:var(--bg); }
+#top { position:relative; z-index:40; display:flex; align-items:center; gap:12px; padding:0 16px; border-bottom:1px solid var(--line); background:var(--bg); }
 #idbtn { display:flex; align-items:center; gap:10px; min-width:0; padding:0; border:0; background:none; color:var(--ink); text-align:left; }
 #idbtn .face { width:30px; height:30px; }
 .who { display:grid; min-width:0; }
@@ -69,6 +69,29 @@ button { cursor:pointer; }
 .iconbtn.stop:hover { background:var(--bad); border-color:var(--bad); color:var(--accent-ink); }
 .topright .stopask { position:absolute; top:calc(100% + 8px); right:0; z-index:20; margin:0; padding:10px; border:1px solid var(--line); border-radius:10px; background:var(--card); box-shadow:0 14px 34px rgba(0,0,0,.4); }
 .topright .stopask[hidden] { display:none; }
+
+/* the chat's name in the bar: one chip, one menu, no trip to the system */
+.chatwrap { position:relative; flex:0 1 auto; min-width:0; }
+.chatbtn { display:flex; align-items:center; gap:7px; height:30px; max-width:230px; padding:0 10px; border:1px solid var(--line); border-radius:999px; background:var(--card-2); color:var(--ink); font:600 11.5px var(--sans); }
+.chatbtn:hover { border-color:var(--accent); }
+.chatbtn svg { width:13px; height:13px; flex:none; color:var(--accent); }
+.chatbtn .ct { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chatbtn .chev { color:var(--soft); font-size:9px; flex:none; }
+.chatmenu { position:absolute; top:calc(100% + 16px); left:0; width:min(320px, calc(100vw - 24px)); max-height:min(60vh, 440px); overflow:hidden; display:flex; flex-direction:column; padding:8px; border:1px solid var(--line); border-radius:14px; background:var(--card); box-shadow:0 18px 44px rgba(0,0,0,.45); z-index:60; animation:pop .14s ease-out; }
+@keyframes pop { from { opacity:0; transform:translateY(-4px); } }
+.chathead { display:flex; align-items:center; gap:8px; padding:4px 4px 8px; }
+.chathead b { font:700 10px var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--soft); }
+.chathead .mini { margin-left:auto; }
+.chatrows { display:grid; gap:2px; overflow-y:auto; min-height:0; }
+.chatrow { display:flex; align-items:center; gap:8px; width:100%; padding:8px 9px; border:0; border-radius:9px; background:transparent; color:var(--ink); text-align:left; }
+.chatrow:hover { background:var(--card-2); }
+.chatrow.current { background:color-mix(in srgb, var(--accent) 12%, transparent); }
+.chatrow .ct { flex:1; min-width:0; display:grid; gap:1px; }
+.chatrow .ct b { font:600 12.5px var(--sans); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chatrow .ct small { font:9.5px var(--mono); color:var(--soft); }
+.chatrow .undot { width:5px; height:5px; border-radius:50%; background:var(--accent); flex:none; }
+.chatrow .check { color:var(--accent); font-size:12px; flex:none; }
+.chatmenu .newbtn { margin-top:6px; }
 
 /* ── the face: what it is doing, at a glance ── */
 .face { width:30px; height:30px; flex:none; color:var(--accent); overflow:visible; }
@@ -775,6 +798,8 @@ button { cursor:pointer; }
   .statepill .sdot { position:absolute; top:3px; right:3px; width:4px; height:4px; }
   .iconbtn { width:32px; height:32px; }
   .topright { gap:6px; }
+  .chatbtn { max-width:120px; }
+  .chatmenu { position:fixed; top:58px; left:10px; right:10px; width:auto; max-height:min(70vh, 480px); }
   #system { width:100%; border-right:0; }
   #main { padding:8px; }
   #chat { --wing:0px; }

@@ -105,11 +105,22 @@ def run() -> int:
                 check(page.locator("#hold").is_hidden(), f"{name}: nothing waits")
                 check(not errors, f"{name}: no page errors")
                 page.screenshot(path=str(EVIDENCE / f"page-demo-{name}.png"))
+                # the chat selector: the name in the bar, the list in a menu
+                check(page.locator("#chatbtn").is_visible(), f"{name}: the chat chip is in the bar")
+                page.click("#chatbtn")
+                page.wait_for_timeout(250)
+                check(page.locator("#chatmenu").is_visible(), f"{name}: the chat menu opens")
+                check(page.locator("#chatrows .chatrow").count() == 3, f"{name}: three chats")
+                check(page.locator("#chatrows .chatrow.current").count() == 1, f"{name}: one current chat")
+                page.screenshot(path=str(EVIDENCE / f"page-demo-menu-{name}.png"))
+                page.keyboard.press("Escape")
+                page.wait_for_timeout(150)
+                check(page.locator("#chatmenu").is_hidden(), f"{name}: Escape closes the chat menu")
                 page.close()
             browser.close()
     finally:
         server.shutdown()
-    print("screenshots: .sisyphus/evidence/page-demo-1440.png, page-demo-390.png")
+    print("screenshots: .sisyphus/evidence/page-demo-1440.png, page-demo-390.png, page-demo-menu-1440.png, page-demo-menu-390.png")
     return 0 if not failures else 1
 
 

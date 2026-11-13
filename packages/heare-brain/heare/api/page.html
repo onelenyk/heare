@@ -17,6 +17,18 @@
       <span id="mneed" class="mneed" hidden></span>
       <span class="chev" aria-hidden="true">▾</span>
     </button>
+    <div class="chatwrap">
+      <button type="button" class="chatbtn" id="chatbtn" aria-haspopup="menu" aria-expanded="false" aria-controls="chatmenu" data-t-aria aria-label="Chats" data-t-title title="Chats">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 5.5h15v10h-9l-4.5 3v-3H4.5v-10Z"/></svg>
+        <span class="ct" id="chattitle">…</span>
+        <i class="chev" aria-hidden="true">▾</i>
+      </button>
+      <div class="chatmenu" id="chatmenu" role="menu" aria-label="Chats" hidden>
+        <div class="chathead"><b data-t>Chats</b><button type="button" class="mini" id="chatnew" data-t>New</button></div>
+        <div class="chatrows" id="chatrows"></div>
+        <button type="button" class="newbtn" id="chatall" data-t>All conversations</button>
+      </div>
+    </div>
     <div class="topright">
       <button type="button" id="mic" class="statepill" aria-pressed="false" data-t-title title="microphone">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>

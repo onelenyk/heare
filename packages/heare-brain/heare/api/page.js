@@ -876,6 +876,7 @@ function demo() {
   $("sessionpick").replaceChildren(el("option", "", tr("Today")));
   $("sessionpick").value = "demo";
   $("sesslabel").textContent = tr("Today");
+  setChatTitle(); drawChatRows();
   $("modelchip").textContent = "deepseek";
   $("up").textContent = "make test · " + tr("{m} min", {m: 2});
   $("model").textContent = "deepseek · demo";
@@ -979,6 +980,44 @@ function sessionName(s) {
   const name = s.title || (s.earlier ? tr("Earlier") : tr("New session"));
   return (s.unread ? `● ${s.unread} · ` : "") + name;
 }
+
+/* The chat's name lives in the bar, not only behind the system. */
+let chatOpen = false;
+function activeSession() { return sessionList.find(s => s.id === session) || null; }
+function setChatTitle() {
+  const active = activeSession();
+  const label = (active && (active.title || sessionName(active))) || tr("New session");
+  const title = $("chattitle");
+  if (title) title.textContent = label;
+  if ($("chatbtn")) $("chatbtn").title = tr("Chats") + ": " + label;
+}
+function drawChatRows() {
+  const box = $("chatrows");
+  if (!box) return;
+  box.replaceChildren(...sessionList.map(s => {
+    const row = el("button", "chatrow" + (s.id === session ? " current" : ""));
+    row.type = "button"; row.setAttribute("role", "menuitem");
+    const st = el("span", "ct");
+    st.append(el("b", "", s.title || sessionName(s)),
+              el("small", "", tr("replies: {n}", {n: s.turns || 0})));
+    row.append(st);
+    if (s.unread) row.append(el("i", "undot"));
+    if (s.id === session) row.append(el("span", "check", "✓"));
+    row.onclick = () => { closeChatMenu(); switchSession(s.id); };
+    return row;
+  }));
+}
+function openChatMenu() {
+  chatOpen = true;
+  drawChatRows();
+  $("chatmenu").hidden = false;
+  $("chatbtn").setAttribute("aria-expanded", "true");
+}
+function closeChatMenu() {
+  chatOpen = false;
+  $("chatmenu").hidden = true;
+  $("chatbtn").setAttribute("aria-expanded", "false");
+}
 async function loadSessions() {
   const now = await api("sessions");
   const changed = now.active !== session;
@@ -990,6 +1029,8 @@ async function loadSessions() {
   $("sessionpick").value = session;
   const active = sessionList.find(s => s.id === session);
   $("sesslabel").textContent = active ? sessionName(active) : "";
+  setChatTitle();
+  if (chatOpen) drawChatRows();
   if (sessionOpen) drawSessionRows();
   if (!changed) return;
   pending = []; showPending();
@@ -2952,7 +2993,7 @@ for (const key of MIND_PROFILE) {
 }
 
 /* ── settings ── */
-const anyOpen = () => ["system", "mind", "settings", "sheet"].some(id => $(id).classList.contains("on"));
+const anyOpen = () => chatOpen || ["system", "mind", "settings", "sheet"].some(id => $(id).classList.contains("on"));
 function systemClose() {
   const was = $("system").classList.contains("on");
   $("system").classList.remove("on");
@@ -3046,6 +3087,15 @@ $("membtn").onclick = () => mindOpenDrawer();
 $("detbtn").onclick = openDetails;
 $("setbtn").onclick = openSettings;
 $("sessionsbtn").onclick = openSessions;
+$("chatbtn").onclick = () => (chatOpen ? closeChatMenu() : openChatMenu());
+$("chatnew").onclick = () => { closeChatMenu(); newSession(); };
+$("chatall").onclick = () => { closeChatMenu(); openSessions(); };
+document.addEventListener("pointerdown", ev => {
+  if (chatOpen && !ev.target.closest(".chatwrap")) closeChatMenu();
+});
+document.addEventListener("keydown", ev => {
+  if (chatOpen && ev.key === "Escape") { ev.preventDefault(); closeChatMenu(); }
+});
 $("system").inert = true;
 $("sheet").inert = true;
 
