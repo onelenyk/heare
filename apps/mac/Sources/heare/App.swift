@@ -81,17 +81,18 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         draw()
 
         // The voice is a Python child: its CoreAudio stream never makes
-        // macOS ask, it is only handed zeros. So the app asks, before its
-        // children open the microphone — after every update too, since an
-        // ad-hoc signed build is a new app to macOS (5 November).
+        // macOS ask, it is only handed zeros. So the app asks for the
+        // microphone — after every update too, since an ad-hoc signed
+        // build is a new app to macOS (5 November). The keeper does not
+        // wait for the answer: the parts that need the mic wait for it
+        // themselves, and the rest of heare must come up whether or not
+        // a system dialog is on screen.
         Self.noteMicrophone("at launch")
+        keeper.start()
         if AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
             AVCaptureDevice.requestAccess(for: .audio) { _ in
                 Self.noteMicrophone("after asking")
-                DispatchQueue.main.async { [weak self] in self?.keeper.start() }
             }
-        } else {
-            keeper.start()
         }
         if config.brainHere { brain.start() }
         if !config.setupDone { installer.show(config) }
