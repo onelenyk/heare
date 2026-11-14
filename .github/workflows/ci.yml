@@ -267,7 +267,7 @@ jobs:
       CF_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
       CF_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
       APP: ${{ github.ref == 'refs/heads/main' && secrets.COOLIFY_PROD_UUID || secrets.COOLIFY_DEV_UUID }}
-      HEALTH: ${{ github.ref == 'refs/heads/main' && 'https://brain.onelenyk.dev/health' || 'https://dev.brain.onelenyk.dev/health' }}
+      HEALTH: ${{ github.ref == 'refs/heads/main' && 'https://brain.onelenyk.dev/health' || 'https://dev-brain.onelenyk.dev/health' }}
     steps:
       # Coolify pulls the image the build above pushed and switches the
       # container. Then the person's door is asked, not the container's
@@ -276,11 +276,17 @@ jobs:
         run: |
           set -euo pipefail
           [ -n "$APP" ] || { echo "no Coolify application uuid for this branch"; exit 1; }
-          code=$(curl -sS -o deploy.json -w '%{http_code}' -X POST "$COOLIFY/api/v1/deploy" \
+          code=$(curl -sS --http1.1 -A "heare-ci/1.0" -D deploy.headers -o deploy.json -w '%{http_code}' \
+            -X POST "$COOLIFY/api/v1/deploy" \
             -H "CF-Access-Client-Id: $CF_ID" -H "CF-Access-Client-Secret: $CF_SECRET" \
             -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
             -d "{\"uuid\":\"$APP\",\"cancel_previous\":\"queued\"}")
-          [ "$code" = "200" ] || { echo "coolify answered $code:"; head -c 500 deploy.json; echo; exit 1; }
+          if [ "$code" != "200" ]; then
+            echo "coolify answered $code"
+            echo "--- headers"; cat deploy.headers
+            echo "--- body"; head -c 500 deploy.json; echo
+            exit 1
+          fi
           python3 - <<'PY'
           import json
           item = json.load(open("deploy.json"))["deployments"][0]
