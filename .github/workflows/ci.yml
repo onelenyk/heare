@@ -197,8 +197,8 @@ jobs:
           if-no-files-found: error
 
   image:
-    name: Brain image
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    name: Server image
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
     needs: [test]
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -207,40 +207,137 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
-      # The brain has to live inside the fence compose gives it, or it is not
-      # released: read-only, no capabilities, only its volume.
-      - name: The brain starts as compose runs it
+      # The container has to come up as Coolify runs it: the whole server in
+      # one image, answering /health, with its parts approved.
+      - name: The server starts as compose runs it
         run: |
-          docker compose -f docker/compose.yaml build
-          docker compose -f docker/compose.yaml up -d
-          for i in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9790/api/state || true)
-            [ "$code" = 401 ] && exit 0
+          docker build -f docker/server.Dockerfile -t heare-server:ci .
+          docker run -d --name heare-ci -p 127.0.0.1:9790:9790 heare-server:ci
+          for i in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9790/health || true)
+            [ "$code" = 200 ] && exit 0
             sleep 2
           done
-          docker compose -f docker/compose.yaml logs
+          docker logs heare-ci
           exit 1
 
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
-        if: startsWith(github.ref, 'refs/tags/v')
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
-      # A dry run builds it and pushes nothing. A tag is the version and the
-      # newest; compose takes either.
+      # What a branch means: main is production, develop is the next one,
+      # a tag is a version. Every build is pinned by the commit as well, so
+      # a rollback names exactly what ran before.
+      - name: The tags this build carries
+        id: tags
+        run: |
+          short=$(git rev-parse --short=12 HEAD)
+          ref="${{ github.ref_name }}"
+          tags="ghcr.io/onelenyk/heare-brain:sha-$short"
+          case "$ref" in
+            main) tags="$tags,ghcr.io/onelenyk/heare-brain:stable" ;;
+            develop) tags="$tags,ghcr.io/onelenyk/heare-brain:dev" ;;
+            v*) tags="$tags,ghcr.io/onelenyk/heare-brain:$ref,ghcr.io/onelenyk/heare-brain:latest" ;;
+          esac
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+
       - uses: docker/build-push-action@v6
         with:
           context: .
-          file: docker/brain.Dockerfile
+          file: docker/server.Dockerfile
           # The mini-PC is x86_64; arm64 was built under emulation, the slowest step.
           platforms: linux/amd64
-          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
-          tags: |
-            ghcr.io/onelenyk/heare-brain:${{ github.ref_name }}
-            ghcr.io/onelenyk/heare-brain:latest
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy (${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }})
+    needs: [image]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      COOLIFY: ${{ secrets.COOLIFY_URL }}
+      TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+      CF_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      APP: ${{ github.ref == 'refs/heads/main' && secrets.COOLIFY_PROD_UUID || secrets.COOLIFY_DEV_UUID }}
+      HEALTH: ${{ github.ref == 'refs/heads/main' && 'https://brain.onelenyk.dev/health' || 'https://dev.brain.onelenyk.dev/health' }}
+    steps:
+      # Coolify pulls the image the build above pushed and switches the
+      # container. Then the person's door is asked, not the container's
+      # own: a deploy that does not answer /health goes back.
+      - name: Ask Coolify for the deployment
+        run: |
+          set -euo pipefail
+          [ -n "$APP" ] || { echo "no Coolify application uuid for this branch"; exit 1; }
+          curl -fsS -X POST "$COOLIFY/api/v1/deploy" \
+            -H "CF-Access-Client-Id: $CF_ID" -H "CF-Access-Client-Secret: $CF_SECRET" \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+            -d "{\"uuid\":\"$APP\",\"cancel_previous\":\"queued\"}" > deploy.json
+          python3 - <<'PY'
+          import json
+          item = json.load(open("deploy.json"))["deployments"][0]
+          print(item["message"])
+          open("deploy_uuid", "w").write(item["deployment_uuid"])
+          PY
+          echo "DEPLOY_UUID=$(cat deploy_uuid)" >> "$GITHUB_ENV"
+
+      - name: Wait for Coolify
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 90); do
+            status=$(curl -fsS "$COOLIFY/api/v1/deployments/$DEPLOY_UUID" \
+              -H "CF-Access-Client-Id: $CF_ID" -H "CF-Access-Client-Secret: $CF_SECRET" \
+              -H "Authorization: Bearer $TOKEN" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')
+            echo "$i: $status"
+            [ "$status" = "finished" ] && exit 0
+            [ "$status" = "failed" ] && { echo "the deployment failed"; exit 1; }
+            sleep 10
+          done
+          echo "the deployment did not finish in time"
+          exit 1
+
+      - name: The door answers /health
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 36); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -H "CF-Access-Client-Id: $CF_ID" \
+              -H "CF-Access-Client-Secret: $CF_SECRET" "$HEALTH" || true)
+            echo "$i: $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 5
+          done
+          echo "the new version did not answer $HEALTH"
+          exit 1
+
+      # The last way back: Coolify remembers the tags it ran, so the image
+      # that was answering a minute ago is named, not guessed.
+      - name: Put the previous image back
+        if: failure()
+        run: |
+          set -uo pipefail
+          previous=$(curl -fsS "$COOLIFY/api/v1/applications/$APP/rollback-images" \
+            -H "CF-Access-Client-Id: $CF_ID" -H "CF-Access-Client-Secret: $CF_SECRET" \
+            -H "Authorization: Bearer $TOKEN" | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)
+          for image in d.get("images", []):
+              if not image.get("is_current"):
+                  print(image["tag"]); break
+          ' || true)
+          if [ -z "$previous" ]; then echo "no previous image to roll back to"; exit 1; fi
+          echo "rolling back to $previous"
+          curl -fsS -X POST "$COOLIFY/api/v1/applications/$APP/rollback" \
+            -H "CF-Access-Client-Id: $CF_ID" -H "CF-Access-Client-Secret: $CF_SECRET" \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+            -d "{\"commit\":\"$previous\"}"
+          echo "rolled back to $previous; the deployment job below stays red"
 
   release:
     name: Release

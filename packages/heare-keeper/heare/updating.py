@@ -127,7 +127,15 @@ class Updating:
 
     @property
     def here(self) -> bool:
-        """Only a Linux machine the app does not hold: the app swaps a Mac."""
+        """Only a Linux machine the app does not hold: the app swaps a Mac.
+
+        A container is not one of those: it is replaced as a whole, by
+        pulling a new image (Coolify, compose). Installing inside it would
+        change one container and not the image everyone else runs, so
+        ``HEARE_NO_SELF_UPDATE`` turns the update path off there.
+        """
+        if os.environ.get("HEARE_NO_SELF_UPDATE"):
+            return False
         return sys.platform.startswith("linux") and not os.environ.get("HEARE_PARENT_PID")
 
     @property
