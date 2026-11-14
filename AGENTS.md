@@ -79,7 +79,8 @@ update, and the release it leaves behind is the way back.
 
 ## DELIVERING
 
-Two tracks; the whole picture is `docs/deploy.md`.
+Two tracks; start with the runbook at the top of `docs/deploy.md` — the
+commands, where the tokens live, how to verify and how to roll back.
 
 - **Clients** — a tag `vX.Y.Z` (`make release V=…`, then `git push origin
   main vX.Y.Z`) makes CI publish the two dmg, the APK, `install.sh`, the
@@ -96,6 +97,9 @@ Two tracks; the whole picture is `docs/deploy.md`.
 A container never installs into itself (`HEARE_NO_SELF_UPDATE`): change the
 image, not the running container. The old systemd units on the mini-PC are
 stopped and disabled, kept only as the way back.
+
+A push that changes only documentation (`docs/**`, `**/*.md`) runs no CI and
+deploys nothing; a tag always builds the client release.
 
 Parts — separate processes that knock and wait for approval on the page:
 

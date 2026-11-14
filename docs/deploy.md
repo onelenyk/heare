@@ -6,6 +6,57 @@
 Це головний документ про те, **як зміна в репозиторії стає тим, що працює
 в людини**. Для агентів: усе, що треба знати, щоб не зламати доставку.
 
+## 0. Ранбук: що робити агенту
+
+**Доступи (не в репо):**
+- Coolify API: на міні-ПК `~/.coolify-token` (0600); той самий токен лежить
+  в GitHub secrets як `COOLIFY_API_TOKEN`.
+- Cloudflare API (DNS, тунель, Access): на міні-ПК `~/.cf-api-token` (0600).
+- Міні-ПК: `ssh nazar@192.168.110.13` (лише LAN; публічної адреси немає).
+- GitHub secrets: `COOLIFY_URL`, `COOLIFY_API_TOKEN`, `CF_ACCESS_CLIENT_ID`,
+  `CF_ACCESS_CLIENT_SECRET`, `COOLIFY_PROD_UUID`, `COOLIFY_DEV_UUID`.
+
+**Реліз клієнтів (dmg/APK/install.sh/колеса):**
+
+```bash
+git checkout main && git pull
+make release V=x.y.z          # версія всюди + check + коміт + тег
+git push origin main vX.Y.Z   # це публікація; CI збере реліз
+gh run watch $(gh run list --branch vX.Y.Z --limit 1 --json databaseId -q '.[0].databaseId')
+```
+
+**Реліз сервера:**
+
+- dev: `git push origin develop` → образ `:dev` → деплой у dev;
+- прод: мердж у `main` і `git push origin main` → образ `:stable`/`:sha` →
+  деплой у прод.
+
+Обидва видно у `gh run list --branch main` (або `develop`); job `Deploy`.
+
+**Перевірка після деплою:**
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' https://brain.onelenyk.dev/health   # 200
+curl -s -o /dev/null -w '%{http_code}\n' https://dev-brain.onelenyk.dev/health
+gh run view <id> --json jobs -q '.jobs[] | "\(.name): \(.conclusion)"'
+```
+
+**Відкат:**
+
+- один деплой: `GET /api/v1/applications/{uuid}/rollback-images` → вибрати
+  попередній `sha-…` → `POST …/rollback {"commit":"sha-…"}` (Coolify API;
+  curl — з `--http1.1 -A heare-ci/1.0`);
+- повністю на systemd: зупинити `heare-prod` у Coolify, потім
+  `systemctl --user enable --now heare-brain heare-keeper` на міні-ПК.
+
+**Не робити:**
+
+- не запускати `install.sh` на сервері — оновлення тільки образом;
+- не ставити тег вручну без `make release` (версії в пакетах розійдуться);
+- не міняти тег образу в Coolify руками — це робить deploy-job (`sha-…`);
+- не комітити токени, `~/.heare`, логи;
+- не плутати «реліз» клієнтів (тег) із «деплоєм» сервера (мердж у `main`).
+
 ## 1. Два треки
 
 | Трек | Що це | Артефакт | Куди |
