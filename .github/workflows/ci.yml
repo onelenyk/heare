@@ -276,10 +276,11 @@ jobs:
         run: |
           set -euo pipefail
           [ -n "$APP" ] || { echo "no Coolify application uuid for this branch"; exit 1; }
-          curl -fsS -X POST "$COOLIFY/api/v1/deploy" \
+          code=$(curl -sS -o deploy.json -w '%{http_code}' -X POST "$COOLIFY/api/v1/deploy" \
             -H "CF-Access-Client-Id: $CF_ID" -H "CF-Access-Client-Secret: $CF_SECRET" \
             -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-            -d "{\"uuid\":\"$APP\",\"cancel_previous\":\"queued\"}" > deploy.json
+            -d "{\"uuid\":\"$APP\",\"cancel_previous\":\"queued\"}")
+          [ "$code" = "200" ] || { echo "coolify answered $code:"; head -c 500 deploy.json; echo; exit 1; }
           python3 - <<'PY'
           import json
           item = json.load(open("deploy.json"))["deployments"][0]
