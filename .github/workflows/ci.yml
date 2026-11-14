@@ -273,6 +273,22 @@ jobs:
       # Coolify pulls the image the build above pushed and switches the
       # container. Then the person's door is asked, not the container's
       # own: a deploy that does not answer /health goes back.
+      # The image this commit built, named exactly: :dev moves, and a
+      # rollback to a moving tag would undo nothing.
+      - name: Pin the image this commit built
+        run: |
+          set -euo pipefail
+          tag="sha-${GITHUB_SHA::12}"
+          echo "IMAGE_TAG=$tag" >> "$GITHUB_ENV"
+          code=$(curl $CURL -o patch.json -w '%{http_code}' -X PATCH "$COOLIFY/api/v1/applications/$APP" \
+            -H "CF-Access-Client-Id: $CF_ID" -H "CF-Access-Client-Secret: $CF_SECRET" \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+            -d "{\"docker_registry_image_tag\":\"$tag\"}")
+          if [ "$code" != "200" ]; then
+            echo "coolify answered $code"; head -c 500 patch.json; echo; exit 1
+          fi
+          echo "pinned $tag"
+
       - name: Ask Coolify for the deployment
         run: |
           set -euo pipefail
@@ -336,7 +352,7 @@ jobs:
           import json, sys
           d = json.load(sys.stdin)
           for image in d.get("images", []):
-              if not image.get("is_current"):
+              if not image.get("is_current") and str(image.get("tag", "")).startswith("sha-"):
                   print(image["tag"]); break
           ' || true)
           if [ -z "$previous" ]; then echo "no previous image to roll back to"; exit 1; fi
