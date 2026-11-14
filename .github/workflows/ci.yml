@@ -268,6 +268,7 @@ jobs:
       CF_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
       APP: ${{ github.ref == 'refs/heads/main' && secrets.COOLIFY_PROD_UUID || secrets.COOLIFY_DEV_UUID }}
       HEALTH: ${{ github.ref == 'refs/heads/main' && 'https://brain.onelenyk.dev/health' || 'https://dev-brain.onelenyk.dev/health' }}
+      CURL: -sS --http1.1 -A heare-ci/1.0
     steps:
       # Coolify pulls the image the build above pushed and switches the
       # container. Then the person's door is asked, not the container's
@@ -276,7 +277,7 @@ jobs:
         run: |
           set -euo pipefail
           [ -n "$APP" ] || { echo "no Coolify application uuid for this branch"; exit 1; }
-          code=$(curl -sS --http1.1 -A "heare-ci/1.0" -D deploy.headers -o deploy.json -w '%{http_code}' \
+          code=$(curl $CURL -D deploy.headers -o deploy.json -w '%{http_code}' \
             -X POST "$COOLIFY/api/v1/deploy" \
             -H "CF-Access-Client-Id: $CF_ID" -H "CF-Access-Client-Secret: $CF_SECRET" \
             -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
@@ -299,7 +300,7 @@ jobs:
         run: |
           set -euo pipefail
           for i in $(seq 1 90); do
-            status=$(curl -fsS "$COOLIFY/api/v1/deployments/$DEPLOY_UUID" \
+            status=$(curl $CURL -fsS "$COOLIFY/api/v1/deployments/$DEPLOY_UUID" \
               -H "CF-Access-Client-Id: $CF_ID" -H "CF-Access-Client-Secret: $CF_SECRET" \
               -H "Authorization: Bearer $TOKEN" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')
             echo "$i: $status"
@@ -314,7 +315,7 @@ jobs:
         run: |
           set -euo pipefail
           for i in $(seq 1 36); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' -H "CF-Access-Client-Id: $CF_ID" \
+            code=$(curl $CURL -o /dev/null -w '%{http_code}' -H "CF-Access-Client-Id: $CF_ID" \
               -H "CF-Access-Client-Secret: $CF_SECRET" "$HEALTH" || true)
             echo "$i: $code"
             [ "$code" = "200" ] && exit 0
@@ -329,7 +330,7 @@ jobs:
         if: failure()
         run: |
           set -uo pipefail
-          previous=$(curl -fsS "$COOLIFY/api/v1/applications/$APP/rollback-images" \
+          previous=$(curl $CURL -fsS "$COOLIFY/api/v1/applications/$APP/rollback-images" \
             -H "CF-Access-Client-Id: $CF_ID" -H "CF-Access-Client-Secret: $CF_SECRET" \
             -H "Authorization: Bearer $TOKEN" | python3 -c '
           import json, sys
@@ -340,7 +341,7 @@ jobs:
           ' || true)
           if [ -z "$previous" ]; then echo "no previous image to roll back to"; exit 1; fi
           echo "rolling back to $previous"
-          curl -fsS -X POST "$COOLIFY/api/v1/applications/$APP/rollback" \
+          curl $CURL -fsS -X POST "$COOLIFY/api/v1/applications/$APP/rollback" \
             -H "CF-Access-Client-Id: $CF_ID" -H "CF-Access-Client-Secret: $CF_SECRET" \
             -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
             -d "{\"commit\":\"$previous\"}"
