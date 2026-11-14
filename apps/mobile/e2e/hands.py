@@ -23,7 +23,9 @@ import subprocess
 import sys
 import time
 
-BRAIN = "nazar@192.168.110.13"
+# The live brain's ssh target is not in the repository: user@host
+# here or in HEARE_E2E_BRAIN. A test brain uses HEARE_E2E_HOME instead.
+BRAIN = os.environ.get("HEARE_E2E_BRAIN", "heare-mini.local")
 PORT = 8095
 LOCAL = Path(os.environ["HEARE_E2E_HOME"]) if os.environ.get("HEARE_E2E_HOME") else None
 SETTINGS = "com.android.settings"

@@ -12,9 +12,11 @@
 - Coolify API: на міні-ПК `~/.coolify-token` (0600); той самий токен лежить
   в GitHub secrets як `COOLIFY_API_TOKEN`.
 - Cloudflare API (DNS, тунель, Access): на міні-ПК `~/.cf-api-token` (0600).
-- Міні-ПК: `ssh nazar@192.168.110.13` (лише LAN; публічної адреси немає).
+- Міні-ПК: `ssh <user>@<mini-pc>` (лише LAN; публічної адреси немає).
 - GitHub secrets: `COOLIFY_URL`, `COOLIFY_API_TOKEN`, `CF_ACCESS_CLIENT_ID`,
   `CF_ACCESS_CLIENT_SECRET`, `COOLIFY_PROD_UUID`, `COOLIFY_DEV_UUID`.
+- Точні адреси, uuid застосунків, ID тунелю й ім'я користувача — у приватній
+  нотатці **`~/heare-ops.md`** (поза репо, не комітиться).
 
 **Реліз клієнтів (dmg/APK/install.sh/колеса):**
 
@@ -141,20 +143,19 @@ docker run -p 127.0.0.1:8095:9790 -v heare:/home/heare/.heare heare-server
 
 ## 6. Coolify
 
-Проєкт **heare** (`p73mjdqx0tgdqhqvdq2jau9n`), сервер `localhost`
-(`wcg08000g0cksogocs00coc4`).
+Проєкт **heare**, сервер `localhost` (uuid — з `GET /api/v1/projects` або UI).
 
 | | prod | dev |
 |---|---|---|
-| застосунок | `heare-prod` (`keba6tvapqwslfem94gbg4jh`) | `heare-dev` (`dnki3wefued3pefdcxoc5hxl`) |
+| застосунок | `heare-prod` | `heare-dev` |
 | образ | `sha-<commit>` (пін на деплой) | `sha-<commit>` |
 | порт | `8095:9790` (0.0.0.0) | `8101:9790` (0.0.0.0) |
-| том | `keba…-heare-prod-data` | `dnki…-heare-dev-data` |
+| том | `<app-uuid>-heare-prod-data` | `<app-uuid>-heare-dev-data` |
 | healthcheck | `/health`, 25 с старт, 5 спроб | те саме |
 | двері | `brain.onelenyk.dev` | `dev-brain.onelenyk.dev` |
 
 API Coolify назовні — `coolify.onelenyk.dev` (тільки service token; люди
-заходять у панель по LAN: `http://192.168.110.13:8000`).
+заходять у панель по LAN: `http://<mini-pc>:8000`).
 
 Секрети GitHub: `COOLIFY_URL`, `COOLIFY_API_TOKEN`,
 `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`, `COOLIFY_PROD_UUID`,
@@ -165,16 +166,15 @@ API Coolify назовні — `coolify.onelenyk.dev` (тільки service toke
 
 ## 7. Cloudflare
 
-Тунель `7115a203-815a-4572-b4f9-0176747d3e30` (`0_len_server`), **remote
-config** — маршрути змінюються через API/дашборд, не файлом на машині.
+Тунель **`0_len_server`**, **remote config** — маршрути змінюються через API/дашборд, не файлом на машині.
 
 | hostname | origin | Access |
 |---|---|---|
-| `brain.onelenyk.dev` | `http://192.168.110.13:8095` | сторінка — email власника; `/health`, `/api` — bypass |
-| `dev-brain.onelenyk.dev` | `http://192.168.110.13:8101` | те саме |
-| `coolify.onelenyk.dev` | `http://192.168.110.13:8000` | тільки service token |
+| `brain.onelenyk.dev` | `http://<mini-pc>:8095` | сторінка — email власника; `/health`, `/api` — bypass |
+| `dev-brain.onelenyk.dev` | `http://<mini-pc>:8101` | те саме |
+| `coolify.onelenyk.dev` | `http://<mini-pc>:8000` | тільки service token |
 
-**Origin — LAN IP, не 127.0.0.1.** Тунель має два конектори (systemd і
+**Origin — LAN IP міні-ПК, не 127.0.0.1.** Тунель має два конектори (systemd і
 контейнер `cloudflared-web`); контейнерний не бачить host-loopback, тому
 loopback-origin дає 502.
 
@@ -183,7 +183,7 @@ loopback-origin дає 502.
 
 ## 8. Дані, ключі, копії
 
-- **Прод-дані:** том `keba…-heare-prod-data`, у нього скопійовано `~/.heare`
+- **Прод-дані:** том `<app-uuid>-heare-prod-data`, у нього скопійовано `~/.heare`
   на момент переїзду (15.11). Оригінал `~/.heare` на хості не чіпано.
 - **Ключі:** у томі (`machine/keys.json`, 0600) або env
   `DEEPSEEK_API_KEY`/`GROQ_API_KEY`.
