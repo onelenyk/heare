@@ -40,6 +40,7 @@ WORKDIR /home/heare
 # The keyring is a desktop's; a server has none, and asking for one hangs.
 ENV PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring \
     PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
     HEARE_NO_BROWSER=1 \
     HEARE_NO_SELF_UPDATE=1
 RUN mkdir -p /home/heare/.heare

@@ -1,4 +1,4 @@
-# The brain on a server. From a release, no checkout's code:
+# The server on one machine. From a release, no checkout's code:
 #
 #   HEARE_VERSION=v0.9.3 docker compose -f docker/compose.yaml pull
 #   HEARE_VERSION=v0.9.3 docker compose -f docker/compose.yaml up -d
@@ -18,8 +18,8 @@ services:
   brain:
     build:
       context: ..
-      dockerfile: docker/brain.Dockerfile
-    image: ghcr.io/onelenyk/heare-brain:${HEARE_VERSION:-latest}
+      dockerfile: docker/server.Dockerfile
+    image: ghcr.io/onelenyk/heare-brain:${HEARE_VERSION:-stable}
     restart: unless-stopped
     # The brain holds the keys: it gets its volume and nothing else.
     read_only: true
@@ -38,6 +38,12 @@ services:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
     volumes:
       - heare:/home/heare/.heare
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:9790/health', timeout=3).status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      start_period: 25s
+      retries: 5
 
 volumes:
   heare:

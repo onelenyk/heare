@@ -4,9 +4,11 @@
 завжди ввімкнена, або в Docker. Мікрофон йому не потрібен: голос і руки
 лишаються на маку й під'єднуються до мозку як частини.
 
-*Стан 28 жовтня 2026: Docker-мозок є в коді (`docker/brain.Dockerfile`),
-`docker/compose.yaml` публікує порт на loopback. TLS, тунелю й публічної
-адреси в heare немає.*
+*Стан 15 листопада 2026: сервер — один контейнер у Coolify
+(`docker/server.Dockerfile`: мозок, наглядач, нативні руки, джерела), гілки
+`main`/`develop`, деплой і відкат — [deploy.md](deploy.md). `install.sh`
+лишився для Linux-тіла й старої systemd-схеми; `docker/brain.Dockerfile` —
+мінімальний образ лише з мозком для тих, кому так треба.*
 
 ## Linux
 
@@ -49,7 +51,9 @@ Mac — той, що його тримає застосунок; launchd-коп�
 `HEARE_DEEPSEEK_KEY`/`HEARE_GROQ_KEY` або з `--keys-file`, не з
 командного рядка.
 
-**Оновити:** запусти ту саму команду з новим номером версії.
+**Оновити (systemd-машина):** запусти ту саму команду з новим номером
+версії. **Сервер-контейнер оновлюється інакше** — новим тегом образу
+(Coolify), не `install.sh` усередині.
 
 **Копія:** `heare-brain backup` і `heare-brain restore ФАЙЛ`.
 
@@ -65,9 +69,16 @@ uv tool list | grep '^heare' | cut -d' ' -f1 | xargs -n1 uv tool uninstall
 
 ## Docker
 
-Лише мозок, стан у томі, ключі зі змінних середовища. Образ збирає колеса
-core/reach/memory/brain і запускає `heare-brain`; порт типово
-`127.0.0.1:9790`, `HEARE_BIND` і `HEARE_PORT` міняють це. Усередині
+Два образи:
+
+- **серверний** — `docker/server.Dockerfile`: мозок, наглядач, нативні руки,
+  джерела, сторінка; його тягне Coolify (див. [deploy.md](deploy.md));
+- **лише мозок** — `docker/brain.Dockerfile`: core/reach/memory/brain, для
+  мінімального запуску.
+
+`docker/compose.yaml` збирає серверний образ: стан у томі, ключі зі змінних
+середовища, healthcheck `/health`; порт типово `127.0.0.1:9790`,
+`HEARE_BIND` і `HEARE_PORT` міняють це. Усередині
 контейнера мозок слухає `0.0.0.0`, бо інакше опублікований порт не дійде;
 назовні це нічого не відкриває, поки `HEARE_BIND` не змінено. HTTPS немає:
 якщо він потрібен, став TLS-проксі перед мозком.
@@ -76,6 +87,9 @@ core/reach/memory/brain і запускає `heare-brain`; порт типово
 DEEPSEEK_API_KEY=… docker compose -f docker/compose.yaml up -d --build
 docker compose -f docker/compose.yaml exec brain heare-brain code   # код для браузера або тіла
 ```
+
+У контейнері наглядач не ставить оновлень (`HEARE_NO_SELF_UPDATE=1`): новий
+реліз — це новий образ, а не `install.sh` усередині.
 
 `heare-brain code` дає 8-символьний одноразовий код (5 хв) для `/api/pair`:
 браузер обмінює його на HttpOnly cookie, тіло — на токен машини, далі кожна

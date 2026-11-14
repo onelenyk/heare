@@ -65,6 +65,8 @@ make format                       # ruff format
 make check                        # lint + test
 
 make live                         # check, then put this checkout live on this Mac and wait
+make release V=x.y.z              # one version everywhere, a commit and a tag (pushes nothing)
+make app                          # dist/heare.app and dist/heare.dmg, Python inside
 make i18n                         # find marked lines, merge into the catalogs, compile
 make prompt                       # the system prompt the running brain gives its model now
 make rollback                     # the release before (TO=name for another)
@@ -74,6 +76,26 @@ make digest                       # what irritated this week, from the journal
 
 Never copy files into the installed tools by hand: `make live` is the
 update, and the release it leaves behind is the way back.
+
+## DELIVERING
+
+Two tracks; the whole picture is `docs/deploy.md`.
+
+- **Clients** — a tag `vX.Y.Z` (`make release V=…`, then `git push origin
+  main vX.Y.Z`) makes CI publish the two dmg, the APK, `install.sh`, the
+  wheels and sums. The Mac app updates through its own `Updater` on the
+  pult's word; a Linux body through `install.sh` or the keeper.
+- **The server** — one image built from `docker/server.Dockerfile` (brain,
+  keeper, native hands, sources; the page ships inside it). `develop` builds
+  `:dev` and deploys dev (`dev-brain.onelenyk.dev`); `main` builds `:stable`
+  and `:sha-<commit>` and deploys prod (`brain.onelenyk.dev`) through
+  Coolify. The deploy job pins the commit's `sha-…` tag, waits for the
+  deployment, checks `/health` at the door and rolls back to the previous
+  `sha-…` when it does not answer.
+
+A container never installs into itself (`HEARE_NO_SELF_UPDATE`): change the
+image, not the running container. The old systemd units on the mini-PC are
+stopped and disabled, kept only as the way back.
 
 Parts — separate processes that knock and wait for approval on the page:
 
@@ -111,6 +133,8 @@ model — and are excluded by default.
 | What the model sees: persona, laws, turn budget | `packages/heare-brain/heare/prompt/` |
 | What the model can call: recall, delegate, remind | `packages/heare-brain/heare/tools/` |
 | Profile, journal, recall, memory CLI | `packages/heare-memory/heare/memory/` |
+| Delivering: branches, images, Coolify, rollback | `docs/deploy.md`, `.github/workflows/ci.yml`, `docker/server.Dockerfile`, `docker/entrypoint.sh` |
+| A release on this Mac | `make live` (`scripts/live.py`); client releases `scripts/release.py`, `docs/product/delivery.md` |
 | The plan | `docs/product/README.md`; what we do now: `docs/product/clock.md`; memory and activity: `docs/product/memory.md` |
 | Language: the catalog, the page words, the Mac's | `packages/heare-core/heare/core/i18n.py`, `packages/heare-core/heare/words.py`, `apps/mac/Sources/heare/Words.swift`; `docs/product/language.md` |
 | What the voice knows of its body | `packages/heare-brain/heare/prompt/body.py`; `docs/product/voice-context.md` |

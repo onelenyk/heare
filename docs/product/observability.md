@@ -212,7 +212,7 @@ CREATE TABLE meta (name TEXT PRIMARY KEY, value TEXT);
   показуємо на пульті.
 
 **Том і резервна копія.** `docker/brain.Dockerfile:27` оголошує `VOLUME
-/home/heare/.heare`, тому `logs/` переживає деплой, якщо Coolify тримає постійний том.
+/home/heare/.heare`, тому `logs/` переживає деплой: Coolify тримає постійний том (`keba…-heare-prod-data`).
 Пам'ять уже його пережила, але назву тому варто звірити на кроці 3 (питання В4).
 `backup.py:33` бере лише `memory` і `settings`, тому журнал у резервну копію не
 потрапляє без змін. Щоденна копія `~/heare-backup.sh` на міні-ПК могла б брати весь

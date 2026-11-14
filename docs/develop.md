@@ -9,7 +9,7 @@ make brain        # мозок і його пульт на 127.0.0.1:9790
 make chat         # розмова в терміналі
 make voice        # мова туди й назад
 
-make check        # лінт, 1471 тестів tests/heare, 658 тестів прошивки, каталог мов
+make check        # лінт, 2020 тестів tests/heare, 659 тестів прошивки, каталог мов
 make live         # check, зібрати й поставити застосунок, запустити, дочекатися частин
 make rollback     # назад до попереднього релізу
 make e2e-dist     # встановлення, оновлення й видалення в пісочниці поруч із живим
@@ -25,7 +25,17 @@ make release V=x.y.z   # одна версія всюди, коміт і тег 
 Тег `v*`, відправлений на GitHub, змушує CI зібрати застосунки й колеса та
 опублікувати реліз.
 
-Станом на 28 жовтня: 1471 тестів у `tests/heare` і 658 у `tests/firmware`;
+Гілки: `develop` збирає образ `:dev` і деплоїть dev; `main` — `:stable` і
+прод (Coolify). Повний конвеєр — [deploy.md](deploy.md).
+
+Серверний образ локально:
+
+```bash
+docker build -f docker/server.Dockerfile -t heare-server .
+docker run -p 127.0.0.1:8095:9790 -v heare:/home/heare/.heare heare-server
+```
+
+Станом на 15 листопада: 2020 тестів у `tests/heare` і 659 у `tests/firmware`;
 `make check` додає лінт і перевірку каталогу мов.
 
 Застосунок для мака — у `apps/mac` (Swift); `make app` збирає його,

@@ -84,8 +84,9 @@ switch away in ⚙.
 
    You only need to do this once.
 
-The Mac has one install path: this app. `install.sh` is for Linux servers
-and bodies; on a Mac it refuses and points here.
+The Mac has one install path: this app. `install.sh` is for Linux bodies
+(and the old systemd server); on a Mac it refuses and points here. The server
+itself now runs as a container — see [docs/deploy.md](docs/deploy.md).
 
 ## First run
 
@@ -199,6 +200,7 @@ From a terminal:
 
 ## More
 
+- [Delivering heare](docs/deploy.md) — branches, images, Coolify, rollback.
 - [Server and Docker](docs/server.md) — the brain on an always-on Linux
   machine or in a container.
 - [Develop](docs/develop.md) — build from source, tests, releases.
