@@ -87,7 +87,7 @@ commands, where the tokens live, how to verify and how to roll back.
   wheels and sums. The Mac app updates through its own `Updater` on the
   pult's word; a Linux body through `install.sh` or the keeper.
 - **The server** — one image built from `docker/server.Dockerfile` (brain,
-  keeper, native hands, sources; the page ships inside it). `develop` builds
+  keeper, native hands; the page ships inside it). `develop` builds
   `:dev` and deploys dev (`dev-brain.onelenyk.dev`); `main` builds `:stable`
   and `:sha-<commit>` and deploys prod (`brain.onelenyk.dev`) through
   Coolify. The deploy job pins the commit's `sha-…` tag, waits for the

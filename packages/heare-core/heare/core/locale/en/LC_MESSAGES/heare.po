@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-13 17:09+0200\n"
+"POT-Creation-Date: 2026-11-15 01:27+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -53,6 +53,15 @@ msgid "Parts"
 msgstr ""
 
 msgid "the keeper has not answered yet"
+msgstr ""
+
+msgid "Environment"
+msgstr ""
+
+msgid "Prod"
+msgstr ""
+
+msgid "Dev"
 msgstr ""
 
 msgid "Settings…"
@@ -1928,9 +1937,6 @@ msgstr ""
 msgid "re-pair"
 msgstr ""
 
-msgid "Forget this machine and pair it again?"
-msgstr ""
-
 msgid "turn off"
 msgstr ""
 
@@ -2567,11 +2573,21 @@ msgstr ""
 msgid "the brain no longer knows this machine — pair it again"
 msgstr ""
 
-msgid "a machine with this name is already connected — forget it on the brain's page, or give this one another name"
+msgid "unknown environment"
+msgstr ""
+
+#, python-brace-format
+msgid "this machine is not connected to {name} yet — pair it with the brain's code"
+msgstr ""
+
+msgid "the code must be 8 characters"
 msgstr ""
 
 #, python-brace-format
 msgid "the brain did not connect: {error}"
+msgstr ""
+
+msgid "a machine with this name is already connected — forget it on the brain's page, or give this one another name"
 msgstr ""
 
 msgid "another page does not control this form"
@@ -2596,9 +2612,6 @@ msgid "unknown role"
 msgstr ""
 
 msgid "the address must start with http:// or https://"
-msgstr ""
-
-msgid "the code must be 8 characters"
 msgstr ""
 
 msgid "an unknown or empty key"
@@ -3064,5 +3077,8 @@ msgstr ""
 #~ msgstr ""
 
 #~ msgid "connecting"
+#~ msgstr ""
+
+#~ msgid "Forget this machine and pair it again?"
 #~ msgstr ""
 

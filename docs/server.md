@@ -5,7 +5,7 @@
 лишаються на маку й під'єднуються до мозку як частини.
 
 *Стан 15 листопада 2026: сервер — один контейнер у Coolify
-(`docker/server.Dockerfile`: мозок, наглядач, нативні руки, джерела), гілки
+(`docker/server.Dockerfile`: мозок, наглядач, нативні руки), гілки
 `main`/`develop`, деплой і відкат — [deploy.md](deploy.md). `install.sh`
 лишився для Linux-тіла й старої systemd-схеми; `docker/brain.Dockerfile` —
 мінімальний образ лише з мозком для тих, кому так треба.*
@@ -72,7 +72,7 @@ uv tool list | grep '^heare' | cut -d' ' -f1 | xargs -n1 uv tool uninstall
 Два образи:
 
 - **серверний** — `docker/server.Dockerfile`: мозок, наглядач, нативні руки,
-  джерела, сторінка; його тягне Coolify (див. [deploy.md](deploy.md));
+  сторінка; його тягне Coolify (див. [deploy.md](deploy.md));
 - **лише мозок** — `docker/brain.Dockerfile`: core/reach/memory/brain, для
   мінімального запуску.
 

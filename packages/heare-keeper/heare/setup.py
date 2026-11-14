@@ -40,6 +40,113 @@ def state() -> dict:
     return dict(STATE)
 
 
+# The two brains this machine may be a body of. A file, not a profile
+# system: prod and dev are the environments, and that is the whole list.
+DEFAULT_ENVIRONMENTS = {
+    "prod": "https://brain.onelenyk.dev",
+    "dev": "https://dev-brain.onelenyk.dev",
+}
+
+
+def environments(settings: Settings | None = None) -> dict[str, str]:
+    """The brains this machine knows: name → address. Editable by hand."""
+    settings = settings or Settings()
+    path = Path(settings.path).parent / "environments.json"
+    try:
+        found = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        found = {}
+    if not isinstance(found, dict):
+        found = {}
+    merged = {**DEFAULT_ENVIRONMENTS,
+              **{str(name): str(url).rstrip("/") for name, url in found.items()}}
+    if merged != found:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
+    return merged
+
+
+def _token_of(settings: Settings, name: str) -> Path:
+    return Path(settings.machine_token_file).with_name("tokens") / name
+
+
+def _active_environment(settings: Settings, known: dict[str, str]) -> str:
+    url = str(settings.url or "").rstrip("/")
+    for name, address in known.items():
+        if address == url:
+            return name
+    return ""
+
+
+def environment_view(settings: Settings | None = None) -> dict:
+    settings = settings or Settings()
+    known = environments(settings)
+    active = _active_environment(settings, known)
+    return {"active": active,
+            "items": [{"name": name, "url": url,
+                       "paired": _token_of(settings, name).is_file(),
+                       "active": name == active}
+                      for name, url in known.items()]}
+
+
+def _keep_token(settings: Settings, name: str, token: str) -> None:
+    path = _token_of(settings, name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(token, encoding="utf-8")
+    path.chmod(0o600)
+
+
+def _take(name: str) -> tuple[int, dict]:
+    """Make an environment this machine's brain: its token becomes the key."""
+    settings = Settings()
+    known = environments(settings)
+    if name not in known:
+        return 400, {"errors": [_("unknown environment")]}
+    token = _token_of(settings, name)
+    if not token.is_file():
+        return 409, {"errors": [_("this machine is not connected to {name} yet — pair it with the brain's code").format(name=name)],
+                     "needs": "code"}
+    path = Path(settings.machine_token_file)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(token.read_text(encoding="utf-8"), encoding="utf-8")
+    path.chmod(0o600)
+    settings.set("url", known[name])
+    settings.set("role", "body")
+    return 200, environment_view(settings)
+
+
+def _join(name: str, code: str) -> tuple[int, dict]:
+    """Pair this machine with an environment by the brain's one-time code."""
+    settings = Settings()
+    known = environments(settings)
+    if name not in known:
+        return 400, {"errors": [_("unknown environment")]}
+    if len(code) != 8:
+        return 400, {"errors": [_("the code must be 8 characters")]}
+    name_file = Path(settings.machine_name_file)
+    try:
+        named = name_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        named = ""
+    try:
+        answer = pair(known[name], code, "machine", named or socket.gethostname())
+    except urllib.error.HTTPError as error:
+        return 400, {"errors": [_pair_failed(error)]}
+    except OSError as error:
+        return 400, {"errors": [_("the brain did not connect: {error}").format(error=error)]}
+    _keep_token(settings, name, answer["token"])
+    path = Path(settings.machine_token_file)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(answer["token"], encoding="utf-8")
+    path.chmod(0o600)
+    paired = str(answer.get("pid") or "").split("@", 1)[-1] or socket.gethostname()
+    name_file.write_text(paired, encoding="utf-8")
+    settings.set("url", known[name])
+    settings.set("role", "body")
+    return 200, environment_view(settings)
+
+
+
 
 def want_setup(settings: Settings) -> bool:
     """The page opens by itself until the first run is finished."""
@@ -112,6 +219,9 @@ class _Handler(BaseHTTPRequestHandler):
         if path == "/machine":
             self._send(200, _machine())
             return
+        if path == "/environments":
+            self._send(200, environment_view())
+            return
         if path != "/":
             self._send(404, {"errors": [_("no such page")]})
             return
@@ -141,7 +251,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(200, {"ok": True})
             threading.Thread(target=self.server.shutdown, daemon=True).start()
             return
-        if path not in ("/keys", "/part", "/key", "/role", "/done"):
+        if path not in ("/keys", "/part", "/key", "/role", "/done",
+                        "/environments/switch", "/environments/pair"):
             self._send(404, {"errors": [_("no such action")]})
             return
 
@@ -163,6 +274,10 @@ class _Handler(BaseHTTPRequestHandler):
             self._key(data)
         elif path == "/role":
             self._role(data)
+        elif path == "/environments/switch":
+            self._send(*_take(_text(data, "name")))
+        elif path == "/environments/pair":
+            self._send(*_join(_text(data, "name"), _text(data, "code")))
         else:
             Settings().set("setup_done", True)
             self._send(200, _machine())
@@ -214,6 +329,12 @@ class _Handler(BaseHTTPRequestHandler):
             # The name the brain knows this machine by: every part keys on it.
             paired = str(answer.get("pid") or "").split("@", 1)[-1] or socket.gethostname()
             Path(settings.machine_name_file).write_text(paired, encoding="utf-8")
+            # A brain named in the environments list keeps its key there too,
+            # so switching back later needs no new code.
+            for env_name, address in environments(settings).items():
+                if address == url:
+                    _keep_token(settings, env_name, answer["token"])
+                    break
             settings.set("url", url)
         else:
             settings.forget_pairing()

@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-13 17:09+0200\n"
+"POT-Creation-Date: 2026-11-15 01:27+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -54,6 +54,15 @@ msgstr "Частини"
 
 msgid "the keeper has not answered yet"
 msgstr "наглядач ще не відповів"
+
+msgid "Environment"
+msgstr "Середовище"
+
+msgid "Prod"
+msgstr "Прод"
+
+msgid "Dev"
+msgstr "Дев"
 
 msgid "Settings…"
 msgstr "Налаштування…"
@@ -1928,9 +1937,6 @@ msgstr "Частина не запустилася"
 msgid "re-pair"
 msgstr "Перепарувати"
 
-msgid "Forget this machine and pair it again?"
-msgstr "Забути цю машину й спарувати знову?"
-
 msgid "turn off"
 msgstr "вимкнути"
 
@@ -2575,12 +2581,22 @@ msgstr "не ввімкнув: {error}"
 msgid "the brain no longer knows this machine — pair it again"
 msgstr "мозок більше не знає цю машину — спаруй її знову"
 
-msgid "a machine with this name is already connected — forget it on the brain's page, or give this one another name"
-msgstr "машина з таким ім'ям уже підключена — забудь її на сторінці мозку або дай цій інше ім'я"
+msgid "unknown environment"
+msgstr "невідоме середовище"
+
+#, python-brace-format
+msgid "this machine is not connected to {name} yet — pair it with the brain's code"
+msgstr "ця машина ще не підключена до {name} — спаруй її кодом мозку"
+
+msgid "the code must be 8 characters"
+msgstr "код має бути 8 символів"
 
 #, python-brace-format
 msgid "the brain did not connect: {error}"
 msgstr "мозок не підключив: {error}"
+
+msgid "a machine with this name is already connected — forget it on the brain's page, or give this one another name"
+msgstr "машина з таким ім'ям уже підключена — забудь її на сторінці мозку або дай цій інше ім'я"
 
 msgid "another page does not control this form"
 msgstr "чужа сторінка не керує цією формою"
@@ -2605,9 +2621,6 @@ msgstr "невідома роль"
 
 msgid "the address must start with http:// or https://"
 msgstr "адреса має починатися з http:// або https://"
-
-msgid "the code must be 8 characters"
-msgstr "код має бути 8 символів"
 
 msgid "an unknown or empty key"
 msgstr "невідомий або порожній ключ"
@@ -3070,4 +3083,7 @@ msgstr "я перестав чути {s} секунд тому — схоже, �
 
 #~ msgid "connecting"
 #~ msgstr "підключається…"
+
+#~ msgid "Forget this machine and pair it again?"
+#~ msgstr "Забути цю машину й спарувати знову?"
 

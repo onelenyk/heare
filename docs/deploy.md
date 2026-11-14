@@ -99,6 +99,30 @@ git push origin main v0.9.22
 Правило: **main — це прод**. Мердж у `main` = виїзд у прод. Нічого не
 деплоїться з тега і нічого не деплоїться з PR.
 
+## 3а. Перемикання мозку на маку
+
+У застосунку: меню **Environment ▸** з пунктами **Прод** і **Дев** (активний —
+з позначкою). Вибір:
+
+- бере машинний ключ цього мозку з `~/.heare/machine/tokens/<ім'я>`;
+- кладе його в `machine/machine_token`, пише `url` у `config.toml`;
+- наглядач бачить зміну налаштувань і **сам перезапускає частини**;
+- застосунок відкриває сторінку нового мозку.
+
+Адреси середовищ — `~/.heare/settings/environments.json` (типово
+`prod → https://brain.onelenyk.dev`, `dev → https://dev-brain.onelenyk.dev`).
+
+**Перше підключення до мозку** потребує його 8-символьного коду (сторінка
+мозку: ⚙ → Пристрої): вибір середовища без ключа відкриває форму наглядача.
+Після спарювання ключ лежить у `tokens/<ім'я>` — далі перемикання без коду.
+
+Пам'ять, розмови, піни й ключі в prod і dev **різні**: перемикання переносить
+лише машину й частини, не розмову.
+
+Ті самі дії доступні через форму наглядача (`127.0.0.1:9791`):
+`GET /environments`, `POST /environments/switch {"name":…}`,
+`POST /environments/pair {"name":…, "code":…}`.
+
 ## 4. Що робить CI
 
 `.github/workflows/ci.yml`, jobs:
@@ -123,7 +147,7 @@ git push origin main v0.9.22
 
 `docker/server.Dockerfile` — один контейнер:
 
-- **brain** (порт 9790), **keeper**, **native-hands**, **sources**;
+- **brain** (порт 9790), **keeper**, **native-hands**;
 - supervisord як PID 1 (brain, потім keeper), логи в stdout;
 - non-root uid 1000, том `/home/heare/.heare`, `HEALTHCHECK` на `/health`;
 - `HEARE_NO_SELF_UPDATE=1`, `update_check=false` — оновлення тільки образом;
@@ -138,7 +162,8 @@ docker build -f docker/server.Dockerfile -t heare-server .
 docker run -p 127.0.0.1:8095:9790 -v heare:/home/heare/.heare heare-server
 ```
 
-Голос і очі в образ не входять: мікрофон/екран — це клієнт. `cli-hands`
+Голос, очі й джерела в образ не входять: мікрофон, екран і місце — це клієнт,
+а канал має одного власника на мозок. `cli-hands`
 (opencode) теж не входять — нативні руки мають їх замінити.
 
 ## 6. Coolify

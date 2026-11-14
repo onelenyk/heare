@@ -39,15 +39,18 @@ if trusted.exists():
         known = list(json.loads(trusted.read_text(encoding="utf-8")))
     except (OSError, ValueError):
         known = []
-for pid in (f"native-hands@{name}", f"sources@{name}"):
+for pid in (f"native-hands@{name}",):
     if pid not in known:
         known.append(pid)
 trusted.parent.mkdir(parents=True, exist_ok=True)
 trusted.write_text(json.dumps(known), encoding="utf-8")
 PY
 
-# The parts this machine can hold. Turning one on is writing its folder; the
-# keeper starts it within seconds and keeps it up.
-python -m heare.machine --bin /usr/local/bin on native-hands sources || true
+# The parts this machine can hold. The native hands act from here; a
+# channel like sources or eyes belongs to the body that knows the place —
+# one owner per channel on a brain — so the server image leaves it off and
+# removes a manifest an older image wrote.
+python -m heare.machine --bin /usr/local/bin on native-hands || true
+python -m heare.machine --bin /usr/local/bin off sources || true
 
 exec /usr/local/bin/supervisord -c /etc/supervisord.conf

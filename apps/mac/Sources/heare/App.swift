@@ -25,6 +25,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // What the keeper and the brain last said; the menu is drawn from these.
     private var machine: [String: Any]?
+    private var environments: [[String: Any]] = []
     private var state: [String: Any]?
     // Chosen in «Видалити heare…»; done once the children have stopped.
     private var removing: Uninstall.Keep?
@@ -118,6 +119,11 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.keeperOk = answer.status == 200
             self?.draw()
             self?.checkHealth()
+        }
+        Local.call(config.setupBase.appendingPathComponent("environments")) { [weak self] answer in
+            let view = answer.json as? [String: Any]
+            self?.environments = view?["items"] as? [[String: Any]] ?? []
+            self?.draw()
         }
         if !config.brainHere { askBrainElsewhere() }
         guard config.brainHere, let token = config.masterToken else {
@@ -327,6 +333,22 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         parts.submenu = list
         menu.addItem(parts)
+        if !environments.isEmpty {
+            let environment = NSMenuItem(title: tr("Environment"), action: nil, keyEquivalent: "")
+            let choices = NSMenu()
+            for item in environments {
+                guard let name = item["name"] as? String else { continue }
+                let label = name == "prod" ? tr("Prod") : name == "dev" ? tr("Dev") : name
+                let entry = NSMenuItem(title: label, action: #selector(switchEnvironment(_:)), keyEquivalent: "")
+                entry.target = self
+                entry.representedObject = name
+                entry.state = item["active"] as? Bool == true ? .on : .off
+                entry.toolTip = item["url"] as? String
+                choices.addItem(entry)
+            }
+            environment.submenu = choices
+            menu.addItem(environment)
+        }
         menu.addItem(.separator())
         menu.addItem(action(tr("Settings…"), #selector(openSettings), key: ","))
         let login = action(tr("Start at login"), #selector(toggleLogin), key: "")
@@ -379,6 +401,24 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func openSettings() { installer.show(config) }
+
+    /// Switch between the two brains this machine may belong to. The keeper
+    /// moves the machine's key and the settings; it restarts the parts by
+    /// itself. A brain this machine is not paired with asks for its code.
+    @objc private func switchEnvironment(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String else { return }
+        Local.call(config.setupBase.appendingPathComponent("environments/switch"),
+                   method: "POST", body: ["name": name]) { [weak self] answer in
+            guard let self else { return }
+            if answer.status == 200 {
+                self.config = Config.read()
+                self.openHeare()
+            } else {
+                self.installer.show(self.config)
+            }
+            self.look()
+        }
+    }
 
     // A click on the Dock icon with no window open: the page.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {

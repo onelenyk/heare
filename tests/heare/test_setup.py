@@ -330,3 +330,66 @@ def test_a_taken_setup_port_says_which(tmp_path):
     assert str(port) in str(taken.value)
     assert setup.state()["state"] == "taken"
     assert setup.state()["port"] == port
+
+
+# -- the two environments: prod and dev ----------------------------------
+
+
+def _env_settings(tmp_path):
+    return Settings(tmp_path / "config.toml",
+                    machine_token_file=tmp_path / "machine_token",
+                    machine_name_file=tmp_path / "machine_name",
+                    api_token_file=tmp_path / "api_token",
+                    parts_dir=tmp_path / "parts")
+
+
+def test_the_environments_are_prod_and_dev_and_written_down(tmp_path):
+    settings = _env_settings(tmp_path)
+    known = setup.environments(settings)
+    assert known == {"prod": "https://brain.onelenyk.dev",
+                     "dev": "https://dev-brain.onelenyk.dev"}
+    assert (tmp_path / "environments.json").is_file()
+    view = setup.environment_view(settings)
+    assert view["active"] == ""
+    assert [item["name"] for item in view["items"]] == ["prod", "dev"]
+    assert not any(item["paired"] for item in view["items"])
+
+
+def test_a_brain_this_machine_never_joined_asks_for_its_code(tmp_path, monkeypatch):
+    settings = _env_settings(tmp_path)
+    monkeypatch.setattr(setup, "Settings", lambda: settings)
+    status, said = setup._take("dev")
+    assert status == 409 and said["needs"] == "code"
+
+
+def test_switching_takes_that_brains_key(tmp_path, monkeypatch):
+    settings = _env_settings(tmp_path)
+    token = tmp_path / "tokens" / "dev"
+    token.parent.mkdir()
+    token.write_text("dev-key", encoding="utf-8")
+    monkeypatch.setattr(setup, "Settings", lambda: settings)
+    status, view = setup._take("dev")
+    assert status == 200 and view["active"] == "dev"
+    assert (tmp_path / "machine_token").read_text(encoding="utf-8") == "dev-key"
+    assert settings.url == "https://dev-brain.onelenyk.dev"
+    assert settings.role == "body"
+
+
+def test_joining_an_environment_keeps_its_key_for_later(tmp_path, monkeypatch):
+    settings = _env_settings(tmp_path)
+    monkeypatch.setattr(setup, "Settings", lambda: settings)
+    monkeypatch.setattr(setup, "pair",
+                        lambda url, code, kind, name: {"token": "dev-token", "pid": "machine@here"})
+    status, view = setup._join("dev", "ABCD1234")
+    assert status == 200 and view["active"] == "dev"
+    assert (tmp_path / "tokens" / "dev").read_text(encoding="utf-8") == "dev-token"
+    assert (tmp_path / "machine_token").read_text(encoding="utf-8") == "dev-token"
+    assert (tmp_path / "machine_name").read_text(encoding="utf-8") == "here"
+
+
+def test_the_form_lists_the_environments(form):
+    base, _, _ = form
+    with urllib.request.urlopen(base + "/environments", timeout=2) as answer:
+        view = json.loads(answer.read().decode())
+    assert [item["name"] for item in view["items"]] == ["prod", "dev"]
+    assert view["active"] == ""
