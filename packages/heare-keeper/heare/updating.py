@@ -177,7 +177,10 @@ class Updating:
         """
         if not self.auto or self.mark.exists():
             return
-        if time.monotonic() - self.looked < AUTO_EVERY_S:
+        # Zero means "not looked yet": the first pass happens right away,
+        # however young the machine is (a fresh runner's clock starts at
+        # boot, not at an epoch).
+        if self.looked and time.monotonic() - self.looked < AUTO_EVERY_S:
             return
         self.looked = time.monotonic()
         async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True,
