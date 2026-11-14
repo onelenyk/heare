@@ -39,9 +39,15 @@ from heare.core.i18n import _
 logger = logging.getLogger("heare.keeper.updating")
 
 ASK_EVERY_S = 60.0
+# A machine with auto-update on looks at GitHub itself, not only at what the
+# brain names: a release goes live the moment it is published, and a machine
+# that was asleep catches up the next time it looks. Once per five minutes
+# keeps the unauthenticated GitHub call under its sixty-an-hour.
+AUTO_EVERY_S = 300.0
 # The brain and the parts have this long to answer after an update.
 SETTLE_S = 120.0
 RELEASES = "https://github.com/onelenyk/heare/releases/download/"
+LATEST = "https://api.github.com/repos/onelenyk/heare/releases/latest"
 TIMEOUT = httpx.Timeout(60.0, connect=10.0)
 HEADERS = {"User-Agent": "heare"}
 
@@ -69,6 +75,36 @@ def sum_for(sums: str, name: str) -> str | None:
     return None
 
 
+def _version(text: str) -> tuple[int, ...] | None:
+    if not re.fullmatch(r"\d+\.\d+\.\d+", text):
+        return None
+    return tuple(int(part) for part in text.split("."))
+
+
+def newer(candidate: str, installed: str) -> bool:
+    """Whether *candidate* is a release above what this machine runs."""
+    have, want = _version(installed), _version(candidate)
+    return want is not None and (have is None or want > have)
+
+
+def release_of(payload: object, installed: str) -> dict | None:
+    """The release GitHub names, if it is one a machine may take by itself.
+
+    Only a published, stable tag above the running version: a draft or a
+    pre-release is somebody's experiment, and an older tag is a machine
+    that is ahead of the latest (a rollback), not behind.
+    """
+    if not isinstance(payload, dict) or payload.get("draft") or payload.get("prerelease"):
+        return None
+    tag = str(payload.get("tag_name") or "")
+    version = tag[1:] if tag.startswith("v") else ""
+    if not newer(version, installed):
+        return None
+    source = f"{RELEASES}v{version}"
+    return {"version": version, "install": f"{source}/install.sh",
+            "sums": f"{source}/SHA256SUMS.txt", "from": source}
+
+
 def command(script: Path, source: str, version: str, unit_ok: bool) -> list[str]:
     """install.sh in a unit of its own where systemd is, so it outlives the
     keeper it restarts."""
@@ -84,11 +120,24 @@ class Updating:
         self.settings = settings
         self.folder = home / "cache" / "update"
         self.mark = self.folder / "keeper.json"
+        # A release this machine took and could not keep: it stays refused
+        # until a newer one is published, or the owner asks for it again.
+        self.refused = self.folder / "auto-refused.json"
+        self.looked = 0.0
 
     @property
     def here(self) -> bool:
         """Only a Linux machine the app does not hold: the app swaps a Mac."""
         return sys.platform.startswith("linux") and not os.environ.get("HEARE_PARENT_PID")
+
+    @property
+    def auto(self) -> bool:
+        """Whether this machine takes a new release as soon as it is out.
+
+        Off by default: a machine follows the owner's «Update» on the pult
+        unless it was told to follow the repository itself.
+        """
+        return str(getattr(self.settings, "auto_update", "")).lower() in ("1", "true", "yes", "on")
 
     async def run(self) -> None:
         if not self.here:
@@ -100,6 +149,10 @@ class Updating:
                 await self.once()
             except (httpx.HTTPError, OSError, ValueError) as exc:
                 logger.warning("could not ask the brain about an update: %s", part.broke(exc, None, None, 0))
+            try:
+                await self.maybe_auto()
+            except (httpx.HTTPError, OSError, ValueError) as exc:
+                logger.warning("could not look for a release: %s", part.broke(exc, None, None, 0))
 
     def _client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True,
@@ -114,6 +167,34 @@ class Updating:
         if asked is None:
             return
         await self.take(asked, back_to=part.installed() or "")
+
+    async def maybe_auto(self) -> None:
+        """Take the newest published release, when this machine follows them.
+
+        The brain still owns the pult's «Update»: this is only the machine
+        listening to the repository, so a release lands without a person at
+        the page. The same checks and the same rollback as an asked update.
+        """
+        if not self.auto or self.mark.exists():
+            return
+        if time.monotonic() - self.looked < AUTO_EVERY_S:
+            return
+        self.looked = time.monotonic()
+        async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True,
+                                     headers={**HEADERS, "Accept": "application/vnd.github+json"}) as web:
+            answer = await web.get(LATEST)
+            answer.raise_for_status()
+            asked = release_of(answer.json(), part.installed() or "")
+        if asked is None or asked["version"] == self.refused_version():
+            return
+        logger.warning("heare %s is published: taking it by itself", asked["version"])
+        await self.take(asked, back_to=part.installed() or "")
+
+    def refused_version(self) -> str:
+        try:
+            return str(json.loads(self.refused.read_text(encoding="utf-8")).get("version") or "")
+        except (OSError, ValueError):
+            return ""
 
     async def take(self, asked: dict, back_to: str, **mark: object) -> None:
         self.folder.mkdir(parents=True, exist_ok=True)
@@ -153,6 +234,15 @@ class Updating:
         except (OSError, ValueError):
             return
         if mark.get("rolled_back"):
+            failed = str(mark.get("failed") or mark.get("to") or "")
+            if re.fullmatch(r"\d+\.\d+\.\d+", failed):
+                # A machine following the repository must not put the same
+                # broken release back every five minutes: it waits for one
+                # above it, or for the owner to ask again.
+                self.refused.parent.mkdir(parents=True, exist_ok=True)
+                self.refused.write_text(json.dumps({
+                    "version": failed, "why": str(mark.get("why") or ""),
+                    "at": time.time()}), encoding="utf-8")
             self.mark.unlink(missing_ok=True)
             await self.say_failed(str(mark.get("why") or _("the new version did not start")), patient=True)
             return
@@ -174,7 +264,8 @@ class Updating:
         source = f"{RELEASES}v{back}"
         await self.take({"version": back, "install": f"{source}/install.sh",
                          "sums": f"{source}/SHA256SUMS.txt", "from": source},
-                        back_to="", rolled_back=True, why=why)
+                        back_to="", rolled_back=True, why=why,
+                        failed=str(mark.get("to") or ""))
 
     async def _brain_answers(self) -> bool:
         deadline = time.monotonic() + SETTLE_S

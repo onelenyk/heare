@@ -44,8 +44,9 @@ def test_the_sum_is_read_for_its_file_only():
 class _Web:
     """httpx.AsyncClient in a box: what the brain and GitHub answer."""
 
-    def __init__(self, files, said):
+    def __init__(self, files, said, latest=None):
         self.files, self.said, self.posted = files, said, []
+        self.latest = latest if latest is not None else {"tag_name": "v0.9.4"}
 
     def __call__(self, *a, **k):
         return self
@@ -58,6 +59,8 @@ class _Web:
 
     async def get(self, url, **k):
         import httpx
+        if url == updating.LATEST:
+            return httpx.Response(200, json=self.latest, request=httpx.Request("GET", url))
         if url.endswith("/health"):
             return httpx.Response(200, request=httpx.Request("GET", url))
         if url.endswith("/api/update/mine"):
@@ -73,6 +76,10 @@ class _Web:
 class _Settings:
     base = "http://127.0.0.1:9790"
     secret = "t"
+
+
+class _Auto(_Settings):
+    auto_update = "true"
 
 
 def _box(monkeypatch, tmp_path, script=b"echo hi\n", sum_of=None):
@@ -146,3 +153,57 @@ def test_a_mac_is_left_to_its_app(monkeypatch, tmp_path):
     assert not Updating(_Settings(), tmp_path).here
     monkeypatch.delenv("HEARE_PARENT_PID")
     assert Updating(_Settings(), tmp_path).here
+
+
+def test_a_release_is_taken_only_above_the_one_running():
+    assert updating.newer("0.9.4", "0.9.3")
+    assert updating.newer("0.9.4", "")
+    assert not updating.newer("0.9.3", "0.9.3")
+    assert not updating.newer("0.9.2", "0.9.3")
+    assert not updating.newer("nightly", "0.9.3")
+
+
+def test_github_release_names_the_scripts_and_sums_of_that_tag():
+    assert updating.release_of({"tag_name": "v0.9.4"}, "0.9.3") == {
+        "version": "0.9.4", "install": f"{R}/install.sh",
+        "sums": f"{R}/SHA256SUMS.txt", "from": R}
+    assert updating.release_of({"tag_name": "v0.9.4", "draft": True}, "0.9.3") is None
+    assert updating.release_of({"tag_name": "v0.9.4", "prerelease": True}, "0.9.3") is None
+    assert updating.release_of({"tag_name": "v0.9.3"}, "0.9.3") is None
+    assert updating.release_of({"tag_name": "nightly"}, "0.9.3") is None
+    assert updating.release_of({}, "0.9.3") is None
+
+
+async def test_a_machine_following_releases_takes_a_new_one_by_itself(monkeypatch, tmp_path):
+    web, ran, up = _box(monkeypatch, tmp_path)
+    up.settings = _Auto()
+    up.looked = 0.0
+    await up.maybe_auto()
+    assert ran and "0.9.4" in ran[0]
+    assert json.loads(up.mark.read_text())["to"] == "0.9.4"
+
+
+async def test_a_machine_that_does_not_follow_releases_waits_for_the_owner(monkeypatch, tmp_path):
+    web, ran, up = _box(monkeypatch, tmp_path)
+    up.looked = 0.0
+    await up.maybe_auto()
+    assert ran == []
+
+
+async def test_a_release_that_rolled_back_is_not_taken_again(monkeypatch, tmp_path):
+    web, ran, up = _box(monkeypatch, tmp_path)
+    up.folder.mkdir(parents=True)
+    up.refused.write_text(json.dumps({"version": "0.9.4", "why": "the brain did not answer"}))
+    up.settings = _Auto()
+    up.looked = 0.0
+    await up.maybe_auto()
+    assert ran == []
+
+
+async def test_a_rollback_names_the_version_that_is_not_taken_again(monkeypatch, tmp_path):
+    web, ran, up = _box(monkeypatch, tmp_path)
+    up.folder.mkdir(parents=True)
+    up.mark.write_text(json.dumps({"rolled_back": True, "to": "0.9.2", "failed": "0.9.3",
+                                   "why": "the brain did not answer"}))
+    await up.settle()
+    assert json.loads(up.refused.read_text())["version"] == "0.9.3"
