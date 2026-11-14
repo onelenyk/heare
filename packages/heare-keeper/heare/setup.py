@@ -96,12 +96,32 @@ def _keep_token(settings: Settings, name: str, token: str) -> None:
     path.chmod(0o600)
 
 
+def _remember_current(settings: Settings) -> None:
+    """Keep the key of the brain this machine is on before moving away.
+
+    A body paired before the environments existed has its key only in
+    ``machine_token``. Without this the first switch would overwrite it,
+    and the way back would need a fresh code from that brain.
+    """
+    known = environments(settings)
+    current = _active_environment(settings, known)
+    if not current or _token_of(settings, current).is_file():
+        return
+    try:
+        token = Path(settings.machine_token_file).read_text(encoding="utf-8").strip()
+    except OSError:
+        return
+    if token:
+        _keep_token(settings, current, token)
+
+
 def _take(name: str) -> tuple[int, dict]:
     """Make an environment this machine's brain: its token becomes the key."""
     settings = Settings()
     known = environments(settings)
     if name not in known:
         return 400, {"errors": [_("unknown environment")]}
+    _remember_current(settings)
     token = _token_of(settings, name)
     if not token.is_file():
         return 409, {"errors": [_("this machine is not connected to {name} yet — pair it with the brain's code").format(name=name)],
@@ -121,6 +141,7 @@ def _join(name: str, code: str) -> tuple[int, dict]:
     known = environments(settings)
     if name not in known:
         return 400, {"errors": [_("unknown environment")]}
+    _remember_current(settings)
     if len(code) != 8:
         return 400, {"errors": [_("the code must be 8 characters")]}
     name_file = Path(settings.machine_name_file)

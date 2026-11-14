@@ -393,3 +393,16 @@ def test_the_form_lists_the_environments(form):
         view = json.loads(answer.read().decode())
     assert [item["name"] for item in view["items"]] == ["prod", "dev"]
     assert view["active"] == ""
+
+
+def test_leaving_a_brain_keeps_its_key_for_the_way_back(tmp_path, monkeypatch):
+    settings = _env_settings(tmp_path)
+    (tmp_path / "machine_token").write_text("prod-key", encoding="utf-8")
+    settings.set("url", "https://brain.onelenyk.dev")
+    monkeypatch.setattr(setup, "Settings", lambda: settings)
+    monkeypatch.setattr(setup, "pair",
+                        lambda url, code, kind, name: {"token": "dev-key", "pid": "machine@here"})
+    status, _ = setup._join("dev", "ABCD1234")
+    assert status == 200
+    assert (tmp_path / "tokens" / "prod").read_text(encoding="utf-8") == "prod-key"
+    assert (tmp_path / "tokens" / "dev").read_text(encoding="utf-8") == "dev-key"
