@@ -2,10 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
     tags: ['v*']
   pull_request:
-    branches: [main]
+    branches: [main, develop]
   # Builds the Mac app on both kinds of Mac without releasing anything: a dry
   # run of what a tag will do.
   workflow_dispatch:
