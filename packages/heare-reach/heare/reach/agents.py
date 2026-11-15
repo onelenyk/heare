@@ -216,6 +216,35 @@ def _opencode_config(patch: dict | None = None, mode: str = MODE) -> dict:
     return config
 
 
+# Where the agent's own home is, under the machine's: a bug in 0.9.26 put it
+# one level up, and the folders are adopted rather than lost.
+_AGENT_FOLDERS = ("config", "data", "home", "state", "cache")
+
+
+def _adopt_home(machine: Path) -> None:
+    """Move a home that landed beside the agent's folder into it.
+
+    In 0.9.26 the environment pointed one level up: the agent's config,
+    sign-in, sessions and cache were written into the machine's own folder.
+    Sessions and a sign-in are not worth losing to a path fix, so the folders
+    are moved into the agent's home on the first run after the fix.
+    """
+    target = machine / "opencode"
+    for name in _AGENT_FOLDERS:
+        old = machine / name
+        if not old.is_dir() or (target / name).exists():
+            continue
+        # Only ours: the config, data, state and cache of opencode, and the
+        # home the git identity was written into.
+        if not ((old / "opencode").is_dir() or (old / ".gitconfig").exists()):
+            continue
+        try:
+            target.mkdir(parents=True, exist_ok=True)
+            old.rename(target / name)
+        except OSError:
+            logger.warning("could not move %s into the agent's home", old)
+
+
 def _opencode_env(home: Path, patch: dict | None = None,
                   mode: str = MODE, base: dict[str, str] | None = None) -> dict[str, str]:
     """opencode with a configuration of the assistant's own, in which a
@@ -250,7 +279,8 @@ def _opencode_env(home: Path, patch: dict | None = None,
         path.write_text(wanted, encoding="utf-8")
     env = dict(base) if base is not None else runner.env(
         "opencode", "login", "", "", "")
-    env = runner.agent_env(home, env)
+    _adopt_home(home)
+    env = runner.agent_env(config, env)
     env["OPENCODE_CONFIG_DIR"] = str(config)
     parent = os.environ.get("OPENCODE_CONFIG")
     if parent and Path(parent).resolve() != path.resolve():

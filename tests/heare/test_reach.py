@@ -346,6 +346,33 @@ async def test_an_env_overlay_keeps_the_opencode_permission_config(
     assert config["provider"]["deepseek"]["options"]["baseURL"] == "https://g"
 
 
+def test_the_agents_home_is_a_folder_of_its_own(tmp_path):
+    machine = tmp_path / "machine"
+
+    env = agents._opencode_env(machine, mode="careful")
+
+    home = machine / "opencode"
+    assert Path(env["HOME"]) == home / "home"
+    assert Path(env["XDG_CONFIG_HOME"]) == home / "config"
+    assert Path(env["XDG_DATA_HOME"]) == home / "data"
+    assert Path(env["OPENCODE_CONFIG"]) == home / "opencode.json"
+
+
+def test_a_home_that_landed_one_level_up_is_adopted(tmp_path):
+    machine = tmp_path / "machine"
+    (machine / "data" / "opencode").mkdir(parents=True)
+    (machine / "data" / "opencode" / "auth.json").write_text("{}", encoding="utf-8")
+    (machine / "home").mkdir(parents=True)
+    (machine / "home" / ".gitconfig").write_text("# his\n", encoding="utf-8")
+
+    env = agents._opencode_env(machine, mode="careful")
+
+    assert (machine / "opencode" / "data" / "opencode" / "auth.json").exists()
+    assert (machine / "opencode" / "home" / ".gitconfig").exists()
+    assert not (machine / "data").exists()
+    assert Path(env["XDG_DATA_HOME"]) == machine / "opencode" / "data"
+
+
 def test_installed_is_built_from_the_core_table(monkeypatch):
     monkeypatch.setattr(agents.runner, "detect", lambda: [
         {"type": "opencode", "binary": "opencode", "path": "/x/opencode"},
