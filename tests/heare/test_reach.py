@@ -17,6 +17,9 @@ from heare.reach.agents import Agent, Known, installed
 from tests.heare.fakes import open_room
 
 FAKE = [sys.executable, str(Path(__file__).with_name("fake_opencode.py"))]
+# Every task here starts a real server in a child process. A loaded runner
+# makes that slow; the wait must be about correctness, not about speed.
+WAIT_S = 60.0
 KNOWN = Known("fake", sys.executable, tuple(FAKE), "нічого не робить")
 
 
@@ -36,7 +39,7 @@ async def test_a_task_goes_to_the_agent_and_its_answer_comes_back(tmp_path):
     room, agent = await _room(tmp_path)
     room.model.will_say("Готово.")
     task = room.core.delegate("зроби щось")
-    await room.until(lambda: task.status == "done", timeout=15)
+    await room.until(lambda: task.status == "done", timeout=WAIT_S)
     assert task.result == "Зроблено."
     assert task.executor == "fake"
     await room.settled()
@@ -47,10 +50,10 @@ async def test_a_task_goes_to_the_agent_and_its_answer_comes_back(tmp_path):
 async def test_a_change_is_asked_about_and_a_yes_lets_it_through(tmp_path):
     room, agent = await _room(tmp_path)
     task = room.core.delegate("WRITE the note")
-    await room.until(lambda: room.core.state.permission is not None, timeout=15)
+    await room.until(lambda: room.core.state.permission is not None, timeout=WAIT_S)
     assert room.core.state.permission.what == "змінити файл note.txt"
     room.says("так")
-    await room.until(lambda: task.status == "done", timeout=15)
+    await room.until(lambda: task.status == "done", timeout=WAIT_S)
     assert task.result == "Записано."
     await _done(room, agent)
 
@@ -58,9 +61,9 @@ async def test_a_change_is_asked_about_and_a_yes_lets_it_through(tmp_path):
 async def test_a_no_reaches_the_agent_as_a_refusal(tmp_path):
     room, agent = await _room(tmp_path)
     task = room.core.delegate("WRITE the note")
-    await room.until(lambda: room.core.state.permission is not None, timeout=15)
+    await room.until(lambda: room.core.state.permission is not None, timeout=WAIT_S)
     room.says("ні")
-    await room.until(lambda: task.status == "done", timeout=15)
+    await room.until(lambda: task.status == "done", timeout=WAIT_S)
     # Said by the code, whatever the agent did or did not say.
     assert task.result.startswith("NOT done: the person just said «no» to: змінити файл note.txt")
     await _done(room, agent)
@@ -69,7 +72,7 @@ async def test_a_no_reaches_the_agent_as_a_refusal(tmp_path):
 async def test_looking_is_not_asked_about(tmp_path):
     room, agent = await _room(tmp_path)
     task = room.core.delegate("READ the note")
-    await room.until(lambda: task.status == "done", timeout=15)
+    await room.until(lambda: task.status == "done", timeout=WAIT_S)
     assert task.result == "Записано."  # allowed without a question
     assert not any(e.kind == "permission" for e in room.core.state.journal)
     await _done(room, agent)
@@ -78,24 +81,24 @@ async def test_looking_is_not_asked_about(tmp_path):
 async def test_stop_reaches_the_agent(tmp_path):
     room, agent = await _room(tmp_path)
     task = room.core.delegate("HANG forever")
-    await room.until(lambda: task.step and "bash" in task.step, timeout=15)
+    await room.until(lambda: task.step and "bash" in task.step, timeout=WAIT_S)
     room.says("Дока, стоп")
-    await room.until(lambda: task.status == "stopped", timeout=20)
+    await room.until(lambda: task.status == "stopped", timeout=WAIT_S)
     await room.settled()
     assert room.page.said[-1] == "Зупинив."
     # The same server still answers: stopping one task is not killing it.
     room.model.will_say("Є.")
     again = room.core.delegate("ще одне")
-    await room.until(lambda: again.status == "done", timeout=15)
+    await room.until(lambda: again.status == "done", timeout=WAIT_S)
     await _done(room, agent)
 
 
 async def test_two_tasks_run_side_by_side_on_one_agent(tmp_path):
     room, agent = await _room(tmp_path)
     slow = room.core.delegate("HANG forever")
-    await room.until(lambda: slow.step and "bash" in slow.step, timeout=15)
+    await room.until(lambda: slow.step and "bash" in slow.step, timeout=WAIT_S)
     quick = room.core.delegate("щось швидке")
-    await room.until(lambda: quick.status == "done", timeout=15)
+    await room.until(lambda: quick.status == "done", timeout=WAIT_S)
     assert slow.status == "running"
     await _done(room, agent)
 
@@ -595,7 +598,7 @@ async def test_stop_cancels_a_running_command(tmp_path, monkeypatch):
         def step(self, text: str) -> None:
             self.stopped = True
 
-    result = await asyncio.wait_for(agent.run("DEAF forever", Desk()), 10)
+    result = await asyncio.wait_for(agent.run("DEAF forever", Desk()), WAIT_S)
 
     assert result == "Stopped."
     assert any(str(message.get("path")).endswith("/abort") for message in sent)
@@ -606,7 +609,7 @@ async def test_stop_cancels_a_running_command(tmp_path, monkeypatch):
 async def test_a_malformed_frame_does_not_hang_the_turn(tmp_path):
     agent = Agent(KNOWN, cwd=tmp_path, home=tmp_path, command=FAKE, env=None)
 
-    result = await asyncio.wait_for(agent.run("MALFORMED now", _Desk()), 10)
+    result = await asyncio.wait_for(agent.run("MALFORMED now", _Desk()), WAIT_S)
 
     assert result == "Зроблено."
     await agent.close()

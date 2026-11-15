@@ -18,7 +18,8 @@ async def _bridge(socket: Path):
     async def call(message: dict) -> dict:
         proc.stdin.write((json.dumps(message) + "\n").encode())
         await proc.stdin.drain()
-        return json.loads(await asyncio.wait_for(proc.stdout.readline(), 5))
+        # A loaded runner is slow to start a child; the answer is what matters.
+        return json.loads(await asyncio.wait_for(proc.stdout.readline(), 60))
 
     return proc, call
 

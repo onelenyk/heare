@@ -38,7 +38,11 @@ jobs:
   test:
     name: Test (macOS)
     runs-on: macos-latest
-    timeout-minutes: 15
+    # The hands' tests start real opencode-shaped servers, so a loaded runner
+    # takes minutes rather than seconds. On 15 November a run needed 13m26s
+    # and was killed by the old 15-minute ceiling on its retry: the ceiling is
+    # for a hang, not for a slow runner.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 

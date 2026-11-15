@@ -326,7 +326,7 @@ def test_the_check_starts_the_agent_and_asks_if_it_is_up(tmp_path):
                           "login", "", "")
     agent = [check for check in state["checks"] if check["name"] == "agent"]
     assert len(agent) == 1
-    assert agent[0]["ok"] is True
+    assert agent[0]["ok"] is True, agent[0]["detail"]
     assert "fake answers" in agent[0]["detail"]
 
 
@@ -335,5 +335,5 @@ def test_the_check_says_so_when_the_agent_will_not_start(tmp_path):
 
     state = runner.health("opencode", str(shim), "login", "", "")
     agent = [check for check in state["checks"] if check["name"] == "agent"]
-    assert agent[0]["ok"] is False
+    assert agent[0]["ok"] is False, agent[0]["detail"]
     assert "exited" in agent[0]["detail"]
