@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-15 20:11+0200\n"
+"POT-Creation-Date: 2026-11-15 21:14+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -2242,6 +2242,12 @@ msgstr "Бінарник"
 
 msgid "empty — find it yourself"
 msgstr "порожньо — шукати самому"
+
+msgid "Folder"
+msgstr "Тека"
+
+msgid "empty — ~/heare-work; a real project folder works too"
+msgstr "порожньо — ~/heare-work; можна й теку справжнього проєкту"
 
 msgid "Found"
 msgstr "Знайдено"

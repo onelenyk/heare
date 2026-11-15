@@ -53,6 +53,7 @@ _SETTINGS = {
     "auth_env": "executor_auth_env",
     "base_url": "executor_base_url",
     "session": "executor_session",
+    "cwd": "executor_cwd",
 }
 
 
@@ -141,6 +142,9 @@ def _settings_ui(settings: Settings, sessions: list[dict] | None = None) -> list
          "label": N_("Type"), "value": kind, **({"options": runners} if len(runners) > 1 else {})},
         {"name": "binary", "kind": "text", "label": N_("Binary"), "value": binary,
          "hint": N_("empty — find it yourself")},
+        {"name": "cwd", "kind": "text", "label": N_("Folder"),
+         "value": str(settings.executor_cwd or ""),
+         "hint": N_("empty — ~/heare-work; a real project folder works too")},
         {"name": "found", "kind": "label", "label": N_("Found"),
          "value": resolved or N_("not found")},
         {"name": "home", "kind": "label", "label": N_("Home"),
@@ -213,6 +217,8 @@ def _setting(name: str, value: object) -> tuple[str, str] | None:
         return None
     if name == "auth_env" and value and value not in keys.NAMES:
         return None
+    if name == "cwd" and value and not Path(value).expanduser().is_dir():
+        return None  # a folder that is not there is not a folder to work in
     return setting, value
 
 
@@ -302,7 +308,7 @@ def _agent(settings: Settings, tap, mcp: dict | None = None) -> Agent | None:
         return None
     return Agent(
         known,
-        cwd=settings.executor_cwd or None,
+        cwd=Path(str(settings.executor_cwd)).expanduser() if settings.executor_cwd else None,
         command=command,
         env=env,
         model=model or None,

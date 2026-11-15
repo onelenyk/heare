@@ -170,6 +170,24 @@ def test_the_card_offers_the_sessions_to_continue(tmp_path, monkeypatch):
     assert ui["session"]["options"][1]["label"].startswith("Change b to B · ")
 
 
+def test_the_work_folder_is_a_card_setting(tmp_path):
+    assert hands._setting("cwd", str(tmp_path)) == ("executor_cwd", str(tmp_path))
+    assert hands._setting("cwd", "") == ("executor_cwd", "")
+    # A folder that is not there is not a folder to work in.
+    assert hands._setting("cwd", str(tmp_path / "gone")) is None
+
+
+def test_the_card_shows_the_work_folder(tmp_path, monkeypatch):
+    monkeypatch.setattr(hands.runner, "models", lambda *a, **k: [])
+    monkeypatch.setattr(hands.runner, "login", lambda *a, **k: {
+        "ok": True, "summary": "—", "detail": ""})
+
+    ui = _named(hands._settings_ui(_settings(tmp_path)))
+
+    assert ui["cwd"]["value"] == str(tmp_path / "work")
+    assert ui["cwd"]["kind"] == "text"
+
+
 def test_a_picked_session_is_a_setting_the_card_can_write():
     assert hands._setting("session", "ses_1") == ("executor_session", "ses_1")
 

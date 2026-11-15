@@ -55,6 +55,29 @@ def test_a_huge_patch_is_cut_and_says_nothing_more():
     assert len(card["html"]) < changes.PATCH_CHARS + 500
 
 
+def test_caches_and_bytecode_are_not_work():
+    files = [
+        {"file": "__pycache__/calc.cpython-314.pyc", "additions": 0,
+         "deletions": 0, "patch": ""},
+        {"file": "node_modules/x/y.js", "additions": 5, "deletions": 0,
+         "patch": "+x"},
+        {"file": ".venv/lib/z.py", "additions": 2, "deletions": 0, "patch": "+y"},
+        {"file": "calc.py", "additions": 1, "deletions": 1, "patch": "-a\n+b\n"},
+    ]
+
+    assert [found["file"] for found in changes.relevant(files)] == ["calc.py"]
+    assert changes.said(files) == "Змінив calc.py: +1 −1."
+    assert "pycache" not in changes.card(files)["html"]
+
+
+def test_work_that_only_touched_caches_has_nothing_to_say():
+    files = [{"file": "__pycache__/a.pyc", "additions": 0, "deletions": 0}]
+
+    assert changes.relevant(files) == []
+    assert changes.said(files) == ""
+    assert changes.title(files) == "Зміни"
+
+
 def test_past_the_sixth_file_the_card_counts_the_rest():
     files = [_file(f"f{i}.py") for i in range(changes.FILES + 2)]
 

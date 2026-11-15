@@ -274,7 +274,7 @@ class Agent:
         self.mode = mode if mode in MODES else MODE
         self.about = known.about
         self._known = known
-        self._cwd = cwd or Path.home() / "heare-work"
+        self._cwd = Path(cwd).expanduser() if cwd else Path.home() / "heare-work"
         self._home = home or Path.home() / ".heare"
         self._command = command or list(known.command)
         self._env = env
@@ -546,9 +546,10 @@ class Agent:
             refused = self._refused.pop(session.id, [])
         if session.status == "cancelled" or getattr(desk, "stopped", False):
             return "Stopped."
-        # Some models leak their thinking into the answer; what follows
-        # the last closing tag is the answer.
-        said = session.text.rpartition("</think>")[2].strip()
+        # The last message is the answer; the task's own chatter is not.
+        # Some models leak their thinking into it; what follows the last
+        # closing tag is what is said.
+        said = (session.answer or session.text).rpartition("</think>")[2].strip()
         if refused:
             # Stated by the code, not left to the agent: an agent told no
             # often says nothing, and silence was being retold as success.
@@ -591,7 +592,8 @@ def connect(settings: Any) -> list[Agent]:
     """The agent the settings name (``executor``; «all» for every
     installed one), working in its own folder (``executor_cwd``)."""
     only = str(getattr(settings, "executor", "") or "").strip().lower()
-    cwd = Path(getattr(settings, "executor_cwd", "") or Path.home() / "heare-work")
+    cwd = Path(getattr(settings, "executor_cwd", "")
+               or Path.home() / "heare-work").expanduser()
     cwd.mkdir(parents=True, exist_ok=True)
     found = [k for k in installed() if only in ("", "all") or k.name == only]
     return [Agent(k, cwd=cwd) for k in found]

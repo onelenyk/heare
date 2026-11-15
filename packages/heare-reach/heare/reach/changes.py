@@ -9,6 +9,7 @@ diff, never from the server's ``summary`` — that one lags behind.
 from __future__ import annotations
 
 import html as htmllib
+import re
 from pathlib import Path
 
 from heare.core.i18n import _
@@ -19,9 +20,30 @@ FILES = 6
 # Of one patch: a change that fits is shown whole, a huge one is cut.
 PATCH_CHARS = 1800
 
+# What a person does not want to see as «work»: caches, dependencies, and
+# files that changed in name only (built bytecode, a lock's mtime).
+_NOISE = re.compile(
+    r"(^|/)(__pycache__|node_modules|\.venv|venv|\.git|\.mypy_cache|"
+    r"\.pytest_cache|\.ruff_cache|\.idea|\.DS_Store)(/|$)"
+    r"|\.(pyc|pyo|so|dylib)$|\.DS_Store$")
+
+
+def relevant(files: list[dict]) -> list[dict]:
+    """The changes worth showing: real edits, not caches and bytecode."""
+    kept = []
+    for found in files:
+        path = str(found.get("file") or "")
+        if _NOISE.search(path):
+            continue
+        if not (int(found.get("additions") or 0) + int(found.get("deletions") or 0)):
+            continue
+        kept.append(found)
+    return kept
+
 
 def totals(files: list[dict]) -> tuple[int, int]:
     """The added and removed lines over every changed file."""
+    files = relevant(files)
     added = sum(int(found.get("additions") or 0) for found in files)
     removed = sum(int(found.get("deletions") or 0) for found in files)
     return added, removed
@@ -29,6 +51,9 @@ def totals(files: list[dict]) -> tuple[int, int]:
 
 def said(files: list[dict]) -> str:
     """One sentence, fit to be heard: what changed and by how much."""
+    files = relevant(files)
+    if not files:
+        return ""
     added, removed = totals(files)
     if len(files) == 1:
         name = Path(str(files[0].get("file") or "")).name
@@ -43,6 +68,9 @@ def said(files: list[dict]) -> str:
 
 def title(files: list[dict]) -> str:
     """The card's own name: the file when there is one, «Зміни» when more."""
+    files = relevant(files)
+    if not files:
+        return _("Changes")
     if len(files) == 1:
         return Path(str(files[0].get("file") or "")).name
     return _("Changes")
@@ -55,6 +83,7 @@ def card(files: list[dict]) -> dict:
     contain anything the agent touched, and the page must not read it as
     markup.
     """
+    files = relevant(files)
     rows: list[str] = []
     patches: list[str] = []
     for found in files[:FILES]:

@@ -128,6 +128,10 @@ class _Session:
     def __init__(self) -> None:
         self.asked: list[str] = []
 
+    @property
+    def answer(self) -> str:
+        return self.text
+
     async def prompt(self, text: str, agent: str = "") -> str:
         self.asked.append(agent)
         return self.text

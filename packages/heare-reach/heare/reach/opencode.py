@@ -132,6 +132,10 @@ class Session:
     _started: float = 0.0
     _parts: dict[str, str] = field(default_factory=dict)
     _order: list[str] = field(default_factory=list)
+    # Parts by the message they belong to: a task says a lot on the way,
+    # and only the last message is the answer.
+    _messages: dict[str, dict[str, str]] = field(default_factory=dict)
+    _messages_order: list[str] = field(default_factory=list)
     _roles: dict[str, str] = field(default_factory=dict)
     _called: set[str] = field(default_factory=set)
     _finished: set[str] = field(default_factory=set)
@@ -146,6 +150,8 @@ class Session:
         self.text, self.events, self.stop_reason = "", [], None
         self._parts.clear()
         self._order.clear()
+        self._messages.clear()
+        self._messages_order.clear()
         self._called.clear()
         self._finished.clear()
         self.first_text = self.first_sentence = None
@@ -167,6 +173,19 @@ class Session:
         finally:
             self.total = time.monotonic() - self._started
         return self.text
+
+    @property
+    def answer(self) -> str:
+        """What the agent said last: the words of the last message it wrote.
+
+        A coding task talks on the way («I'll look at the files», «fixing
+        calc.py»); what is worth hearing is the end."""
+        for message in reversed(self._messages_order):
+            parts = self._messages.get(message) or {}
+            said = "".join(parts.values()).strip()
+            if said:
+                return said
+        return ""
 
     async def cancel(self) -> None:
         """Tell the server to stop the turn. The server says when it is over;
@@ -247,7 +266,8 @@ class Session:
         if kind == "text":
             if not self._mine(str(part.get("messageID") or "")):
                 return
-            self._say(str(part.get("id") or ""), str(part.get("text") or ""), t)
+            self._say(str(part.get("id") or ""), str(part.get("text") or ""), t,
+                      str(part.get("messageID") or ""))
         elif kind == "reasoning":
             said = str(part.get("text") or "")
             if said and said != self._parts.get(str(part.get("id") or "")):
@@ -266,9 +286,10 @@ class Session:
         self._say(str(update.get("partID") or ""),
                   self._parts.get(str(update.get("partID") or ""), "")
                   + str(update.get("delta") or ""),
-                  time.monotonic() - self._started)
+                  time.monotonic() - self._started,
+                  str(update.get("messageID") or ""))
 
-    def _say(self, part_id: str, text: str, t: float) -> None:
+    def _say(self, part_id: str, text: str, t: float, message: str = "") -> None:
         before = self._parts.get(part_id, "")
         if text == before:
             return
@@ -276,6 +297,10 @@ class Session:
         self._parts[part_id] = text
         if part_id not in self._order:
             self._order.append(part_id)
+        if message:
+            if message not in self._messages_order:
+                self._messages_order.append(message)
+            self._messages.setdefault(message, {})[part_id] = text
         self.text = "".join(self._parts[key] for key in self._order)
         if self.first_text is None:
             self.first_text = t
