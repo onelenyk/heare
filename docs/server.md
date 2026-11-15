@@ -13,7 +13,7 @@
 ## Linux
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/onelenyk/heare/v0.9.22/install.sh | sh -s -- --role server --from https://github.com/onelenyk/heare/releases/download/v0.9.22 --version 0.9.22
+curl -sSL https://raw.githubusercontent.com/onelenyk/heare/v0.9.23/install.sh | sh -s -- --role server --from https://github.com/onelenyk/heare/releases/download/v0.9.23 --version 0.9.23
 ```
 
 У v0.3.0 канонічна назва ролі — `brain`; `server` лишається аліасом.
