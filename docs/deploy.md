@@ -178,6 +178,11 @@ docker run -p 127.0.0.1:8095:9790 -v heare:/home/heare/.heare heare-server
 | том | `<app-uuid>-heare-prod-data` | `<app-uuid>-heare-dev-data` |
 | healthcheck | `/health`, 25 с старт, 5 спроб | те саме |
 | двері | `brain.onelenyk.dev` | `dev-brain.onelenyk.dev` |
+| env | `HEARE_WINDOWS_ARE_THE_OWNER=1` | те саме (+ `HEARE_MACHINE_NAME=dev`) |
+
+`HEARE_WINDOWS_ARE_THE_OWNER=1` тут не прикраса: сторінка за Access не має
+loopback-вікон, і без нього кожне спароване вікно лишається пультом без
+списку машин (`403` на `/api/machines`).
 
 API Coolify назовні — `coolify.onelenyk.dev` (тільки service token; люди
 заходять у панель по LAN: `http://<mini-pc>:8000`).
