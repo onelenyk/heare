@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-15 15:35+0200\n"
+"POT-Creation-Date: 2026-11-15 20:11+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -395,6 +395,12 @@ msgstr "Код не підійшов. Візьми новий на пульті.
 #, python-brace-format
 msgid "The brain does not answer at {url}"
 msgstr "Мозок не відповідає на {url}"
+
+msgid "put back the last change"
+msgstr "повернути останню зміну"
+
+msgid "what was done lately"
+msgstr "що робилося останнім часом"
 
 #, python-brace-format
 msgid "the brain is at {url}"
@@ -2142,6 +2148,23 @@ msgstr "На {where} немає рук-агентів."
 msgid "handed over from {name}"
 msgstr "передано від {name}"
 
+msgid "No hands are connected now."
+msgstr "Зараз рук не під'єднано."
+
+#, python-brace-format
+msgid "No such hands: {hand}."
+msgstr "Немає таких рук: {hand}."
+
+#, python-brace-format
+msgid "Which hands? {hands}."
+msgstr "Які руки? {hands}."
+
+msgid "Nothing to plan: the task was empty."
+msgstr "Нічого планувати: завдання порожнє."
+
+msgid "Asked the hands for a plan."
+msgstr "Попросив руки скласти план."
+
 msgid "What exactly should I recall?"
 msgstr "Що саме згадати?"
 
@@ -2166,6 +2189,18 @@ msgstr "Скасував."
 msgid "I did not find that reminder."
 msgstr "Не знайшов такого нагадування."
 
+msgid "Asked the hands what they did lately."
+msgstr "Попросив руки розповісти, що робилося останнім часом."
+
+msgid "Nothing to do: the task was empty."
+msgstr "Нічого робити: завдання порожнє."
+
+msgid "Which piece of work? Ask what the hands did lately first."
+msgstr "Яку саме справу? Спершу спитай руки, що робилося останнім часом."
+
+msgid "Asked the hands to go on with it."
+msgstr "Попросив руки продовжити її."
+
 msgid "No plans are open."
 msgstr "Немає відкритих справ."
 
@@ -2180,6 +2215,9 @@ msgstr "Зупинив."
 
 msgid "Nothing was running."
 msgstr "Нічого не було запущено."
+
+msgid "Asked the hands to put it back."
+msgstr "Попросив руки повернути як було."
 
 msgid "Print"
 msgstr "Друкувати"
@@ -2211,6 +2249,9 @@ msgstr "Знайдено"
 msgid "not found"
 msgstr "не знайдено"
 
+msgid "Home"
+msgstr "Дім"
+
 msgid "— as in the CLI —"
 msgstr "— як у CLI —"
 
@@ -2225,6 +2266,12 @@ msgstr "Логін CLI"
 
 msgid "Own token"
 msgstr "Свій токен"
+
+msgid "the last one"
+msgstr "остання"
+
+msgid "Continue"
+msgstr "Продовжити"
 
 msgid "pick a key"
 msgstr "обери ключ"
@@ -2262,10 +2309,6 @@ msgid "no agent {kind}: {binary} not found — set the path in the settings"
 msgstr "агента {kind} немає: {binary} не знайдено — задай шлях у налаштуваннях"
 
 #, python-brace-format
-msgid "for {kind}, {command} is not found"
-msgstr "для {kind} не знайдено {command}"
-
-#, python-brace-format
 msgid "agent {kind} is not in the table"
 msgstr "агента {kind} немає в таблиці"
 
@@ -2277,6 +2320,10 @@ msgstr "Звичайно — сам зважує, чи питати"
 
 msgid "Auto — asks nothing"
 msgstr "Авто — не питає нічого"
+
+#, python-brace-format
+msgid "I do not know that order: {verb}."
+msgstr "Не знаю такої команди: {verb}."
 
 msgid "no agent found — see ⚙"
 msgstr "агента не знайдено — глянь ⚙"
@@ -2296,6 +2343,12 @@ msgstr "не готові"
 msgid "Price"
 msgstr "Ціна"
 
+msgid "Plan"
+msgstr "План"
+
+msgid "Agent's sessions"
+msgstr "Сесії агента"
+
 msgid "Terminal"
 msgstr "Термінал"
 
@@ -2306,6 +2359,9 @@ msgstr "застосую налаштування, щойно звільнюсь
 msgid "taken {id}: {what}"
 msgstr "взято {id}: {what}"
 
+msgid "Could not branch the work."
+msgstr "Не вдалося відгалузити справу."
+
 #, python-brace-format
 msgid "done {id}: {status} {what}"
 msgstr "готово {id}: {status} {what}"
@@ -2313,6 +2369,14 @@ msgstr "готово {id}: {status} {what}"
 #, python-brace-format
 msgid "hands: {name}"
 msgstr "руки: {name}"
+
+#, python-brace-format
+msgid "no agent: {binary} not found"
+msgstr "немає агента: {binary} не знайдено"
+
+#, python-brace-format
+msgid "agent's home: {where}"
+msgstr "дім агента: {where}"
 
 #, python-brace-format
 msgid "no key {name}; known: {known}"
@@ -2331,6 +2395,9 @@ msgstr "{name} збережено на {host}. Руки візьмуть йог�
 
 msgid "save the agent's token on this machine"
 msgstr "зберегти токен агента на цій машині"
+
+msgid "sign the agent in to its own home"
+msgstr "увійти агенту в його власний дім"
 
 msgid "hands: new settings, starting again"
 msgstr "руки: нові налаштування, починаю знову"
@@ -2709,9 +2776,6 @@ msgstr "Забув {n}."
 msgid "Work"
 msgstr "Справа"
 
-msgid "something"
-msgstr "щось"
-
 msgid "change the file"
 msgstr "змінити файл"
 
@@ -2723,6 +2787,39 @@ msgstr "перемістити"
 
 msgid "run the command"
 msgstr "виконати команду"
+
+msgid "Nothing to undo."
+msgstr "Нічого відкочувати."
+
+msgid "Could not put it back."
+msgstr "Не вдалося повернути як було."
+
+msgid "Put it back the way it was."
+msgstr "Повернув як було."
+
+msgid "Nothing to bring back."
+msgstr "Нічого повертати."
+
+msgid "Could not bring it back."
+msgstr "Не вдалося повернути зміну."
+
+msgid "Brought the change back."
+msgstr "Повернув зміну."
+
+#, python-brace-format
+msgid "Changed {name}: +{added} −{removed}."
+msgstr "Змінив {name}: +{added} −{removed}."
+
+#, python-brace-format
+msgid "Changed: +{added} −{removed}."
+msgstr "Змінив: +{added} −{removed}."
+
+msgid "Changes"
+msgstr "Зміни"
+
+#, python-brace-format
+msgid "… and {count} more"
+msgstr "… і ще {count}"
 
 #, python-brace-format
 msgid "agent: {said}"
@@ -3117,4 +3214,16 @@ msgstr "я перестав чути {s} секунд тому — схоже, �
 
 #~ msgid "Last request"
 #~ msgstr "Останній запит"
+
+#~ msgid "for {kind}, {command} is not found"
+#~ msgstr "для {kind} не знайдено {command}"
+
+#~ msgid "something"
+#~ msgstr "щось"
+
+#~ msgid "Changed {count} files: +{added} −{removed}."
+#~ msgstr ""
+
+#~ msgid "{count} files"
+#~ msgstr ""
 

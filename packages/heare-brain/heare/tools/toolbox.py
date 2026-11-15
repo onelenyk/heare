@@ -17,6 +17,9 @@ from heare.tools import delegate as delegate_tool
 from heare.tools import bodies as body_tools
 from heare.tools import recall, reminders as reminder_tools
 from heare.tools import schemas
+from heare.tools import plan as plan_tool
+from heare.tools import sessions as sessions_tool
+from heare.tools import undo as undo_tool
 from heare.tools.ports import Bodies, Plans, Reminders
 from heare.tools.schemas import (
     _CANCEL_REMINDER,
@@ -27,7 +30,11 @@ from heare.tools.schemas import (
     _READ_BODY,
     _RECALL,
     _REMIND,
+    _CONTINUE,
+    _PLAN,
+    _SESSIONS,
     _STOP,
+    _UNDO,
 )
 
 
@@ -39,6 +46,10 @@ class Toolbox:
         state: State,
         delegate: Callable[[str, bool, str], Task],
         stop: Callable[[], int],
+        undo: Callable[[str], Task] | None = None,
+        plan: Callable[[str, str], Task] | None = None,
+        recent: Callable[[str], Task] | None = None,
+        continue_work: Callable[[str, str, str, bool], Task] | None = None,
         words: Any | Callable[[], Any],
         has_executors: Callable[[], bool],
         reminders: Reminders | None = None,
@@ -52,6 +63,10 @@ class Toolbox:
         self._state = state
         self._start = delegate
         self._stop = stop
+        self._undo = undo
+        self._plan = plan
+        self._recent = recent
+        self._continue = continue_work
         self._words = words
         self._has_executors = has_executors
         self._reminders = reminders
@@ -67,6 +82,14 @@ class Toolbox:
             verbs["recall"] = (_RECALL, self._run_recall)
         if self._has_executors():
             verbs["delegate"] = (schemas.delegate(self._hands()), self._run_delegate)
+            if self._undo is not None:
+                verbs["undo"] = (_UNDO, self._run_undo)
+            if self._plan is not None:
+                verbs["plan"] = (_PLAN, self._run_plan)
+            if self._recent is not None:
+                verbs["recent_work"] = (_SESSIONS, self._run_recent)
+            if self._continue is not None:
+                verbs["continue_work"] = (_CONTINUE, self._run_continue)
         if any(task.status == "running" for task in self._state.tasks.values()):
             verbs["stop_work"] = (_STOP, self._run_stop)
         if self._plans is not None:
@@ -87,7 +110,8 @@ class Toolbox:
         return verbs
 
     def acknowledging(self) -> set[str]:
-        return {"delegate", "stop_work", "remind", "cancel_reminder", "merge_plans"}
+        return {"delegate", "undo", "plan", "recent_work", "continue_work",
+                "stop_work", "remind", "cancel_reminder", "merge_plans"}
 
     def read_only(self, name: str) -> bool:
         return name in {"recall", "list_reminders", "read_body", "plans"}
@@ -110,6 +134,23 @@ class Toolbox:
         return await delegate_tool.run(
             self._start, self._state, words, arguments
         )
+
+    async def _run_undo(self, arguments: dict) -> str:
+        assert self._undo is not None
+        return await undo_tool.run(self._undo, self._hands(), arguments)
+
+    async def _run_plan(self, arguments: dict) -> str:
+        assert self._plan is not None
+        return await plan_tool.run(self._plan, self._hands(), arguments)
+
+    async def _run_recent(self, arguments: dict) -> str:
+        assert self._recent is not None
+        return await sessions_tool.recent(self._recent, self._hands(), arguments)
+
+    async def _run_continue(self, arguments: dict) -> str:
+        assert self._continue is not None
+        return await sessions_tool.continuing(
+            self._continue, self._hands(), arguments)
 
     async def _run_read_body(self, arguments: dict) -> str:
         bodies = self._bodies()

@@ -23,6 +23,11 @@ def _toolbox(
     has_executors: bool = True,
     stop=lambda: 0,
     delegate=None,
+    undo=None,
+    plan=None,
+    recent=None,
+    continue_work=None,
+    hands=lambda: [],
     reminders: Intents | None = None,
     plans=None,
     now=lambda: 100.0,
@@ -32,6 +37,11 @@ def _toolbox(
         state=state or State(),
         delegate=delegate or (lambda request, follows=False, hand="": Task(1, request, "")),
         stop=stop,
+        undo=undo,
+        plan=plan,
+        recent=recent,
+        continue_work=continue_work,
+        hands=hands,
         words=uk,
         has_executors=lambda: has_executors,
         reminders=reminders,
@@ -50,6 +60,123 @@ def test_delegate_is_offered_only_with_executors():
     assert "delegate" not in _toolbox(has_executors=False).verbs()
 
 
+def test_undo_is_offered_only_with_hands_to_ask():
+    told: list[str] = []
+    with_undo = _toolbox(undo=lambda hand: told.append(hand) or Task(1, "undo", ""))
+    assert "undo" in with_undo.verbs()
+    assert "undo" not in _toolbox(has_executors=False, undo=with_undo._undo).verbs()
+
+
+async def test_undo_asks_the_only_hands():
+    told: list[str] = []
+    box = _toolbox(
+        undo=lambda hand: told.append(hand) or Task(1, "undo", ""),
+        hands=lambda: [("opencode@mac", "opencode", "mac", "код")])
+
+    spoken = await box._run_undo({})
+
+    assert spoken == "Попросив руки повернути як було."
+    assert told == ["opencode@mac"]
+
+
+async def test_undo_with_several_hands_asks_which_one():
+    told: list[str] = []
+    box = _toolbox(
+        undo=lambda hand: told.append(hand) or Task(1, "undo", ""),
+        hands=lambda: [("a@mac", "a", "mac", "код"), ("b@pc", "b", "pc", "термінал")])
+
+    spoken = await box._run_undo({})
+
+    assert spoken == "Які руки? код (a@mac), термінал (b@pc)."
+    assert told == []
+
+
+async def test_undo_for_hands_that_are_not_here_says_so():
+    told: list[str] = []
+    box = _toolbox(
+        undo=lambda hand: told.append(hand) or Task(1, "undo", ""),
+        hands=lambda: [("a@mac", "a", "mac", "код")])
+
+    assert await box._run_undo({"hand": "b@pc"}) == "Немає таких рук: b@pc."
+    assert told == []
+
+
+def test_plan_is_offered_only_with_hands_to_ask():
+    box = _toolbox(plan=lambda request, hand: Task(1, request, ""))
+    assert "plan" in box.verbs()
+    assert "plan" not in _toolbox(has_executors=False, plan=box._plan).verbs()
+
+
+async def test_plan_asks_the_hands_with_the_task_as_said():
+    told: list[tuple[str, str]] = []
+    box = _toolbox(
+        plan=lambda request, hand: told.append((request, hand)) or Task(1, request, ""),
+        hands=lambda: [("opencode@mac", "opencode", "mac", "код")])
+
+    spoken = await box._run_plan({"task": "перейменувати теку"})
+
+    assert spoken == "Попросив руки скласти план."
+    assert told == [("перейменувати теку", "opencode@mac")]
+
+
+async def test_plan_without_a_task_is_refused():
+    told: list[str] = []
+    box = _toolbox(
+        plan=lambda request, hand: told.append(request) or Task(1, request, ""),
+        hands=lambda: [("a@mac", "a", "mac", "код")])
+
+    assert await box._run_plan({}) == "Нічого планувати: завдання порожнє."
+    assert told == []
+
+
+def test_the_session_tools_are_offered_only_with_hands():
+    box = _toolbox(
+        recent=lambda hand: Task(1, "recent", ""),
+        continue_work=lambda request, session, hand, fork: Task(1, request, ""),
+    )
+    assert {"recent_work", "continue_work"} <= set(box.verbs())
+    bare = _toolbox(has_executors=False, recent=box._recent,
+                    continue_work=box._continue)
+    assert "recent_work" not in bare.verbs()
+    assert "continue_work" not in bare.verbs()
+
+
+async def test_recent_work_asks_the_only_hands():
+    told: list[str] = []
+    box = _toolbox(
+        recent=lambda hand: told.append(hand) or Task(1, "recent", ""),
+        hands=lambda: [("a@mac", "a", "mac", "код")])
+
+    assert await box._run_recent({}) == "Попросив руки розповісти, що робилося останнім часом."
+    assert told == ["a@mac"]
+
+
+async def test_continuing_names_the_session_and_asks_for_a_fork():
+    told: list[tuple] = []
+    box = _toolbox(
+        continue_work=lambda request, session, hand, fork: (
+            told.append((request, session, hand, fork)) or Task(1, request, "")),
+        hands=lambda: [("a@mac", "a", "mac", "код")])
+
+    spoken = await box._run_continue(
+        {"task": "додай тести", "session": "ses_1", "fork": True})
+
+    assert spoken == "Попросив руки продовжити її."
+    assert told == [("додай тести", "ses_1", "a@mac", True)]
+
+
+async def test_continuing_without_a_session_asks_which_work():
+    told: list[str] = []
+    box = _toolbox(
+        continue_work=lambda request, session, hand, fork: (
+            told.append(session) or Task(1, request, "")),
+        hands=lambda: [("a@mac", "a", "mac", "код")])
+
+    assert await box._run_continue({"task": "додай тести"}) == (
+        "Яку саме справу? Спершу спитай руки, що робилося останнім часом.")
+    assert told == []
+
+
 def test_stop_work_is_offered_only_with_a_running_task():
     running = State()
     running.tasks[1] = Task(1, "відкрий файл", "worker")
@@ -62,7 +189,8 @@ def test_stop_work_is_offered_only_with_a_running_task():
 
 def test_acknowledging_names_the_verbs_that_only_acknowledge():
     assert _toolbox().acknowledging() == {
-        "delegate", "stop_work", "remind", "cancel_reminder", "merge_plans",
+        "delegate", "undo", "plan", "recent_work", "continue_work",
+        "stop_work", "remind", "cancel_reminder", "merge_plans",
     }
 
 

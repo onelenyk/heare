@@ -84,6 +84,131 @@ _DELEGATE = {
     },
 }
 
+_SESSIONS = {
+    "type": "function",
+    "function": {
+        "name": "recent_work",
+        "description": (
+            "What the hands have been doing lately: their own titles and "
+            "times, newest first, with the ids needed to go on with one. Use "
+            "it when the person asks what you did, what is on the hands, or "
+            "which piece of work to continue. The list arrives as its own "
+            "message."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "hand": {
+                    "type": "string",
+                    "description": (
+                        "A hand's id, only when more than one is connected. "
+                        "Leave it out when there is one."
+                    ),
+                },
+            },
+            "required": [],
+        },
+    },
+}
+
+_CONTINUE = {
+    "type": "function",
+    "function": {
+        "name": "continue_work",
+        "description": (
+            "Go on with a piece of work the hands already did — «продовж ту, де "
+            "був нотпад», «вернись до тестів». The session's id comes from "
+            "recent_work. With fork true the work goes on in a branch and the "
+            "original stays as it was — «а якби інакше»."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "task": {
+                    "type": "string",
+                    "description": "What to do there, as the person said it.",
+                },
+                "session": {
+                    "type": "string",
+                    "description": "The session's id, from recent_work.",
+                },
+                "fork": {
+                    "type": "boolean",
+                    "description": (
+                        "True to branch: the work goes on in a copy and the "
+                        "first one is left untouched."
+                    ),
+                },
+                "hand": {
+                    "type": "string",
+                    "description": (
+                        "A hand's id, only when more than one is connected."
+                    ),
+                },
+            },
+            "required": ["task", "session"],
+        },
+    },
+}
+
+_PLAN = {
+    "type": "function",
+    "function": {
+        "name": "plan",
+        "description": (
+            "Have the hands draw up a plan before anything is changed. Use it "
+            "when the person wants to see how it would be done first — "
+            "«спершу покажи план», «як ти це зробиш?», «давай сплануй». The "
+            "plan comes back as its own message; nothing on disk moves, and "
+            "the person's word decides whether the work starts."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "task": {
+                    "type": "string",
+                    "description": "What the plan is for, as the person said it.",
+                },
+                "hand": {
+                    "type": "string",
+                    "description": (
+                        "A hand's id, only when more than one is connected. "
+                        "Leave it out when there is one."
+                    ),
+                },
+            },
+            "required": ["task"],
+        },
+    },
+}
+
+_UNDO = {
+    "type": "function",
+    "function": {
+        "name": "undo",
+        "description": (
+            "Put back the files the last piece of work changed, as they were "
+            "before it. Use it whenever the person asks to undo, revert, or "
+            "put something back — «відкоти», «поверни як було». It undoes the "
+            "whole last piece of work, not one line of it. Never say it is "
+            "put back without calling this."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "hand": {
+                    "type": "string",
+                    "description": (
+                        "A hand's id, only when more than one is connected. "
+                        "Leave it out when there is one."
+                    ),
+                },
+            },
+            "required": [],
+        },
+    },
+}
+
 _PIN = {
     "type": "function",
     "function": {

@@ -148,6 +148,7 @@ class Worker:
         self.id, self.machine = name, ""
         self.result, self.asks = result, asks
         self.tasks: list[str] = []
+        self.verbs: list[str] = []
         self.follows: list[bool] = []
         self.allowed: list[bool] = []
         self.release = asyncio.Event()
@@ -155,6 +156,7 @@ class Worker:
 
     async def run(self, task: str, desk) -> str:
         self.tasks.append(task)
+        self.verbs.append(getattr(desk, "verb", ""))
         self.follows.append(desk.follows)
         try:
             for what, kind in self.asks:

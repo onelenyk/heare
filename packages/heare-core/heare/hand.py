@@ -46,6 +46,10 @@ class Job:
     request: str
     continues: bool = False
     asked: str = ""
+    # An order the hand knows by name (``undo``, ``redo``); empty for work.
+    verb: str = ""
+    # The hand's own session to go on with; empty to start clean.
+    session: str = ""
 
 
 class Desk:
@@ -61,7 +65,8 @@ class Desk:
                  ) -> None:
         self._wire, self._job = wire, job
         self._on_permit = on_permit
-        self.follows, self.asked = job.continues, job.asked
+        self.follows, self.asked, self.verb = job.continues, job.asked, job.verb
+        self.session = job.session
         self.stopped = False
         self._steps: set[asyncio.Task] = set()
 
@@ -128,7 +133,8 @@ async def claim(wire: part.Wire) -> Job | None:
     if not isinstance(task, dict) or "id" not in task:
         return None
     return Job(int(task["id"]), str(task.get("request") or ""),
-               bool(task.get("continues")), str(task.get("asked") or ""))
+               bool(task.get("continues")), str(task.get("asked") or ""),
+               str(task.get("verb") or ""), str(task.get("session") or ""))
 
 
 async def take(wire: part.Wire,

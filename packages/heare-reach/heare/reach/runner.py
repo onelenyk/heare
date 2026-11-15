@@ -1,13 +1,14 @@
 """What can run an agent, how it is found, and how it is set up.
 
-The assistant does not drive a model itself; it starts an agent CLI that
-speaks ACP. Which CLI that is belongs to one table (``KNOWN``), so the
-hands that spawn it and the page that configures it read the same answer.
+The assistant does not drive a model itself; it starts opencode's own
+server (`opencode serve`) and speaks to it over HTTP. Which CLI that is
+belongs to one table (``KNOWN``), so the hands that spawn it and the page
+that configures it read the same answer.
 
 A daemon started by launchd inherits a minimal ``PATH``. A bare
 ``opencode`` is therefore found only when the person happens to have it in
 one of the places launchd sees — so ``resolve`` looks in the usual install
-directories too, and hands spawns an absolute path.
+directories too, and hands spawn an absolute path.
 
 Nothing here returns a secret. Sign-in for opencode is the *names* of the
 providers in its auth store; a key is reported as present or absent, never
@@ -23,6 +24,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import time
 import urllib.error
@@ -32,20 +34,13 @@ from typing import TypedDict
 
 from heare import keys
 
-# How a known CLI is started and what it is called on the page. The agent
-# itself is an ACP server behind these commands; for Claude that server is
-# an adapter fetched through npx, and ``binary`` is the CLI sign-in is read
-# from rather than the process that is spawned.
+# How a known CLI is started and what it is called on the page. The server
+# is opencode's own: the port is chosen by the hands and appended here.
 KNOWN: dict[str, "Runner"] = {
     "opencode": {
         "binary": "opencode",
-        "command": ["opencode", "acp"],
+        "command": ["opencode", "serve"],
         "label": "OpenCode",
-    },
-    "claude": {
-        "binary": "claude",
-        "command": ["npx", "-y", "@agentclientprotocol/claude-agent-acp@0.81.2"],
-        "label": "Claude Code",
     },
 }
 
@@ -64,7 +59,6 @@ _EXTRA_DIRS = (
 
 # ``opencode models`` prints one ``provider/model`` per line.
 _MODEL_LINE = re.compile(r"^[\w.-]+/\S+$")
-_CLAUDE_ALIASES = ("fable", "opus", "sonnet", "haiku")
 
 # What a spawned agent may inherit: where commands are, its home, the
 # locale, and its own configuration folders. Nothing that carries a
@@ -73,14 +67,25 @@ _ENV_ALWAYS = ("PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "TE
 _ENV_DIRS = {
     "opencode": ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME",
                  "XDG_STATE_HOME"),
-    "claude": ("CLAUDE_CONFIG_DIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME",
-               "XDG_CACHE_HOME", "XDG_STATE_HOME"),
 }
+
+# The agent's own home, under the hands': its config, sign-in, sessions and
+# models live here, not in the person's own opencode. `~/.opencode` is read
+# by opencode whatever XDG says, so HOME itself has to move.
+AGENT_HOME = "opencode"
+# What the person's account gives a coder that must not be lost with the
+# home: git's identity and the keys ssh reads.
+_CARRIED = (".gitconfig", ".config/git/config")
+_CARRIED_KEYS = ".ssh"
 
 # Listing models spawns the CLI, so an answer is kept for a while. A person
 # who signs in to a new provider sees it after this window, not a restart.
 _MODELS_TTL_S = 300.0
 _MODELS_CACHE: dict[str, tuple[float, list["ModelGroup"]]] = {}
+
+# A server that does not answer in this long is not the agent's problem to
+# hide: the card says so.
+_CHECK_S = 20.0
 
 
 class Runner(TypedDict):
@@ -146,12 +151,75 @@ def detect() -> list[dict[str, str]]:
     return found
 
 
-def login(kind: str, binary: str | None = None) -> Login:
+def agent_home(root: Path | None = None) -> Path:
+    """Where our agent keeps its own opencode: not the person's."""
+    return (root or Path.home() / ".heare" / "machine") / AGENT_HOME
+
+
+def agent_env(home: Path, base: dict[str, str] | None = None) -> dict[str, str]:
+    """*base* pointed inside *home*: opencode reads and writes its config,
+    sign-in and models there, and nothing of the person's own opencode.
+
+    Two things are carried over into the new home, because a coder without
+    them cannot do the work: git's identity (an ``include``) and the ssh
+    keys (a link — the agent could already read them; this only lets ssh
+    find them).
+    """
+    inner = home / "home"
+    for path in (inner, home / "config", home / "data", home / "state",
+                 home / "cache"):
+        path.mkdir(parents=True, exist_ok=True)
+    person = Path(os.environ.get("HOME") or Path.home())
+    _carry_identity(inner, person)
+    _carry_keys(inner, person)
+    env = dict(base or {})
+    env.update({
+        "HOME": str(inner),
+        "XDG_CONFIG_HOME": str(home / "config"),
+        "XDG_DATA_HOME": str(home / "data"),
+        "XDG_STATE_HOME": str(home / "state"),
+        "XDG_CACHE_HOME": str(home / "cache"),
+    })
+    return env
+
+
+def _carry_identity(home: Path, person: Path) -> None:
+    """git's own config, included: the person's name, email and signing."""
+    lines = ["# heare: the agent's home; git's identity is the person's"]
+    for name in _CARRIED:
+        found = person / name
+        if found.is_file():
+            lines += ["[include]", f"\tpath = {found}"]
+    wanted = "\n".join(lines) + "\n"
+    path = home / ".gitconfig"
+    try:
+        if path.read_text(encoding="utf-8") == wanted:
+            return
+    except OSError:
+        pass
+    try:
+        path.write_text(wanted, encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _carry_keys(home: Path, person: Path) -> None:
+    """The person's keys, reachable as ``~/.ssh`` from the agent's home."""
+    keys = person / _CARRIED_KEYS
+    link = home / _CARRIED_KEYS
+    if not keys.is_dir() or link.exists():
+        return
+    try:
+        link.symlink_to(keys, target_is_directory=True)
+    except OSError:
+        pass
+
+
+def login(kind: str, binary: str | None = None,
+          home: Path | None = None) -> Login:
     """Whether *kind* is signed in, without reading a secret."""
     if kind == "opencode":
-        return _opencode_login()
-    if kind == "claude":
-        return _claude_login(binary)
+        return _opencode_login(home or agent_home())
     return {
         "ok": False,
         "summary": "Unknown runner",
@@ -159,32 +227,23 @@ def login(kind: str, binary: str | None = None) -> Login:
     }
 
 
-def models(kind: str, binary: str | None = None) -> list[ModelGroup]:
-    """The models *kind* accepts, grouped by provider and never fatal.
-
-    opencode is asked; Claude Code takes a small set of aliases, so it is
-    answered from the table rather than by starting it.
-    """
-    if kind == "claude":
-        return [{
-            "group": "Latest of each family",
-            "models": [
-                {"id": alias, "name": alias}
-                for alias in _CLAUDE_ALIASES
-            ],
-        }]
+def models(kind: str, binary: str | None = None,
+           home: Path | None = None) -> list[ModelGroup]:
+    """The models *kind* accepts, grouped by provider and never fatal. The
+    list is ours: it comes from the agent's own home, not the person's."""
     if kind != "opencode":
         return []
-
     target = resolve(binary or KNOWN["opencode"]["binary"])
     if target is None:
         return []
+    home = home or agent_home()
+    key = f"{target}\0{home}"
     now = time.monotonic()
-    hit = _MODELS_CACHE.get(target)
+    hit = _MODELS_CACHE.get(key)
     if hit is not None and now - hit[0] < _MODELS_TTL_S:
         return hit[1]
-    groups = _opencode_models(target)
-    _MODELS_CACHE[target] = (now, groups)
+    groups = _opencode_models(target, home)
+    _MODELS_CACHE[key] = (now, groups)
     return groups
 
 
@@ -194,8 +253,11 @@ def health(
     auth: str,
     auth_env: str,
     base_url: str,
+    model: str = "",
 ) -> Health:
-    """The three things a runner needs: a binary, a way in, a reachable URL."""
+    """The four things a runner needs: a binary, a way in, a URL, and a
+    server that answers. The last one is the smoke test the hands were
+    missing: «Перевірити» starts the agent and asks it whether it is up."""
     entry = KNOWN.get(kind, KNOWN["opencode"])
     target = binary or entry["binary"]
     resolved = resolve(target)
@@ -232,6 +294,11 @@ def health(
 
     if base_url:
         checks.append(_base_url_check(base_url))
+
+    if resolved is not None:
+        checks.append(_agent_check(
+            resolved, agent_env(agent_home(),
+                                env(kind, auth, auth_env, base_url, model))))
 
     return {"ok": all(check["ok"] for check in checks), "checks": checks}
 
@@ -270,11 +337,8 @@ def env(
         if value is not None:
             merged[auth_env] = value
 
-    if base_url and kind == "claude":
-        merged["ANTHROPIC_BASE_URL"] = base_url
-
-    # ``model`` is accepted so both setup helpers share one signature; the
-    # environment does not carry it.
+    # ``model`` and ``base_url`` are accepted so both setup helpers share one
+    # signature; the environment does not carry them.
     return merged
 
 
@@ -293,18 +357,74 @@ def opencode_config_patch(
     return {"provider": {provider: {"options": {"baseURL": base_url}}}}
 
 
+def _free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        return int(probe.getsockname()[1])
+
+
 def _probe(
-    argv: list[str], timeout: float
+    argv: list[str], timeout: float, env: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess[str] | None:
     """Run a short read-only probe; a CLI that fails is an answer, not a crash."""
     try:
-        return subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+        return subprocess.run(argv, capture_output=True, text=True,
+                              timeout=timeout, env=env)
     except (OSError, subprocess.SubprocessError):
         return None
 
 
-def _opencode_login() -> Login:
-    path = Path.home() / ".local/share/opencode/auth.json"
+def _agent_check(binary: str, env: dict[str, str]) -> Check:
+    """Start the agent and ask it whether it is up: the smoke test."""
+    port = _free_port()
+    try:
+        proc = subprocess.Popen(
+            [binary, "serve", "--port", str(port), "--hostname", "127.0.0.1"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            env=env, start_new_session=True,
+        )
+    except OSError as exc:
+        return {"name": "agent", "ok": False, "detail": f"could not start: {exc}"}
+    try:
+        deadline = time.monotonic() + _CHECK_S
+        while time.monotonic() < deadline:
+            if proc.poll() is not None:
+                return {"name": "agent", "ok": False,
+                        "detail": f"exited with {proc.returncode}"}
+            try:
+                request = urllib.request.Request(
+                    f"http://127.0.0.1:{port}/global/health")
+                with urllib.request.urlopen(request, timeout=2) as response:
+                    answer = json.loads(response.read().decode() or "{}")
+                if isinstance(answer, dict) and answer.get("healthy"):
+                    version = answer.get("version") or "?"
+                    return {"name": "agent", "ok": True,
+                            "detail": f"opencode {version} answers"}
+            except (urllib.error.URLError, OSError, ValueError):
+                time.sleep(0.2)
+        return {"name": "agent", "ok": False,
+                "detail": f"no answer in {int(_CHECK_S)} s"}
+    finally:
+        _stop(proc)
+
+
+def _stop(proc: subprocess.Popen[bytes]) -> None:
+    try:
+        os.killpg(proc.pid, 15)
+    except (ProcessLookupError, PermissionError):
+        proc.terminate()
+    try:
+        proc.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, 9)
+        except (ProcessLookupError, PermissionError):
+            proc.kill()
+        proc.wait(timeout=2)
+
+
+def _opencode_login(home: Path) -> Login:
+    path = home / "data" / "opencode" / "auth.json"
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -314,7 +434,7 @@ def _opencode_login() -> Login:
         return {
             "ok": False,
             "summary": "No providers signed in",
-            "detail": "run `opencode auth login` in a terminal",
+            "detail": "run `heare-cli-hands login` in a terminal",
         }
     count = len(names)
     return {
@@ -324,41 +444,9 @@ def _opencode_login() -> Login:
     }
 
 
-def _claude_login(binary: str | None) -> Login:
-    target = resolve(binary) if binary else resolve(KNOWN["claude"]["binary"])
-    if target is None:
-        return {
-            "ok": False,
-            "summary": "Not signed in",
-            "detail": "run `claude auth login` in a terminal",
-        }
-    proc = _probe([target, "auth", "status"], 15)
-    if proc is None or proc.returncode != 0:
-        return {
-            "ok": False,
-            "summary": "Sign-in could not be checked",
-            "detail": "run `claude auth login` in a terminal",
-        }
-    try:
-        status = json.loads(proc.stdout or "")
-    except ValueError:
-        status = {}
-    if not isinstance(status, dict):
-        status = {}
-    if status.get("loggedIn"):
-        who = str(status.get("email") or status.get("orgName") or "signed in")
-        method = status.get("authMethod") or "login"
-        return {"ok": True, "summary": f"Signed in as {who}",
-                "detail": f"via {method}"}
-    return {
-        "ok": False,
-        "summary": "Not signed in",
-        "detail": "run `claude auth login` in a terminal",
-    }
-
-
-def _opencode_models(binary: str) -> list[ModelGroup]:
-    proc = _probe([binary, "models"], 20)
+def _opencode_models(binary: str, home: Path) -> list[ModelGroup]:
+    proc = _probe([binary, "models"], 20,
+                  env=agent_env(home, env("opencode", "login", "", "", "")))
     output = (proc.stdout or "") if proc and proc.returncode == 0 else ""
     snapshot = _models_snapshot()
     groups: dict[str, ModelGroup] = {}
@@ -378,7 +466,7 @@ def _opencode_models(binary: str) -> list[ModelGroup]:
 
 
 def _models_snapshot() -> dict[str, object]:
-    path = Path.home() / ".cache/opencode/models.json"
+    path = agent_home() / "cache" / "opencode" / "models.json"
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):

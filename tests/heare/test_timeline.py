@@ -125,6 +125,28 @@ def test_a_part_s_card_is_a_message_the_page_draws(tmp_path):
     assert row["artifact"]["title"] == "Cat"
 
 
+def test_a_diff_card_from_the_hands_is_a_message_the_page_draws(tmp_path):
+    from heare.reach import changes
+
+    sessions = Sessions(tmp_path / "s")
+    sessions.new()
+    timeline = Timeline(sessions)
+    body = changes.card([
+        {"file": "src/app.py", "additions": 3, "deletions": 1,
+         "patch": "-old\n+new\n", "status": "modified"},
+    ])
+
+    shown = timeline.from_part(body)
+    row = sessions.read(sessions.active)[0]
+
+    assert shown["shown"] == row["id"]
+    assert row["kind"] == "html"
+    assert row["text"] == "Змінив app.py: +3 −1."
+    assert row["artifact"]["title"] == "app.py"
+    assert "$" not in row["html"]  # nothing fetched, nothing executed
+    assert '<div class="kv">' in row["html"]
+
+
 def test_a_part_s_picture_is_kept_beside_the_session(tmp_path):
     import base64
 

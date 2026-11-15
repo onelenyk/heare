@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-15 15:35+0200\n"
+"POT-Creation-Date: 2026-11-15 20:11+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -394,6 +394,12 @@ msgstr ""
 
 #, python-brace-format
 msgid "The brain does not answer at {url}"
+msgstr ""
+
+msgid "put back the last change"
+msgstr ""
+
+msgid "what was done lately"
 msgstr ""
 
 #, python-brace-format
@@ -2133,6 +2139,23 @@ msgstr ""
 msgid "handed over from {name}"
 msgstr ""
 
+msgid "No hands are connected now."
+msgstr ""
+
+#, python-brace-format
+msgid "No such hands: {hand}."
+msgstr ""
+
+#, python-brace-format
+msgid "Which hands? {hands}."
+msgstr ""
+
+msgid "Nothing to plan: the task was empty."
+msgstr ""
+
+msgid "Asked the hands for a plan."
+msgstr ""
+
 msgid "What exactly should I recall?"
 msgstr ""
 
@@ -2157,6 +2180,18 @@ msgstr ""
 msgid "I did not find that reminder."
 msgstr ""
 
+msgid "Asked the hands what they did lately."
+msgstr ""
+
+msgid "Nothing to do: the task was empty."
+msgstr ""
+
+msgid "Which piece of work? Ask what the hands did lately first."
+msgstr ""
+
+msgid "Asked the hands to go on with it."
+msgstr ""
+
 msgid "No plans are open."
 msgstr ""
 
@@ -2170,6 +2205,9 @@ msgid "Stopped."
 msgstr ""
 
 msgid "Nothing was running."
+msgstr ""
+
+msgid "Asked the hands to put it back."
 msgstr ""
 
 msgid "Print"
@@ -2202,6 +2240,9 @@ msgstr ""
 msgid "not found"
 msgstr ""
 
+msgid "Home"
+msgstr ""
+
 msgid "— as in the CLI —"
 msgstr ""
 
@@ -2215,6 +2256,12 @@ msgid "CLI login"
 msgstr ""
 
 msgid "Own token"
+msgstr ""
+
+msgid "the last one"
+msgstr ""
+
+msgid "Continue"
 msgstr ""
 
 msgid "pick a key"
@@ -2253,10 +2300,6 @@ msgid "no agent {kind}: {binary} not found — set the path in the settings"
 msgstr ""
 
 #, python-brace-format
-msgid "for {kind}, {command} is not found"
-msgstr ""
-
-#, python-brace-format
 msgid "agent {kind} is not in the table"
 msgstr ""
 
@@ -2267,6 +2310,10 @@ msgid "Normal — weighs itself whether to ask"
 msgstr ""
 
 msgid "Auto — asks nothing"
+msgstr ""
+
+#, python-brace-format
+msgid "I do not know that order: {verb}."
 msgstr ""
 
 msgid "no agent found — see ⚙"
@@ -2287,6 +2334,12 @@ msgstr ""
 msgid "Price"
 msgstr ""
 
+msgid "Plan"
+msgstr ""
+
+msgid "Agent's sessions"
+msgstr ""
+
 msgid "Terminal"
 msgstr ""
 
@@ -2297,12 +2350,23 @@ msgstr ""
 msgid "taken {id}: {what}"
 msgstr ""
 
+msgid "Could not branch the work."
+msgstr ""
+
 #, python-brace-format
 msgid "done {id}: {status} {what}"
 msgstr ""
 
 #, python-brace-format
 msgid "hands: {name}"
+msgstr ""
+
+#, python-brace-format
+msgid "no agent: {binary} not found"
+msgstr ""
+
+#, python-brace-format
+msgid "agent's home: {where}"
 msgstr ""
 
 #, python-brace-format
@@ -2321,6 +2385,9 @@ msgid "{name} is saved on {host}. The hands take it when they start again: after
 msgstr ""
 
 msgid "save the agent's token on this machine"
+msgstr ""
+
+msgid "sign the agent in to its own home"
 msgstr ""
 
 msgid "hands: new settings, starting again"
@@ -2700,9 +2767,6 @@ msgstr ""
 msgid "Work"
 msgstr ""
 
-msgid "something"
-msgstr ""
-
 msgid "change the file"
 msgstr ""
 
@@ -2713,6 +2777,39 @@ msgid "move"
 msgstr ""
 
 msgid "run the command"
+msgstr ""
+
+msgid "Nothing to undo."
+msgstr ""
+
+msgid "Could not put it back."
+msgstr ""
+
+msgid "Put it back the way it was."
+msgstr ""
+
+msgid "Nothing to bring back."
+msgstr ""
+
+msgid "Could not bring it back."
+msgstr ""
+
+msgid "Brought the change back."
+msgstr ""
+
+#, python-brace-format
+msgid "Changed {name}: +{added} −{removed}."
+msgstr ""
+
+#, python-brace-format
+msgid "Changed: +{added} −{removed}."
+msgstr ""
+
+msgid "Changes"
+msgstr ""
+
+#, python-brace-format
+msgid "… and {count} more"
 msgstr ""
 
 #, python-brace-format
@@ -3110,5 +3207,17 @@ msgstr ""
 #~ msgstr ""
 
 #~ msgid "Last request"
+#~ msgstr ""
+
+#~ msgid "for {kind}, {command} is not found"
+#~ msgstr ""
+
+#~ msgid "something"
+#~ msgstr ""
+
+#~ msgid "Changed {count} files: +{added} −{removed}."
+#~ msgstr ""
+
+#~ msgid "{count} files"
 #~ msgstr ""
 

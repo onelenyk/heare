@@ -239,6 +239,8 @@ class Task:
     origin: str = ""
     hand: str = ""
     explicit: bool = False
+    verb: str = ""  # an order a hand knows by name, not a sentence to route
+    session: str = ""  # which of its sessions a hand should go on with
 
     def view(self) -> dict:
         return {

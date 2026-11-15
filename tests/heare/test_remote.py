@@ -21,6 +21,18 @@ class Desk:
         return True
 
 
+async def test_a_verb_goes_out_as_a_verb():
+    hands = RemoteExecutor("opencode@bench", "opencode", "код")
+    desk = Desk()
+    desk.verb = "undo"
+    running = asyncio.create_task(hands.run("повернути зміну", desk))
+
+    task = await hands.claim()
+    assert task["verb"] == "undo"
+    hands.result(task["id"], "done", "Повернув.")
+    assert await asyncio.wait_for(running, 1.0) == "Повернув."
+
+
 async def test_a_task_goes_out_and_a_result_comes_back():
     hands = RemoteExecutor("opencode@bench", "opencode", "код")
     desk = Desk()
@@ -28,7 +40,7 @@ async def test_a_task_goes_out_and_a_result_comes_back():
 
     task = await hands.claim()
     assert task == {"id": task["id"], "request": "зроби сайт", "continues": False,
-                    "asked": ""}
+                    "asked": "", "verb": "", "session": ""}
     assert hands.step(task["id"], "працюю") is False
     assert desk.steps == ["працюю"]
     allow, stopped = await hands.permit(task["id"], "змінити файл", "change")

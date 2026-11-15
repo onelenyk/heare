@@ -1,6 +1,6 @@
 """What the agent does, as a terminal shows it: what was asked, what it ran,
-what came back, what it said. Built from the ACP wire, not from the agent's
-own log, so it is the same for every agent CLI."""
+what came back, what it said. Built from the server's own events, not from
+the agent's log, so it is the same whatever model answers."""
 
 from __future__ import annotations
 
@@ -25,6 +25,9 @@ def _cut(text: str, width: int = WIDTH) -> str:
 # it says nothing about the command.
 _QUIET = re.compile(r"^(?:export\s+(?:\w+=\S*\s*)+;\s*)+")
 
+# How a tool's path is spelled across releases.
+_PATH_KEYS = ("filePath", "filepath", "path")
+
 
 def _command(text: str) -> str:
     """A command on one line: its first line, without the agent's own noise."""
@@ -33,26 +36,32 @@ def _command(text: str) -> str:
     return _cut(first + (" …" if more.strip() else ""), 120)
 
 
-def _output(update: dict) -> str:
-    """The text a finished tool call returned, wherever the agent put it."""
-    parts = []
-    for block in update.get("content") or []:
-        inner = block.get("content") if isinstance(block, dict) else None
-        if isinstance(inner, dict) and inner.get("type") == "text":
-            parts.append(str(inner.get("text") or ""))
-    if not parts:
-        raw = update.get("rawOutput")
-        if isinstance(raw, dict):
-            raw = raw.get("output") or raw.get("stdout") or ""
-        if isinstance(raw, str):
-            parts.append(raw)
-    return "\n".join(parts).strip()
+def _state(part: dict) -> dict:
+    state = part.get("state")
+    return state if isinstance(state, dict) else {}
+
+
+def _input(part: dict) -> dict:
+    data = _state(part).get("input")
+    return data if isinstance(data, dict) else {}
+
+
+def _output(part: dict) -> str:
+    """The text a finished tool call returned, wherever it was put."""
+    state = _state(part)
+    for value in (state.get("output"),
+                  (state.get("metadata") or {}).get("output")
+                  if isinstance(state.get("metadata"), dict) else None):
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
 
 
 class Terminal:
     def __init__(self) -> None:
         self.lines: collections.deque[str] = collections.deque(maxlen=LINES)
         self._said = ""
+        self._roles: dict[str, str] = {}
         self._shown: set[str] = set()
         self._titles: dict[str, str] = {}
         # Counts every line written, so a full screen still reads as changed.
@@ -112,51 +121,78 @@ class Terminal:
         elif status == "failed":
             self._add(f"✗ {_cut(result)}")
 
-    def feed(self, direction: str, message: dict) -> None:
-        """One message of the ACP wire; only what the agent did is kept."""
-        if direction != "in" or message.get("method") != "session/update":
-            return
-        update = (message.get("params") or {}).get("update") or {}
-        kind = update.get("sessionUpdate")
-        if kind == "agent_message_chunk":
-            self._said += str((update.get("content") or {}).get("text") or "")
-        elif kind in ("tool_call", "tool_call_update"):
-            self._call(update)
-            if update.get("status") == "completed":
-                self._done(update)
-            elif update.get("status") == "failed":
-                out = _output(update)
-                # A refusal is already on screen as the person's «ні».
-                if "rejected permission" not in out:
-                    self._add(f"  ✗ {_cut(out or _('failed'))}")
+    def feed(self, event: dict) -> None:
+        """One event of the server's stream; only what the agent did is kept."""
+        kind = str(event.get("type") or "")
+        props = event.get("properties")
+        props = props if isinstance(props, dict) else {}
+        if kind == "message.updated":
+            info = props.get("info") or {}
+            if isinstance(info, dict):
+                self._roles[str(info.get("id") or "")] = str(info.get("role") or "")
+        elif kind == "message.part.delta":
+            if self._roles.get(str(props.get("messageID") or "")) != "assistant":
+                return
+            if props.get("field") == "text":
+                self._said += str(props.get("delta") or "")
+        elif kind == "message.part.updated":
+            part = props.get("part") or {}
+            if isinstance(part, dict) and part.get("type") == "tool":
+                self._tool(part)
+        elif kind == "question.asked":
+            questions = props.get("questions")
+            questions = questions if isinstance(questions, list) else []
+            for question in questions:
+                text = str((question or {}).get("question") or "")
+                if text:
+                    self._flush()
+                    self._add(f"? {_cut(text)}")
 
-    def _call(self, update: dict) -> None:
+    def _tool(self, part: dict) -> None:
+        call = str(part.get("callID") or part.get("id") or "")
+        state = _state(part)
+        status = str(state.get("status") or "")
+        data = _input(part)
+        title = str(part.get("tool") or "")
+        if title:
+            self._titles[call] = title
+        if status in ("pending", "running"):
+            self._call(call, part, data)
+        elif status == "completed":
+            self._call(call, part, data)
+            self._done(part)
+        elif status == "error":
+            shown = _output(part)
+            # A refusal is already on screen as the person's «ні»: it is not
+            # a command that failed, and it never ran.
+            if "rejected permission" in shown:
+                return
+            self._call(call, part, data)
+            self._add(f"  ✗ {_cut(shown or _('failed'))}")
+
+    def _call(self, call: str, part: dict, data: dict) -> None:
         """A call is shown once: as soon as it says what it runs, or, if it
         never does, by its title when it ends."""
-        call_id = str(update.get("toolCallId") or "")
-        if call_id and call_id in self._shown:
+        if call and call in self._shown:
             return
-        if update.get("title"):
-            self._titles[call_id] = str(update["title"])
-        raw = update.get("rawInput")
-        raw = raw if isinstance(raw, dict) else {}
-        command = raw.get("command")
-        path = raw.get("file_path") or raw.get("path")
-        title = self._titles.get(call_id) or str(update.get("kind") or "")
+        command = data.get("command")
+        path = next((data[key] for key in _PATH_KEYS
+                     if isinstance(data.get(key), str) and data[key]), "")
+        title = self._titles.get(call) or str(part.get("tool") or "")
         if command:
             line = f"$ {_command(str(command))}"
         elif path:
             line = f"• {_cut(f'{title} {path}'.strip())}"
-        elif update.get("status") in ("completed", "failed") and title:
+        elif _state(part).get("status") == "completed" and title:
             line = f"• {_cut(title)}"
         else:
             return
         self._flush()
         self._add(line)
-        self._shown.add(call_id)
+        self._shown.add(call)
 
-    def _done(self, update: dict) -> None:
-        out = _output(update)
+    def _done(self, part: dict) -> None:
+        out = _output(part)
         if not out:
             return
         lines = out.splitlines()

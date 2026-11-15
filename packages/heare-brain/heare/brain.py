@@ -186,6 +186,15 @@ class Brain:
         self.core.attach_tools(Toolbox(
             memory=self.core.memory, state=self.core.state,
             delegate=self.core.delegate, stop=self.core.stop_all,
+            undo=lambda hand: self.core.delegate(
+                _("put back the last change"), hand=hand, verb="undo"),
+            plan=lambda request, hand: self.core.delegate(
+                request, hand=hand, verb="plan"),
+            recent=lambda hand: self.core.delegate(
+                _("what was done lately"), hand=hand, verb="sessions"),
+            continue_work=lambda request, session, hand, fork: self.core.delegate(
+                request, hand=hand, session=session,
+                verb="fork" if fork else ""),
             words=lambda: self.core.words,
             has_executors=lambda: bool(self.core.executors),
             reminders=self.intents,

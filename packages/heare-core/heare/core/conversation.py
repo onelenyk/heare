@@ -182,7 +182,8 @@ class _Port:
 class _Desk:
     def __init__(self, core: Core, task: Task) -> None:
         self._core, self._task = core, task
-        self.follows, self.asked = task.follows, task.request
+        self.follows, self.asked, self.verb = task.follows, task.request, task.verb
+        self.session = task.session
         self.verdict: tuple[str, str] = ("person", "")  # who allowed the last, why
 
     def step(self, text: str) -> None:
@@ -1004,11 +1005,13 @@ class Core:
 
     # -- work -------------------------------------------------------------
 
-    def delegate(self, request: str, follows: bool = False, hand: str = "") -> Task:
+    def delegate(self, request: str, follows: bool = False, hand: str = "",
+                 verb: str = "", session: str = "") -> Task:
         """Hand a piece of work off. Returns at once; the result arrives
         later as a message of its own, in the quiet lane."""
         task = Task(next(self._ids), request, executor="", follows=follows,
-                    origin=self._origin, hand=hand, explicit=bool(hand))
+                    origin=self._origin, hand=hand, explicit=bool(hand),
+                    verb=verb, session=session)
         # A continuation keeps context, never permission.
         self.state.tasks[task.id] = task
         job = asyncio.create_task(self._work(task), name=f"task-{task.id}")
@@ -1018,10 +1021,16 @@ class Core:
 
     async def _work(self, task: Task) -> None:
         try:
-            name, text = await self.delegator.assign(
-                task.request, self.history[-CONTEXT_TURNS:],
-                list(self.executors.values()),
-            )
+            if task.verb:
+                # An order is not routed and not reworded: it names its hands.
+                if task.hand not in self.executors:
+                    raise LookupError(f"no hands {task.hand!r}")
+                name, text = task.hand, task.request
+            else:
+                name, text = await self.delegator.assign(
+                    task.request, self.history[-CONTEXT_TURNS:],
+                    list(self.executors.values()),
+                )
             task.executor, task.brief = name, text
             self.state.emit("task", **task.view())
             outcome = await asyncio.wait_for(

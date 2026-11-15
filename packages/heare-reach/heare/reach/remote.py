@@ -30,6 +30,8 @@ class _Job:
     asked: str = ""
     desk: Any = None
     future: Any = None
+    verb: str = ""
+    session: str = ""
 
 
 class RemoteExecutor:
@@ -86,7 +88,8 @@ class RemoteExecutor:
                     where=self.machine or "?"))
         job = _Job(next(self._ids), task, getattr(desk, "follows", False),
                    getattr(desk, "asked", ""), desk,
-                   asyncio.get_running_loop().create_future())
+                   asyncio.get_running_loop().create_future(),
+                   getattr(desk, "verb", ""), getattr(desk, "session", ""))
         self._jobs[job.id] = job
         self._queue.append(job)
         self._ready.set()
@@ -112,7 +115,8 @@ class RemoteExecutor:
                     self._jobs.pop(job.id, None)
                     continue
                 return {"id": job.id, "request": job.request,
-                        "continues": job.follows, "asked": job.asked}
+                        "continues": job.follows, "asked": job.asked,
+                        "verb": job.verb, "session": job.session}
             self._ready.clear()
             if self._queue:
                 continue

@@ -1,7 +1,8 @@
 # heare
 
 macOS voice assistant: it listens, decides when to answer, and acts
-through an agent (opencode over ACP) without blocking the conversation.
+through an agent (opencode's own server, over HTTP) without blocking the
+conversation.
 The app is twelve distributions under `packages/` sharing one `heare`
 namespace; the old app that lived in `src/` was removed on
 18 October 2026 and its last commit is tagged `legacy-app`.
@@ -123,7 +124,7 @@ model — and are excluded by default.
 | A spoken sentence becomes a reply | `packages/heare-core/heare/core/conversation.py` |
 | The door: HTTP, events, page, parts registry | `packages/heare-brain/heare/api/server.py`, `packages/heare-brain/heare/api/page.html` |
 | The canvas: what the model shows | `packages/heare-brain/heare/api/canvas.py` |
-| Hands: an agent over ACP | `packages/heare-cli-hands/heare/cli_hands.py`, `packages/heare-reach/heare/reach/` |
+| Hands: opencode's server, over HTTP | `packages/heare-cli-hands/heare/cli_hands.py`, `packages/heare-reach/heare/reach/opencode.py`; the agent's way back (`show`) `packages/heare-reach/heare/reach/bridge.py` |
 | Native hands: a terminal on this machine and the body skills, no agent | `packages/heare-native-hands/heare/native_hands.py` (`run`, `body`), `heare/bodies.py` (`heare-bodies`); the hands' life `heare-core/heare/hand.py`; a model for parts `heare-core/heare/talk.py` |
 | Skills: what a part can do, calls with answers | `packages/heare-brain/heare/api/skills.py`; protocol §6; who gets the work `heare-brain/heare/model/route.py` |
 | A bench for hands and bodies | `make bench` (`tests/heare/test_bench.py`), virtual boards `packages/heare-sim/heare/sim.py`; live: `make eval-route` |

@@ -1,4 +1,4 @@
-"""The runner table: finding a CLI, reading its sign-in, and its models.
+"""The runner table: finding the CLI, reading its sign-in, and its models.
 
 Every CLI is a shell shim in ``tmp_path``; no real installer is touched and
 no probe leaves the machine.
@@ -7,6 +7,7 @@ no probe leaves the machine.
 from __future__ import annotations
 
 import json
+import sys
 import urllib.error
 from pathlib import Path
 
@@ -14,6 +15,8 @@ import pytest
 
 from heare import keys
 from heare.reach import runner
+
+FAKE = Path(__file__).with_name("fake_opencode.py")
 
 
 @pytest.fixture(autouse=True)
@@ -38,6 +41,11 @@ def _shim(folder: Path, name: str, body: str) -> Path:
 
 def _json_shim(folder: Path, name: str, value: dict) -> Path:
     return _shim(folder, name, f"/bin/cat <<'EOF'\n{json.dumps(value)}\nEOF")
+
+
+def _server_shim(folder: Path, name: str = "opencode") -> Path:
+    """A CLI that is a server: the fake answers the health probe."""
+    return _shim(folder, name, f'exec "{sys.executable}" "{FAKE}" "$@"')
 
 
 # -- resolve and detect ----------------------------------------------------
@@ -76,7 +84,7 @@ def test_detect_returns_only_known_runners_that_are_installed(tmp_path):
 
 
 def test_opencode_login_reports_provider_names_and_never_values(tmp_path):
-    auth = tmp_path / "home" / ".local" / "share" / "opencode" / "auth.json"
+    auth = runner.agent_home() / "data" / "opencode" / "auth.json"
     auth.parent.mkdir(parents=True)
     auth.write_text(json.dumps({
         "deepseek": {"type": "api", "key": "stored-secret"},
@@ -95,30 +103,13 @@ def test_opencode_login_without_a_store_is_a_clear_no():
     state = runner.login("opencode", None)
     assert state["ok"] is False
     assert state["summary"] == "No providers signed in"
-    assert "opencode auth login" in state["detail"]
+    assert "heare-cli-hands login" in state["detail"]
 
 
-def test_claude_login_reads_the_auth_status_json(tmp_path):
-    shim = _json_shim(tmp_path / "bin", "claude", {
-        "loggedIn": True, "email": "a@b", "authMethod": "oauth",
-    })
-    state = runner.login("claude", str(shim))
-    assert state == {
-        "ok": True, "summary": "Signed in as a@b", "detail": "via oauth",
-    }
-
-
-def test_claude_login_degrades_when_not_signed_in(tmp_path):
-    shim = _json_shim(tmp_path / "bin", "claude", {"loggedIn": False})
-    state = runner.login("claude", str(shim))
+def test_an_unknown_runner_has_no_sign_in_check():
+    state = runner.login("claude", None)
     assert state["ok"] is False
-    assert state["summary"] == "Not signed in"
-
-
-def test_claude_login_degrades_on_a_failed_probe(tmp_path):
-    shim = _shim(tmp_path / "bin", "claude", "exit 1")
-    state = runner.login("claude", str(shim))
-    assert state["ok"] is False
+    assert "no sign-in check" in state["detail"]
 
 
 # -- models ----------------------------------------------------------------
@@ -129,7 +120,7 @@ def test_opencode_models_are_grouped_and_named_from_the_snapshot(tmp_path):
         "/bin/cat <<'EOF'\ndeepseek/deepseek-chat\n"
         "openrouter/openai/gpt-4\nnot a model\nEOF"
     ))
-    snapshot = tmp_path / "home" / ".cache" / "opencode" / "models.json"
+    snapshot = runner.agent_home() / "cache" / "opencode" / "models.json"
     snapshot.parent.mkdir(parents=True)
     snapshot.write_text(json.dumps({
         "deepseek": {"name": "DeepSeek", "models": {
@@ -169,35 +160,58 @@ def test_opencode_models_fall_back_to_nothing_when_the_cli_fails(tmp_path):
     assert runner.models("opencode", str(shim)) == []
 
 
-def test_claude_models_are_the_static_aliases():
-    groups = runner.models("claude", None)
-    assert groups == [{
-        "group": "Latest of each family",
-        "models": [
-            {"id": "fable", "name": "fable"},
-            {"id": "opus", "name": "opus"},
-            {"id": "sonnet", "name": "sonnet"},
-            {"id": "haiku", "name": "haiku"},
-        ],
-    }]
+def test_an_unknown_runner_has_no_models():
+    assert runner.models("claude", None) == []
+
+
+def test_the_agents_home_is_its_own_and_not_the_persons(tmp_path):
+    person = tmp_path / "home"
+    (person / ".local" / "share" / "opencode").mkdir(parents=True)
+    (person / ".local" / "share" / "opencode" / "auth.json").write_text(
+        json.dumps({"mine": {"key": "secret"}}), encoding="utf-8")
+
+    env = runner.agent_env(runner.agent_home())
+
+    assert Path(env["HOME"]) != person
+    assert Path(env["XDG_DATA_HOME"]) != person / ".local" / "share"
+    assert Path(env["XDG_CONFIG_HOME"]).is_dir()
+    assert Path(env["HOME"]).is_dir()
+    # The person's own sign-in is not ours: we have not signed in.
+    state = runner.login("opencode", None)
+    assert state["ok"] is False
+
+
+def test_git_keeps_the_persons_identity_in_the_agents_home(tmp_path):
+    person = tmp_path / "home"
+    person.mkdir(parents=True, exist_ok=True)
+    (person / ".gitconfig").write_text(
+        "[user]\n\tname = Someone\n", encoding="utf-8")
+
+    env = runner.agent_env(runner.agent_home())
+
+    config = Path(env["HOME"]) / ".gitconfig"
+    assert "path = " + str(person / ".gitconfig") in config.read_text(
+        encoding="utf-8")
+
+
+def test_the_ssh_keys_are_reachable_from_the_agents_home(tmp_path):
+    person = tmp_path / "home"
+    (person / ".ssh").mkdir(parents=True)
+    (person / ".ssh" / "id_ed25519").write_text("key", encoding="utf-8")
+
+    env = runner.agent_env(runner.agent_home())
+
+    assert (Path(env["HOME"]) / ".ssh").resolve() == (person / ".ssh").resolve()
 
 
 # -- environment -----------------------------------------------------------
 
 
 def test_a_key_is_overlaid_from_the_store(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    keys.store("ANTHROPIC_API_KEY", "stored-value")
-    merged = runner.env("claude", "key", "ANTHROPIC_API_KEY", "", "")
-    assert merged["ANTHROPIC_API_KEY"] == "stored-value"
-
-
-def test_a_login_drops_anthropic_key_variables_for_claude(monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "env-secret")
-    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "env-token")
-    merged = runner.env("claude", "login", "", "", "")
-    assert "ANTHROPIC_API_KEY" not in merged
-    assert "ANTHROPIC_AUTH_TOKEN" not in merged
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    keys.store("DEEPSEEK_API_KEY", "stored-value")
+    merged = runner.env("opencode", "key", "DEEPSEEK_API_KEY", "", "")
+    assert merged["DEEPSEEK_API_KEY"] == "stored-value"
 
 
 def test_a_login_carries_no_provider_key_for_opencode(monkeypatch):
@@ -209,11 +223,6 @@ def test_a_login_carries_no_provider_key_for_opencode(monkeypatch):
     assert "DEEPSEEK_API_KEY" not in merged
     assert "AWS_SECRET_ACCESS_KEY" not in merged
     assert "PATH" in merged and "HOME" in merged
-
-
-def test_a_claude_base_url_is_an_environment_variable():
-    merged = runner.env("claude", "login", "", "https://gateway.test", "")
-    assert merged["ANTHROPIC_BASE_URL"] == "https://gateway.test"
 
 
 def test_an_opencode_base_url_is_a_config_patch_not_an_env_var():
@@ -236,7 +245,12 @@ def test_an_opencode_patch_needs_a_url_and_a_prefixed_model():
 # -- health ----------------------------------------------------------------
 
 
-def test_health_reports_a_missing_binary_and_a_missing_key():
+def _ok_agent(binary: str, env: dict[str, str]) -> runner.Check:
+    return {"name": "agent", "ok": True, "detail": "opencode fake answers"}
+
+
+def test_health_reports_a_missing_binary_and_a_missing_key(monkeypatch):
+    monkeypatch.setattr(runner, "_agent_check", _ok_agent)
     state = runner.health("opencode", "gone-cli", "key", "ANTHROPIC_API_KEY", "")
     assert state["ok"] is False
     assert state["checks"][0] == {
@@ -246,39 +260,36 @@ def test_health_reports_a_missing_binary_and_a_missing_key():
     assert "ANTHROPIC_API_KEY" in state["checks"][1]["detail"]
 
 
-def test_health_is_ok_when_the_binary_and_the_key_are_there(tmp_path):
+def test_health_is_ok_when_the_binary_the_key_and_the_agent_are_there(
+    tmp_path, monkeypatch
+):
     _shim(tmp_path / "bin", "opencode", "exit 0")
     keys.store("ANTHROPIC_API_KEY", "stored-value")
+    monkeypatch.setattr(runner, "_agent_check", _ok_agent)
 
     state = runner.health("opencode", "opencode", "key", "ANTHROPIC_API_KEY", "")
     assert state["ok"] is True
-    assert [check["ok"] for check in state["checks"]] == [True, True]
+    assert [check["ok"] for check in state["checks"]] == [True, True, True]
     assert "stored-value" not in json.dumps(state)
 
 
-def test_health_reports_a_failed_login(tmp_path):
-    shim = _json_shim(tmp_path / "bin", "claude", {"loggedIn": False})
-    state = runner.health("claude", str(shim), "login", "", "")
-    assert state["ok"] is False
-    assert state["checks"][1]["ok"] is False
-    assert "Not signed in" in state["checks"][1]["detail"]
-
-
-def test_health_is_ok_with_opencode_signed_in(tmp_path):
+def test_health_is_ok_with_opencode_signed_in(tmp_path, monkeypatch):
     shim = _shim(tmp_path / "bin", "opencode", "exit 0")
-    auth = tmp_path / "home" / ".local" / "share" / "opencode" / "auth.json"
+    auth = runner.agent_home() / "data" / "opencode" / "auth.json"
     auth.parent.mkdir(parents=True)
     auth.write_text(json.dumps({"deepseek": {"key": "stored-secret"}}),
                     encoding="utf-8")
+    monkeypatch.setattr(runner, "_agent_check", _ok_agent)
 
     state = runner.health("opencode", str(shim), "login", "", "")
     assert state["ok"] is True
-    assert [check["ok"] for check in state["checks"]] == [True, True]
+    assert [check["ok"] for check in state["checks"]] == [True, True, True]
 
 
 def test_health_counts_any_http_status_as_reachable(tmp_path, monkeypatch):
     _shim(tmp_path / "bin", "opencode", "exit 0")
     keys.store("ANTHROPIC_API_KEY", "stored-value")
+    monkeypatch.setattr(runner, "_agent_check", _ok_agent)
 
     def not_found(request, timeout=5):
         raise urllib.error.HTTPError(request.full_url, 404, "Not Found", None, None)
@@ -294,6 +305,7 @@ def test_health_counts_any_http_status_as_reachable(tmp_path, monkeypatch):
 def test_health_reports_an_unreachable_base_url(tmp_path, monkeypatch):
     _shim(tmp_path / "bin", "opencode", "exit 0")
     keys.store("ANTHROPIC_API_KEY", "stored-value")
+    monkeypatch.setattr(runner, "_agent_check", _ok_agent)
 
     def unreachable(request, timeout=5):
         raise urllib.error.URLError("no route")
@@ -304,3 +316,24 @@ def test_health_reports_an_unreachable_base_url(tmp_path, monkeypatch):
     assert state["ok"] is False
     assert state["checks"][2]["ok"] is False
     assert "unreachable" in state["checks"][2]["detail"]
+
+
+def test_the_check_starts_the_agent_and_asks_if_it_is_up(tmp_path):
+    """The smoke test the hands were missing: the button asks the agent."""
+    _server_shim(tmp_path / "bin")
+
+    state = runner.health("opencode", str(tmp_path / "bin" / "opencode"),
+                          "login", "", "")
+    agent = [check for check in state["checks"] if check["name"] == "agent"]
+    assert len(agent) == 1
+    assert agent[0]["ok"] is True
+    assert "fake answers" in agent[0]["detail"]
+
+
+def test_the_check_says_so_when_the_agent_will_not_start(tmp_path):
+    shim = _shim(tmp_path / "bin", "opencode", "exit 3")
+
+    state = runner.health("opencode", str(shim), "login", "", "")
+    agent = [check for check in state["checks"] if check["name"] == "agent"]
+    assert agent[0]["ok"] is False
+    assert "exited" in agent[0]["detail"]

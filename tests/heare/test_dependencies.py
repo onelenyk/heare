@@ -55,7 +55,10 @@ LEAVES = {"heare.keys", "heare.laws", "heare.model.providers", "heare.hand", "he
 # On 10 November 2026 for ``person`` on the heard event: the engine's own
 # remark comes back as heard, and without the flag it counted as the person
 # answering — the gap only ever narrowed and a want was «carried» at once.
-CORE_LINES = 1634
+# On 15 November 2026 for the verb on a Task: «відкоти» is an order a hand
+# knows by name, not a sentence for a model to route and reword — and for the
+# session a task goes on with: «продовж ту, де був нотпад» names one.
+CORE_LINES = 1645
 
 
 def _imports(path: Path) -> set[str]:

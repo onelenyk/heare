@@ -1,4 +1,4 @@
-"""The hands' terminal: the ACP wire as a person reads it."""
+"""The hands' terminal: the server's stream as a person reads it."""
 
 from __future__ import annotations
 
@@ -9,25 +9,38 @@ from heare.reach.terminal import OUTPUT_LINES, Terminal
 AT = time.mktime((2026, 10, 24, 14, 32, 0, 0, 0, -1))
 
 
-def _update(**update) -> dict:
-    return {"method": "session/update", "params": {"update": update}}
+def _event(kind: str, **props) -> dict:
+    return {"type": kind, "properties": props}
+
+
+def _role(screen: Terminal, role: str, message: str = "m1") -> None:
+    screen.feed(_event("message.updated", sessionID="s1",
+                       info={"id": message, "role": role}))
+
+
+def _said(screen: Terminal, text: str, message: str = "m1") -> None:
+    screen.feed(_event("message.part.delta", sessionID="s1", messageID=message,
+                       partID="p1", field="text", delta=text))
+
+
+def _tool(screen: Terminal, call: str, tool: str = "bash", status: str = "running",
+          **state) -> None:
+    screen.feed(_event("message.part.updated", sessionID="s1", part={
+        "id": f"prt_{call}", "callID": call, "type": "tool", "tool": tool,
+        "state": {"status": status, **state}}))
 
 
 def test_a_piece_of_work_reads_as_asked_ran_saw_said():
     screen = Terminal()
     screen.begin("Завдання: запусти всі тести проєкту…", new=True,
                  asked="запусти тести", at=AT)
-    screen.feed("in", _update(sessionUpdate="agent_message_chunk",
-                              content={"text": "Запускаю."}))
-    screen.feed("in", _update(sessionUpdate="tool_call", toolCallId="1", title="bash"))
-    screen.feed("in", _update(sessionUpdate="tool_call_update", toolCallId="1",
-                              rawInput={"command": "make test"}))
-    screen.feed("in", _update(sessionUpdate="tool_call_update", toolCallId="1",
-                              status="completed",
-                              content=[{"type": "content",
-                                        "content": {"type": "text", "text": "1073 passed"}}]))
-    screen.feed("in", _update(sessionUpdate="agent_message_chunk",
-                              content={"text": "Усе пройшло."}))
+    _role(screen, "assistant")
+    _said(screen, "Запускаю.")
+    _tool(screen, "1", status="running", input={})
+    _tool(screen, "1", status="running", input={"command": "make test"})
+    _tool(screen, "1", status="completed", input={"command": "make test"},
+          output="1073 passed")
+    _said(screen, " Усе пройшло.")
     screen.end("done", "Усе пройшло.")
 
     assert screen.text().splitlines() == [
@@ -56,13 +69,12 @@ def test_new_work_is_set_apart_and_work_that_goes_on_is_not():
 
 def test_a_call_that_never_says_what_it_runs_is_shown_by_its_title_once():
     screen = Terminal()
-    screen.feed("in", _update(sessionUpdate="tool_call", toolCallId="1", title="Пошук у вебі"))
-    screen.feed("in", _update(sessionUpdate="tool_call_update", toolCallId="1",
-                              status="completed"))
-    screen.feed("in", _update(sessionUpdate="tool_call", toolCallId="2", title="read",
-                              rawInput={"file_path": "a.txt"}))
-    screen.feed("in", _update(sessionUpdate="tool_call_update", toolCallId="2",
-                              title="read", rawInput={"file_path": "a.txt"}))
+    _tool(screen, "1", tool="Пошук у вебі", status="running")
+    _tool(screen, "1", tool="Пошук у вебі", status="completed")
+    _tool(screen, "2", tool="read", status="running",
+          input={"filePath": "a.txt"})
+    _tool(screen, "2", tool="read", status="completed",
+          input={"filePath": "a.txt"})
 
     assert screen.text().splitlines() == ["• Пошук у вебі", "• read a.txt"]
 
@@ -70,9 +82,7 @@ def test_a_call_that_never_says_what_it_runs_is_shown_by_its_title_once():
 def test_long_output_is_cut_and_says_how_much_is_left():
     screen = Terminal()
     out = "\n".join(f"рядок {i}" for i in range(OUTPUT_LINES + 4))
-    screen.feed("in", _update(sessionUpdate="tool_call_update", toolCallId="1",
-                              rawInput={"command": "ls"}, status="completed",
-                              rawOutput={"output": out}))
+    _tool(screen, "1", status="completed", input={"command": "ls"}, output=out)
 
     lines = screen.text().splitlines()
     assert lines[0] == "$ ls"
@@ -82,10 +92,10 @@ def test_long_output_is_cut_and_says_how_much_is_left():
 
 def test_thinking_leaked_into_the_answer_and_our_own_messages_are_left_out():
     screen = Terminal()
-    screen.feed("out", _update(sessionUpdate="agent_message_chunk", content={"text": "ні"}))
-    screen.feed("in", {"method": "session/prompt"})
-    screen.feed("in", _update(sessionUpdate="agent_message_chunk",
-                              content={"text": "<think>хм</think>Готово."}))
+    _role(screen, "user")
+    _said(screen, "це мої власні слова")
+    _role(screen, "assistant")
+    _said(screen, "<think>хм</think>Готово.")
     screen.end("stopped", "Зупинено.")
 
     assert screen.text().splitlines() == ["агент: Готово.", "■ зупинено"]
@@ -100,12 +110,11 @@ def test_every_line_written_counts_even_when_the_screen_is_full():
     assert len(screen.lines) < 400
 
 
-
 def test_while_work_runs_what_the_agent_says_so_far_shows_and_that_it_works():
     screen = Terminal()
     screen.begin("скільки місця", new=True, at=AT)
-    screen.feed("in", _update(sessionUpdate="agent_message_chunk",
-                              content={"text": "Дивлюсь"}))
+    _role(screen, "assistant")
+    _said(screen, "Дивлюсь")
 
     assert screen.text().splitlines()[-2:] == ["агент: Дивлюсь", "⋯ працює"]
     screen.end("done", "")
@@ -114,12 +123,10 @@ def test_while_work_runs_what_the_agent_says_so_far_shows_and_that_it_works():
 
 def test_a_command_shows_one_line_without_the_agents_noise():
     screen = Terminal()
-    screen.feed("in", _update(
-        sessionUpdate="tool_call", toolCallId="1",
-        rawInput={"command": "export CI=true PAGER=cat; GIT_PAGER=cat; cd ~/x && ls"}))
-    screen.feed("in", _update(
-        sessionUpdate="tool_call", toolCallId="2",
-        rawInput={"command": "export CI=true PAGER=cat; python3 - <<'EOF'\nimport os\nEOF"}))
+    _tool(screen, "1", status="running",
+          input={"command": "export CI=true PAGER=cat; GIT_PAGER=cat; cd ~/x && ls"})
+    _tool(screen, "2", status="running",
+          input={"command": "export CI=true PAGER=cat; python3 - <<'EOF'\nimport os\nEOF"})
 
     assert screen.text().splitlines() == [
         "$ cd ~/x && ls", "$ python3 - <<'EOF' …"]
@@ -128,13 +135,20 @@ def test_a_command_shows_one_line_without_the_agents_noise():
 def test_a_refusal_reads_as_the_persons_no_and_not_as_an_error():
     screen = Terminal()
     screen.permit("bash python3 - <<'EOF'\nimport os", allowed=False)
-    screen.feed("in", _update(
-        sessionUpdate="tool_call_update", toolCallId="1", status="failed",
-        content=[{"type": "content", "content": {
-            "type": "text",
-            "text": "The user rejected permission to use this specific tool call."}}]))
+    _tool(screen, "1", status="error",
+          input={"command": "bash python3 - <<'EOF'\nimport os"},
+          output="The user rejected permission to use this specific tool call.")
 
     assert screen.text().splitlines() == ["  ? дозволити: bash python3 - <<'EOF' … → ні"]
+
+
+def test_a_question_of_the_agents_own_shows_on_the_screen():
+    screen = Terminal()
+    screen.begin("опублікуй", new=True, at=AT)
+    screen.feed(_event("question.asked", sessionID="s1", questions=[
+        {"question": "Куди писати?", "header": "Heare"}]))
+
+    assert screen.text().splitlines()[-2:] == ["? Куди писати?", "⋯ працює"]
 
 
 def test_a_question_waiting_for_the_person_shows_until_it_is_answered():
@@ -144,7 +158,6 @@ def test_a_question_waiting_for_the_person_shows_until_it_is_answered():
     assert screen.text().splitlines()[-1] == "  ? чекає дозволу: git push"
     screen.permit("git push", True)
     assert screen.text().splitlines()[-2:] == ["  ? дозволити: git push → так", "⋯ працює"]
-
 
 
 def test_what_the_gate_lets_through_reads_as_done_on_its_own_and_why():

@@ -1,10 +1,14 @@
-"""The agent's way to ask the person something mid-work.
+"""The agent's way back to the person: show them something.
 
     python -m heare.reach.bridge --socket ~/.heare/hands-123.sock
 
-An MCP server over stdio: the agent starts it, lists its tools, and the
-one tool — ``ask`` — goes down the socket to the hands, which carries the
-question through the door to the person and waits for their words.
+An MCP server over stdio. The agent starts it (our own config names it),
+lists its tools, and calls ``show``: a card or a link in the chat. The call
+goes down the hands' socket, and the hands carry it through the door — the
+agent never holds the brain's key.
+
+A question is not here: opencode asks one natively (``question``), and two
+ways to ask the same thing would be one too many.
 """
 
 from __future__ import annotations
@@ -15,16 +19,34 @@ import json
 import sys
 
 TOOLS = [{
-    "name": "ask",
+    "name": "show",
     "description": (
-        "Ask the person a question and wait for their answer. Use it when the "
-        "task cannot go on without a word from them — a path, a choice, a "
-        "detail only they know."
+        "Show the person something in the chat: a small html card or a link. "
+        "Use it when a picture is worth more than words — a table, a diff, a "
+        "chart, a page you made. The card is drawn beside the conversation; "
+        "do not repeat its contents in your answer."
     ),
     "inputSchema": {
         "type": "object",
-        "properties": {"question": {"type": "string"}},
-        "required": ["question"],
+        "properties": {
+            "html": {
+                "type": "string",
+                "description": (
+                    "The card's body, as html. No scripts, no styles, no "
+                    "remote pictures: the page keeps only the markup."
+                ),
+            },
+            "url": {
+                "type": "string",
+                "description": "A page to link instead of a card (http/https).",
+            },
+            "title": {"type": "string", "description": "The card's name."},
+            "say": {
+                "type": "string",
+                "description": "One short sentence about what it shows.",
+            },
+        },
+        "required": [],
     },
 }]
 
@@ -34,11 +56,10 @@ def _reply(body: dict) -> None:
     sys.stdout.flush()
 
 
-async def _ask(socket: str, question: str) -> str:
+async def _call(socket: str, request: dict) -> str:
     reader, writer = await asyncio.open_unix_connection(socket)
     try:
-        writer.write((json.dumps({"tool": "ask", "question": question},
-                                 ensure_ascii=False) + "\n").encode())
+        writer.write((json.dumps(request, ensure_ascii=False) + "\n").encode())
         await writer.drain()
         line = await reader.readline()
         return str((json.loads(line or b"{}") or {}).get("answer") or "")
@@ -54,10 +75,10 @@ async def serve(socket: str) -> None:
         if not line:
             return
         try:
-            msg = json.loads(line)
+            message = json.loads(line)
         except ValueError:
             continue
-        method, rid = msg.get("method"), msg.get("id")
+        method, rid = message.get("method"), message.get("id")
         if method == "initialize":
             _reply({"jsonrpc": "2.0", "id": rid, "result": {
                 "protocolVersion": "2024-11-05",
@@ -67,16 +88,16 @@ async def serve(socket: str) -> None:
         elif method == "tools/list":
             _reply({"jsonrpc": "2.0", "id": rid, "result": {"tools": TOOLS}})
         elif method == "tools/call":
-            params = msg.get("params") or {}
+            params = message.get("params") or {}
             arguments = params.get("arguments") or {}
-            if params.get("name") != "ask":
+            if params.get("name") != "show":
                 _reply({"jsonrpc": "2.0", "id": rid, "result": {
                     "content": [{"type": "text", "text": "no such tool"}],
                     "isError": True,
                 }})
                 continue
             try:
-                answer = await _ask(socket, str(arguments.get("question") or ""))
+                answer = await _call(socket, {"tool": "show", **arguments})
             except OSError as exc:
                 answer = f"the person is not reachable: {exc}"
             _reply({"jsonrpc": "2.0", "id": rid, "result": {

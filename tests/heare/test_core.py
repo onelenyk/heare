@@ -524,6 +524,32 @@ async def test_the_look_loop_respects_its_deadline(monkeypatch):
     await room.close()
 
 
+async def test_a_verb_goes_straight_to_the_hands_it_names():
+    room = await open_room()
+    worker = Worker()
+    room.core.add_executor(worker)
+
+    task = room.core.delegate("повернути останню зміну", hand="worker", verb="undo")
+    await room.until(lambda: worker.tasks, timeout=10)
+    worker.release.set()
+    await room.until(lambda: task.status == "done", timeout=10)
+
+    assert worker.tasks == ["повернути останню зміну"]
+    assert worker.verbs == ["undo"]
+    await room.close()
+
+
+async def test_a_verb_for_hands_that_are_not_here_fails_out_loud():
+    room = await open_room()
+    room.core.add_executor(Worker())
+
+    task = room.core.delegate("повернути останню зміну", hand="nobody", verb="undo")
+    await room.until(lambda: task.status == "failed", timeout=10)
+
+    assert "nobody" in task.result
+    await room.close()
+
+
 async def test_delegated_work_leaves_the_person_free_and_comes_back():
     room = await open_room()
     worker = Worker(result="Білд зелений.")
