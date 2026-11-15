@@ -1831,7 +1831,14 @@ def build(core: Core, settings: Any, vitals: Any = None,
             await asyncio.sleep(UPDATE_FIRST_S)
             while True:
                 if settings.update_check is not False:
-                    await updates.check()
+                    try:
+                        await updates.check()
+                    except Exception:  # noqa: BLE001
+                        # A check that breaks must not stop the clock: a brain
+                        # that never asks again offers no update at all, and
+                        # nothing on the page would say why. Measured on
+                        # 15 November: the state stayed «idle» for hours.
+                        logger.exception("could not ask about a new version")
                 await asyncio.sleep(UPDATE_EVERY_S)
 
         task = asyncio.create_task(every_day())

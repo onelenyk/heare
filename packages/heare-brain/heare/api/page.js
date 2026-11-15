@@ -1257,7 +1257,7 @@ function drawUpdate(u) {
     box.replaceChildren(el("b", "", tr("heare {v} is out", {v: u.latest})), ...behind);
     return;
   }
-  if (!u || !["available", "downloading", "backing_up", "installing", "updated", "failed"].includes(u.state)) {
+  if (!u || !["idle", "available", "downloading", "backing_up", "installing", "updated", "failed"].includes(u.state)) {
     box.hidden = true; return;
   }
   box.hidden = false;
@@ -1281,6 +1281,17 @@ function drawUpdate(u) {
     }
     parts.push(...machinesBehind(u));
     if (u.notes) parts.push(el("p", "notes", u.notes));
+  } else if (u.state === "idle") {
+    // A brain that has not asked yet says so and can be asked: silence here
+    // once hid every update for hours (15 November).
+    const ask = el("button", "mini", tr("Check for updates…"));
+    ask.type = "button";
+    ask.onclick = () => {
+      ask.disabled = true;
+      api("update/check", {method: "POST"}).then(drawUpdate)
+        .catch(() => { ask.disabled = false; });
+    };
+    parts.push(ask);
   } else if (u.state === "failed") {
     parts.push(el("b", "", tr("The update failed")), el("span", "", u.error || ""));
     const again = el("button", "mini", tr("Check again"));
