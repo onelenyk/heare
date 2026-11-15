@@ -11,6 +11,11 @@
 FROM python:3.12-slim
 
 RUN useradd --create-home --uid 1000 heare
+# Coolify's own healthcheck asks with curl (or wget); the slim image has
+# neither, and a container it cannot check reads as unhealthy forever.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir supervisor
 
 WORKDIR /src
