@@ -32,6 +32,11 @@ from tests.heare.fakes import Says, Script, Worker, open_room
 HOST = "bench"
 
 
+def acting(pid: str, skill: str, **args) -> tuple[str, dict]:
+    """A `body` call: the pid says which board, the skill its own arguments."""
+    return "body", {"part": pid, "skill": skill, "args": args}
+
+
 class Bench:
     def __init__(self, room, settings, boards, hands: dict[str, Script]):
         self.room, self.settings = room, settings
@@ -126,7 +131,7 @@ async def test_words_go_from_the_voice_through_the_hands_to_the_board(tmp_path):
     desk = sim.Board("desk")
     async with bench(tmp_path, desk) as b:
         b.say("покажи hello на платі",
-              Says(calls=(("desk__show", {"text": "hello", "seconds": 5}),)), "Показав.")
+              Says(calls=(acting(desk.pid, "show", text="hello", seconds=5),)), "Показав.")
 
         task = await b.finished()
 
@@ -141,7 +146,7 @@ async def test_an_svg_the_model_writes_reaches_the_board_as_its_pixels(tmp_path)
     heart = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 40">'
              '<circle cx="36" cy="20" r="14" fill="white"/></svg>')
     async with bench(tmp_path, desk) as b:
-        b.say("намалюй коло", Says(calls=(("desk__image", {"svg": heart}),)), "Намалював.")
+        b.say("намалюй коло", Says(calls=(acting(desk.pid, "image", svg=heart),)), "Намалював.")
 
         await b.finished()
 
@@ -159,10 +164,10 @@ async def test_a_scene_reaches_the_board_with_its_icons_drawn_and_updates_after(
                "layout": {"cols": [{"widget": "icon", "svg": sun},
                                    {"w": 2, "widget": "number", "bind": "t", "unit": "°"}]}}
     async with bench(tmp_path, desk) as b:
-        b.say("покажи погоду", Says(calls=(("desk__screen", {"scene": weather, "layer": "pin"}),)),
+        b.say("покажи погоду", Says(calls=(acting(desk.pid, "screen", scene=weather, layer="pin"),)),
               "Показав.")
         await b.finished()
-        b.say("тепер 22", Says(calls=(("desk__update", {"id": "weather", "fields": {"t": 22}}),)),
+        b.say("тепер 22", Says(calls=(acting(desk.pid, "update", id="weather", fields={"t": 22}),)),
               "Оновив.")
         await b.until(lambda: desk.scenes.get("weather", {}).get("fields", {}).get("t") == 22,
                       what="the field updated")
@@ -174,7 +179,7 @@ async def test_a_scene_reaches_the_board_with_its_icons_drawn_and_updates_after(
 async def test_a_world_changing_skill_waits_for_a_yes(tmp_path):
     desk = sim.Board("desk")
     async with bench(tmp_path, desk) as b:
-        b.say("увімкни pin3", Says(calls=(("desk__pin3", {"on": True}),)), "Увімкнув.")
+        b.say("увімкни pin3", Says(calls=(acting(desk.pid, "pin3", on=True),)), "Увімкнув.")
 
         await b.until(lambda: b.room.core.state.permission is not None, what="the question")
         assert desk.pins == {}
@@ -188,34 +193,32 @@ async def test_a_sensor_is_only_a_skill_its_board_brings(tmp_path):
     kitchen.skills.append(dict(sim.SENSOR))
     async with bench(tmp_path, kitchen) as b:
         b.say("яка температура на кухні",
-              Says(calls=(("kitchen__temperature", {}),)), "19 градусів.")
+              Says(calls=(acting(kitchen.pid, "temperature"),)), "19 градусів.")
 
         task = await b.finished()
 
         assert task.result == "19 градусів."
         assert b.hand_model.asked[1][-1]["content"] == "19.0"
-        assert "kitchen__temperature" in b.hand_model.offered[0]
+        described = " ".join(t["function"]["description"] for t in b.hand_model.tools[0])
+        assert "temperature" in described
 
 
-async def test_two_boards_are_told_apart_by_their_names(tmp_path):
+async def test_two_boards_are_told_apart_by_their_pids(tmp_path):
     desk, kitchen = sim.Board("desk"), sim.Board("kitchen", about="на кухні")
     async with bench(tmp_path, desk, kitchen) as b:
         b.say("покажи hi на кухні",
-              Says(calls=(("kitchen__show", {"text": "hi"}),)), "Показав.")
+              Says(calls=(acting(kitchen.pid, "show", text="hi"),)), "Показав.")
 
         await b.finished()
 
         assert kitchen.shown == "hi" and desk.shown == ""
-        assert {"desk__show", "kitchen__show"} <= set(b.hand_model.offered[0])
+        assert {"body", "run", "show", "pass_to_cli_hands"} <= set(b.hand_model.offered[0])
 
 
-async def test_twins_of_one_name_are_asked_about(tmp_path):
+async def test_two_boards_of_one_name_are_told_apart_by_their_pid(tmp_path):
     one, two = sim.Board("desk", host="one"), sim.Board("desk", host="two")
     async with bench(tmp_path, one, two) as b:
-        b.say("покажи hi", Says(calls=(("desk__show", {"text": "hi"}),)), "Показав.")
-
-        await b.until(lambda: b.room.core.state.question is not None, what="which board")
-        b.room.core.hear(Message(text="2", channel="screen"))
+        b.say("покажи hi", Says(calls=(acting(two.pid, "show", text="hi"),)), "Показав.")
 
         await b.until(lambda: two.shown == "hi", what="the second twin shows it")
         assert one.shown == ""
@@ -225,7 +228,7 @@ async def test_a_board_that_does_not_answer_is_not_said_to_have_done_it(tmp_path
     monkeypatch.setattr(skills, "CALL_S", 0.3)
     desk = sim.Board("desk", deaf=True)
     async with bench(tmp_path, desk) as b:
-        b.say("блимни", Says(calls=(("desk__light", {"mode": "blink"}),)), "Не вийшло.")
+        b.say("блимни", Says(calls=(acting(desk.pid, "light", mode="blink"),)), "Не вийшло.")
 
         await b.finished()
 
@@ -270,7 +273,7 @@ async def test_two_machines_each_get_their_own_hands(tmp_path):
         assert set(b.room.core.executors) == {"native-hands@server", "native-hands@mac"}
 
         b.say("покажи hello на платі",
-              Says(calls=(("desk__show", {"text": "hello", "seconds": 5}),)),
+              Says(calls=(acting(desk.pid, "show", text="hello", seconds=5),)),
               "Показав.", hand_id="native-hands@server")
 
         task = await b.finished()
@@ -286,7 +289,7 @@ async def test_without_a_machine_the_hands_where_the_person_spoke_take_it(tmp_pa
                       what="two hands, one per machine")
 
         b.say("покажи hello на платі",
-              Says(calls=(("desk__show", {"text": "hello", "seconds": 5}),)),
+              Says(calls=(acting(desk.pid, "show", text="hello", seconds=5),)),
               "Показав.", origin="server")
 
         task = await b.finished()

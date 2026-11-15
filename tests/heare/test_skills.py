@@ -7,7 +7,7 @@ import hashlib
 import json
 
 from heare.api import skills
-from heare.native_hands import SAME_CALL, NativeHand, catalog
+from heare.native_hands import SAME_CALL, NativeHand
 from tests.heare.fakes import Says, Script
 
 SHOW = {"name": "show", "about": "Показати слова", "effect": "harmless",
@@ -156,13 +156,9 @@ def _part(name, *own, about=""):
             "skills": list(own), "values": {}}
 
 
-def test_every_part_s_skills_are_tools_named_for_their_part():
-    tools = catalog({"oled-desk@sim": _part("desk", SHOW, about="на столі"),
-                     "oled-kitchen@sim": _part("kitchen", SHOW, HEAT)})
-    assert set(tools) == {"desk__show", "kitchen__show", "kitchen__temperature"}
-    schema = tools["desk__show"].schema()["function"]
-    assert schema["description"] == "desk (на столі): Показати слова"
-    assert schema["parameters"] == SHOW["params"]
+def acting(pid: str, skill: str, **args) -> tuple[str, dict]:
+    """A `body` call: the pid says which part, so no twin is guessed."""
+    return "body", {"part": pid, "skill": skill, "args": args}
 
 
 class Devices:
@@ -205,8 +201,8 @@ def _hand(devices, *answers):
 
 async def test_a_reading_and_a_harmless_skill_need_no_leave():
     devices = Devices({"oled-desk@sim": _part("desk", SHOW, HEAT)}, {"ok": True, "result": 21.5})
-    hand, model = _hand(devices, Says(calls=(("desk__temperature", {}),
-                                             ("desk__show", {"text": "21"}))), "21,5 градуса.")
+    hand, model = _hand(devices, Says(calls=(acting("oled-desk@sim", "temperature"),
+                                             acting("oled-desk@sim", "show", text="21"))), "21,5 градуса.")
     desk = Desk()
 
     assert await hand.run("яка температура, і покажи", desk) == "21,5 градуса."
@@ -218,7 +214,7 @@ async def test_a_reading_and_a_harmless_skill_need_no_leave():
 
 async def test_a_world_changing_skill_goes_through_the_judge():
     devices = Devices({"oled-desk@sim": _part("desk", PIN)})
-    hand, _ = _hand(devices, Says(calls=(("desk__pin3", {"on": True}),)), "Так.")
+    hand, _ = _hand(devices, Says(calls=(acting("oled-desk@sim", "pin3", on=True),)), "Так.")
     desk = Desk(allow=False)
 
     await hand.run("увімкни лампу", desk)
@@ -226,21 +222,19 @@ async def test_a_world_changing_skill_goes_through_the_judge():
     assert desk.permits == ["judge"] and devices.calls == []
 
 
-async def test_twins_of_one_name_are_asked_about():
+async def test_two_boards_of_one_name_are_told_apart_by_their_pid():
     devices = Devices({"oled-desk@a": _part("desk", SHOW), "oled-desk@b": _part("desk", SHOW)})
-    hand, _ = _hand(devices, Says(calls=(("desk__show", {"text": "hi"}),)), "Показав.")
-    desk = Desk(says="другу, 2")
+    hand, _ = _hand(devices, Says(calls=(acting("oled-desk@b", "show", text="hi"),)), "Показав.")
 
-    await hand.run("покажи hi", desk)
+    await hand.run("покажи hi", Desk())
 
-    assert "oled-desk@a" in desk.questions[0] and "oled-desk@b" in desk.questions[0]
     assert devices.calls == [("oled-desk@b", "show", {"text": "hi"})]
 
 
 async def test_a_part_that_did_not_answer_is_not_said_to_have_done_it():
     devices = Devices({"oled-desk@sim": _part("desk", SHOW)},
                       {"ok": False, "result": "the part did not answer"})
-    hand, model = _hand(devices, Says(calls=(("desk__show", {"text": "hi"}),)), "Не вийшло.")
+    hand, model = _hand(devices, Says(calls=(acting("oled-desk@sim", "show", text="hi"),)), "Не вийшло.")
 
     await hand.run("покажи hi", Desk())
 
@@ -263,7 +257,7 @@ async def test_what_is_not_theirs_the_native_hands_hand_on_as_worded():
 
 async def test_one_act_then_an_answer():
     devices = Devices({"oled-desk@sim": _part("desk", SHOW)}, {"ok": True, "result": "ok"})
-    hand, model = _hand(devices, Says(calls=(("desk__show", {"text": "hi"}),)), "Показав.")
+    hand, model = _hand(devices, Says(calls=(acting("oled-desk@sim", "show", text="hi"),)), "Показав.")
 
     assert await hand.run("покажи hi", Desk()) == "Показав."
     assert devices.calls == [("oled-desk@sim", "show", {"text": "hi"})]
@@ -272,7 +266,7 @@ async def test_one_act_then_an_answer():
 
 async def test_the_same_call_twice_runs_once():
     devices = Devices({"oled-desk@sim": _part("desk", SHOW)}, {"ok": True, "result": "ok"})
-    call = ("desk__show", {"text": "hi"})
+    call = acting("oled-desk@sim", "show", text="hi")
     hand, model = _hand(devices, Says(calls=(call, call)), "Показав.")
 
     assert await hand.run("покажи hi", Desk()) == "Показав."
@@ -283,7 +277,7 @@ async def test_the_same_call_twice_runs_once():
 
 async def test_a_second_repeat_forces_an_answer():
     devices = Devices({"oled-desk@sim": _part("desk", SHOW)}, {"ok": True, "result": "ok"})
-    call = ("desk__show", {"text": "hi"})
+    call = acting("oled-desk@sim", "show", text="hi")
     hand, model = _hand(devices, *[Says(calls=(call,))] * 3, "Готово.")
 
     assert await hand.run("покажи hi", Desk()) == "Готово."
@@ -299,7 +293,7 @@ async def test_a_hung_skill_is_a_failed_step_not_a_hang(monkeypatch):
             return {"ok": True, "result": "ok"}
 
     devices = Hung({"oled-desk@sim": _part("desk", SHOW)})
-    hand, model = _hand(devices, Says(calls=(("desk__show", {"text": "hi"}),)), "Не дочекався.")
+    hand, model = _hand(devices, Says(calls=(acting("oled-desk@sim", "show", text="hi"),)), "Не дочекався.")
     monkeypatch.setattr("heare.native_hands.CALL_S", 0.01)
 
     assert await hand.run("покажи hi", Desk()) == "Не дочекався."
@@ -315,8 +309,9 @@ async def test_a_deadline_with_no_time_left_does_not_call_again(monkeypatch):
             return self.now
 
     devices = Devices({"oled-desk@sim": _part("desk", SHOW)}, {"ok": True, "result": "ok"})
-    step = Says(calls=(("desk__show", {"text": "a"}),))
+    step = Says(calls=(acting("oled-desk@sim", "show", text="a"),))
     hand, model = _hand(devices, step, "Досить.")
+    monkeypatch.setattr("heare.native_hands.DEADLINE_S", 250.0)
     monkeypatch.setattr("heare.native_hands.time", FastClock())
 
     assert await hand.run("показуй", Desk()) == "Done: ok"
@@ -326,7 +321,7 @@ async def test_a_deadline_with_no_time_left_does_not_call_again(monkeypatch):
 async def test_steps_end_in_words_not_raw_results():
     devices = Devices({"oled-desk@sim": _part("desk", SHOW)}, {"ok": True, "result": "ok"})
     hand, _ = _hand(devices, *[
-        Says(text="Далі.", calls=(("desk__show", {"text": n}),)) for n in "abcdef"
+        Says(text="Далі.", calls=(acting("oled-desk@sim", "show", text=n),)) for n in "abcdef"
     ], "Показав усе.")
 
     said = await hand.run("показуй різне", Desk())
@@ -341,7 +336,7 @@ async def test_a_stop_before_a_call_runs_nothing():
             self.stopped = True
 
     devices = Devices({"oled-desk@sim": _part("desk", SHOW)})
-    hand, _ = _hand(devices, Says(calls=(("desk__show", {"text": "a"}),)))
+    hand, _ = _hand(devices, Says(calls=(acting("oled-desk@sim", "show", text="a"),)))
     try:
         await hand.run("покажи", StoppingDesk())
     except asyncio.CancelledError:
@@ -369,7 +364,7 @@ async def test_handoff_still_escapes():
 async def test_the_last_resort_is_the_raw_results():
     devices = Devices({"oled-desk@sim": _part("desk", SHOW)}, {"ok": True, "result": "ok"})
     hand, _ = _hand(devices, *[
-        Says(calls=(("desk__show", {"text": n}),)) for n in "abcdef"
+        Says(calls=(acting("oled-desk@sim", "show", text=n),)) for n in "abcdefgh"
     ], Says(""))
 
     said = await hand.run("показуй різне", Desk())
@@ -380,7 +375,7 @@ async def test_the_last_resort_is_the_raw_results():
 async def test_out_of_steps_ends_in_words():
     devices = Devices({"oled-desk@sim": _part("desk", SHOW)}, {"ok": True, "result": "ok"})
     hand, _ = _hand(devices, *[
-        Says(calls=(("desk__show", {"text": n}),)) for n in "abcdef"
+        Says(calls=(acting("oled-desk@sim", "show", text=n),)) for n in "abcdef"
     ], "Готово.")
 
     assert await hand.run("показуй різне", Desk()) == "Готово."
@@ -388,7 +383,7 @@ async def test_out_of_steps_ends_in_words():
 
 async def test_a_stop_ends_the_work_before_the_next_call():
     devices = Devices({"oled-desk@sim": _part("desk", SHOW)})
-    hand, _ = _hand(devices, Says(calls=(("desk__show", {"text": "a"}),)))
+    hand, _ = _hand(devices, Says(calls=(acting("oled-desk@sim", "show", text="a"),)))
     desk = Desk()
     desk.stopped = True
     try:

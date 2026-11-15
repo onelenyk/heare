@@ -76,9 +76,11 @@ async def test_a_failing_model_is_a_sentence_not_a_traceback():
                                     response=httpx.Response(401))
 
     wire = Wire({"/api/executor/claim": [httpx.Response(200, json={"id": 1, "request": "x"})]})
-    await take(wire, Hand(broken), failed=lambda exc: native_hands.FAILED)
+    await take(wire, Hand(broken), failed=native_hands._reason)
 
-    assert _results(wire) == [{"status": "failed", "result": native_hands.FAILED}]
+    said = _results(wire)[0]["result"]
+    assert said == "Failed: the model refused (401)."
+    assert "secret" not in said
 
 
 async def test_a_stop_is_heard_through_the_step_and_nothing_more_is_done():
@@ -268,6 +270,10 @@ class _Desk:
         return self.says
 
 
+def acting(pid: str, skill: str, **args) -> tuple[str, dict]:
+    return "body", {"part": pid, "skill": skill, "args": args}
+
+
 def _native(devices: _Devices, *answers):
     from heare.native_hands import NativeHand
     from tests.heare.fakes import Script
@@ -290,11 +296,11 @@ async def test_the_native_forced_final_turn_is_inside_the_budget(monkeypatch):
     hand = native_hands.NativeHand(Slow(), _Devices({}))
     started = asyncio.get_running_loop().time()
 
-    assert await hand.run("покажи", _Desk()) == "Done: "
+    assert await hand.run("покажи", _Desk()) == "Done."
     assert asyncio.get_running_loop().time() - started < 1.0
 
 
-async def test_duplicate_skill_names_use_the_effect_of_the_part_called():
+async def test_the_effect_of_the_part_named_is_the_one_used():
     from tests.heare.fakes import Says
 
     harmless = {"name": "show", "about": "Показати слова", "effect": "harmless",
@@ -302,17 +308,16 @@ async def test_duplicate_skill_names_use_the_effect_of_the_part_called():
     changing = {**harmless, "effect": "change"}
     parts = {"oled-a": _part("desk", harmless), "oled-b": _part("desk", changing)}
     devices = _Devices(parts)
-    call = ("desk__show", {"text": "hi"})
 
-    hand, _ = _native(devices, Says(calls=(call,)), "Показав.")
-    quiet = _Desk(says="1")
+    hand, _ = _native(devices, Says(calls=(acting("oled-a", "show", text="hi"),)), "Показав.")
+    quiet = _Desk()
     await hand.run("покажи", quiet)
     assert quiet.permits == []
     assert devices.calls == [("oled-a", "show", {"text": "hi"})]
 
     devices.calls.clear()
-    hand, _ = _native(devices, Says(calls=(call,)), "Не можна.")
-    guarded = _Desk(allow=False, says="2")
+    hand, _ = _native(devices, Says(calls=(acting("oled-b", "show", text="hi"),)), "Не можна.")
+    guarded = _Desk(allow=False)
     await hand.run("покажи", guarded)
     assert guarded.permits == ["judge"]
     assert devices.calls == []

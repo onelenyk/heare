@@ -150,6 +150,10 @@ class RemoteExecutor:
         allowed = await job.desk.permit(what, kind, detail)
         return allowed, False
 
+    def knows(self, job_id: int) -> bool:
+        """Whether this body has that piece of work in hand."""
+        return job_id in self._jobs
+
     def verdict(self, job_id: int) -> tuple[str, str]:
         """Who allowed the job's last action, and why: the gate or the person."""
         job = self._jobs.get(job_id)

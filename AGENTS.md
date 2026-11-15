@@ -105,7 +105,8 @@ Parts — separate processes that knock and wait for approval on the page:
 
 ```bash
 uv run heare-cli-hands     # руки через агентний CLI (opencode)
-uv run heare-native-hands  # швидкі руки: дії з тілами, без агента
+uv run heare-native-hands  # термінал на цій машині й тіла, без агента
+uv run heare-bodies        # що вміють тіла; один скіл однієї частини
 uv run heare-eyes
 uv run heare-voice
 uv run heare-chat
@@ -123,7 +124,7 @@ model — and are excluded by default.
 | The door: HTTP, events, page, parts registry | `packages/heare-brain/heare/api/server.py`, `packages/heare-brain/heare/api/page.html` |
 | The canvas: what the model shows | `packages/heare-brain/heare/api/canvas.py` |
 | Hands: an agent over ACP | `packages/heare-cli-hands/heare/cli_hands.py`, `packages/heare-reach/heare/reach/` |
-| Native hands: quick acts on the parts, no agent | `packages/heare-native-hands/heare/native_hands.py`; the hands' life `heare-core/heare/hand.py`; a model for parts `heare-core/heare/talk.py` |
+| Native hands: a terminal on this machine and the body skills, no agent | `packages/heare-native-hands/heare/native_hands.py` (`run`, `body`), `heare/bodies.py` (`heare-bodies`); the hands' life `heare-core/heare/hand.py`; a model for parts `heare-core/heare/talk.py` |
 | Skills: what a part can do, calls with answers | `packages/heare-brain/heare/api/skills.py`; protocol §6; who gets the work `heare-brain/heare/model/route.py` |
 | A bench for hands and bodies | `make bench` (`tests/heare/test_bench.py`), virtual boards `packages/heare-sim/heare/sim.py`; live: `make eval-route` |
 | Hands' runner: which CLI, sign-in, models | `packages/heare-reach/heare/reach/runner.py` — the hands', never the brain's |

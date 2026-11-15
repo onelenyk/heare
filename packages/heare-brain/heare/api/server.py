@@ -412,7 +412,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         ("GET", re.compile(r"^/api/events$")),
         ("POST", re.compile(r"^/api/keys/ask$")),
         ("POST", re.compile(r"^/api/executor/claim$")),
-        ("POST", re.compile(r"^/api/executor/\d+/(step|permit|result|ask)$")),
+        ("POST", re.compile(r"^/api/executor/\d+/(step|permit|result|ask|show)$")),
     )
 
     PERMISSION = re.compile(r"^/api/permission/\d+$")
@@ -684,7 +684,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         if found is None:
             raise web.HTTPNotFound(text="no such file")
         meta, path = found
-        shown = "inline" if meta["kind"] == "image" else "attachment"
+        shown = "inline" if meta["kind"] in ("image", "audio", "video") else "attachment"
         return web.FileResponse(path, headers={
             "Content-Disposition": f"{shown}; filename*=UTF-8''{quote(meta['name'])}",
             "Content-Type": mimetypes.guess_type(meta["name"])[0] if shown == "inline"
@@ -807,6 +807,22 @@ def build(core: Core, settings: Any, vitals: Any = None,
         except Gone:
             raise web.HTTPNotFound(text="no such job") from None
         return web.json_response({"answer": answer})
+
+    async def executor_show(request: web.Request) -> web.Response:
+        """A card a hand made: the person sees it now, in the chat.
+
+        The part says what to draw and, for a file, sends its own bytes: the
+        brain may be on another machine. The words of the work stay words."""
+        data = await body(request)
+        found = _executor_for(request)
+        job = int(request.match_info["id"])
+        if not found.knows(job):
+            raise web.HTTPNotFound(text="no such job")
+        try:
+            shown = timeline.from_part(data)
+        except ValueError as exc:
+            raise web.HTTPBadRequest(text=str(exc)) from None
+        return web.json_response(shown)
 
     async def result(request: web.Request) -> web.Response:
         data = await body(request)
@@ -1875,6 +1891,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.post("/api/executor/{id:\\d+}/step", step),
         web.post("/api/executor/{id:\\d+}/permit", executor_permit),
         web.post("/api/executor/{id:\\d+}/ask", executor_ask),
+        web.post("/api/executor/{id:\\d+}/show", executor_show),
         web.post("/api/executor/{id:\\d+}/result", result),
         web.post("/api/input", input_event),
         web.post("/api/input/said_over", said_over),

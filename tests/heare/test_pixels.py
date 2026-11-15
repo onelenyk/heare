@@ -7,7 +7,7 @@ import base64
 import pytest
 
 from heare import pixels
-from heare.native_hands import _rendered
+from heare.bodies import rendered
 
 SPEC = {"to": "mono", "width": 72, "height": 40, "as": "bitmap"}
 DOT = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 40">'
@@ -53,9 +53,9 @@ def test_bits_are_rows_eight_pixels_a_byte_leftmost_highest():
 
 def test_the_hands_render_what_the_skill_asks_and_pass_the_rest():
     skill = {"render": {"svg": SPEC}}
-    args = _rendered(skill, {"svg": DOT, "seconds": 5})
+    args = rendered(skill, {"svg": DOT, "seconds": 5})
     assert set(args) == {"bitmap", "seconds"} and args["seconds"] == 5
-    assert _rendered({}, {"svg": DOT}) == {"svg": DOT}
+    assert rendered({}, {"svg": DOT}) == {"svg": DOT}
 
 
 def test_deep_rules_render_an_icon_small_and_a_picture_whole():
@@ -70,7 +70,7 @@ def test_deep_rules_render_an_icon_small_and_a_picture_whole():
                                             {"widget": "text", "text": "svg"}]}}
     args = {"scene": scene, "layer": "pin"}
 
-    done = _rendered({"render": {"scene": rules}}, args)
+    done = rendered({"render": {"scene": rules}}, args)
 
     icon, picture, text = done["scene"]["layout"]["cols"]
     assert len(base64.b64decode(icon["bits"])) == 32 and "svg" not in icon
@@ -85,7 +85,7 @@ def test_frames_are_drawn_one_by_one_in_order():
     small = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">'
              '<circle cx="8" cy="8" r="{}" fill="white"/></svg>')
     args = {"scene": {"layout": {"widget": "icon", "frames": [small.format(3), small.format(7)]}}}
-    done = _rendered({"render": {"scene": [rule]}}, args)
+    done = rendered({"render": {"scene": [rule]}}, args)
     frames = [base64.b64decode(f) for f in done["scene"]["layout"]["frames"]]
     assert len(frames) == 2 and all(len(f) == 32 for f in frames)
     assert sum(bin(b).count("1") for b in frames[0]) < sum(bin(b).count("1") for b in frames[1])

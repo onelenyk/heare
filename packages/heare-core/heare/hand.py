@@ -68,6 +68,11 @@ class Desk:
     def _path(self, what: str) -> str:
         return f"/api/executor/{self._job.id}/{what}"
 
+    @property
+    def job_id(self) -> int:
+        """The work's id in the brain's table: a card shown mid-work names it."""
+        return self._job.id
+
     def step(self, text: str) -> None:
         """What it is doing — said without waiting: a step is not an answer."""
         job = asyncio.create_task(self._step(text))

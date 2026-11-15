@@ -8,8 +8,11 @@ and is the Surface the model will draw on (the verbs arrive next).
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import logging
+import mimetypes
 import re
 import time
 from pathlib import Path
@@ -26,6 +29,12 @@ _TITLE = re.compile(r"<\s*h[23][^>]*>(.*?)</\s*h[23]\s*>", re.IGNORECASE | re.DO
 _LIVE = re.compile(r"<\s*script\b", re.IGNORECASE)
 _MARK = "canvas.migrated.json"
 _WIDE = ("m", "l")
+# What a hand may put before the person, and how much of it: the kinds the
+# page draws, the card's own length, and a file kept beside the session.
+PART_KINDS = ("html", "link", "image", "audio", "video")
+PART_HTML = 200_000
+PART_BYTES = 4_000_000
+PART_NAME = 120
 
 
 def _title(html: str) -> str:
@@ -45,6 +54,23 @@ def _label(html: str) -> str:
     if "<script" in low:
         return "game"
     return "card"
+
+
+def _part_bytes(body: dict) -> tuple[bytes, str]:
+    """The part's file, decoded and named; too much is refused, not kept."""
+    name = Path(str(body.get("name") or "file").replace("\\", "/")).name[:PART_NAME]
+    said = str(body.get("data") or "")
+    if not said:
+        raise ValueError("no file")
+    if len(said) > (PART_BYTES + 2) * 4 // 3:
+        raise ValueError("the file is too large")
+    try:
+        raw = base64.b64decode(said, validate=True)
+    except (binascii.Error, ValueError):
+        raise ValueError("the file is not base64") from None
+    if len(raw) > PART_BYTES:
+        raise ValueError("the file is too large")
+    return raw, name or "file"
 
 
 def _verb(name: str, description: str, properties: dict, required: list[str]) -> dict:
@@ -144,6 +170,57 @@ class Timeline:
 
     def withdraw(self, n: int) -> dict | None:
         return self._sessions.patch(self._sessions.active, n, status="withdrawn")
+
+    def from_part(self, body: dict) -> dict:
+        """A card a hand asked for: the messages the voice may make, and for
+        a file the part's own bytes kept beside the session.
+
+        Raises ``ValueError`` for a kind, a size or an address the page cannot
+        show; the part hears one sentence, the person sees nothing."""
+        kind = str(body.get("kind") or "").strip()
+        if kind not in PART_KINDS:
+            raise ValueError("no such kind")
+        say = str(body.get("say") or "").strip()[:400]
+        title = str(body.get("title") or "").strip()[:200]
+        width = "w" if str(body.get("width") or "") == "w" else "s"
+        session = self._sessions.active
+        if kind == "html":
+            html = clean(str(body.get("html") or ""))
+            if not html.strip():
+                raise ValueError("nothing to show")
+            if len(html) > PART_HTML:
+                raise ValueError("the card is too long")
+            label = str(body.get("label") or "").strip()[:40] or _label(html)
+            message = self._sessions.add(
+                session, "assistant", say or _text(html)[:400], kind="html",
+                html=html, width=width,
+                artifact={"label": label, "title": title or _title(html) or label,
+                          "live": bool(_LIVE.search(html))})
+            return self._shown(message)
+        if kind == "link":
+            url = str(body.get("url") or "").strip()
+            if not re.match(r"^https?://", url, re.IGNORECASE):
+                raise ValueError("only http and https links")
+            message = self._sessions.add(
+                session, "assistant", say or title or url, kind="link", width="s",
+                artifact={"url": url, "title": title or url,
+                          "host": urlparse(url).netloc})
+            return self._shown(message)
+        raw, name = _part_bytes(body)
+        meta = self._sessions.store(session, name, raw)
+        message = self._sessions.add(
+            session, "assistant", say or title or meta["name"], kind=kind,
+            width="s" if kind == "audio" else "w",
+            artifact={"file": meta["id"], "name": meta["name"],
+                      "mime": mimetypes.guess_type(name)[0] or "",
+                      "title": title or meta["name"]})
+        return self._shown(message)
+
+    @staticmethod
+    def _shown(message: dict) -> dict:
+        if not message.get("id"):
+            raise ValueError("no session")
+        return {"shown": message["id"]}
 
     # -- the Surface and the Output --------------------------------------
 

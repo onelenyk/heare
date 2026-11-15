@@ -111,3 +111,69 @@ def test_show_link_and_media_are_checked(tmp_path):
     assert sessions.read(session)[0]["kind"] == "link"
     assert asyncio.run(timeline._show_media({"file": "0" * 32, "kind": "image", "say": "x"}))
     assert len(sessions.read(session)) == 1
+
+
+def test_a_part_s_card_is_a_message_the_page_draws(tmp_path):
+    sessions = Sessions(tmp_path / "s")
+    session = sessions.new()
+    timeline = Timeline(sessions)
+    shown = timeline.from_part({"kind": "html", "html": "<h3>Cat</h3><svg></svg>",
+                                "say": "Ось кіт."})
+    row = sessions.read(session)[0]
+    assert shown["shown"] == row["id"]
+    assert row["kind"] == "html" and row["text"] == "Ось кіт."
+    assert row["artifact"]["title"] == "Cat"
+
+
+def test_a_part_s_picture_is_kept_beside_the_session(tmp_path):
+    import base64
+
+    sessions = Sessions(tmp_path / "s")
+    session = sessions.new()
+    timeline = Timeline(sessions)
+    raw = b"\x89PNG\r\n" + b"x" * 4
+    timeline.from_part({"kind": "image", "name": "cat.png",
+                        "data": base64.b64encode(raw).decode()})
+    row = sessions.read(session)[0]
+    assert row["kind"] == "image" and row["artifact"]["mime"] == "image/png"
+    meta, path = sessions.stored(session, row["artifact"]["file"])
+    assert meta["kind"] == "image" and path.read_bytes() == raw
+
+
+def test_a_part_can_show_a_link_but_not_a_file_url(tmp_path):
+    import pytest
+
+    sessions = Sessions(tmp_path / "s")
+    sessions.new()
+    timeline = Timeline(sessions)
+    timeline.from_part({"kind": "link", "url": "https://example.com", "title": "x"})
+    with pytest.raises(ValueError):
+        timeline.from_part({"kind": "link", "url": "file:///etc/passwd"})
+
+
+def test_a_part_cannot_show_a_kind_the_page_does_not_draw(tmp_path):
+    import pytest
+
+    sessions = Sessions(tmp_path / "s")
+    sessions.new()
+    timeline = Timeline(sessions)
+    with pytest.raises(ValueError):
+        timeline.from_part({"kind": "smell", "html": "<p>x</p>"})
+    with pytest.raises(ValueError):
+        timeline.from_part({"kind": "image", "name": "cat.png", "data": "not base64!"})
+
+
+def test_a_part_cannot_show_more_than_a_cap(tmp_path, monkeypatch):
+    import base64
+
+    import pytest
+
+    from heare.api import timeline as window
+
+    monkeypatch.setattr(window, "PART_BYTES", 4)
+    sessions = Sessions(tmp_path / "s")
+    sessions.new()
+    timeline = Timeline(sessions)
+    with pytest.raises(ValueError):
+        timeline.from_part({"kind": "image", "name": "cat.png",
+                            "data": base64.b64encode(b"x" * 16).decode()})

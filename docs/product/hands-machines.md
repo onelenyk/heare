@@ -141,7 +141,7 @@
 Список рук в описі `delegate` (англійською, як усе, що читає модель):
 
 ```
-- server: native-hands@server — quick acts on the bodies; on its own machine: files, commands, reports.
+- server: native-hands@server — quick acts on the bodies; runs commands on its own machine.
 - mac: opencode@mac — an agent in the terminal: code, files, commands, web search.
 ```
 

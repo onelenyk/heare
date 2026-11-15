@@ -1068,6 +1068,7 @@ LOCAL_ONLY = frozenset({
     ("POST", "/api/executor/{id}/step"),
     ("POST", "/api/executor/{id}/permit"),
     ("POST", "/api/executor/{id}/ask"),
+    ("POST", "/api/executor/{id}/show"),
     ("POST", "/api/executor/{id}/result"),
     ("POST", "/api/canvas/put"),
     ("POST", "/api/canvas/remove"),

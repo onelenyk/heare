@@ -102,6 +102,7 @@ class Script:
         self.answers: list[Says] = []
         self.asked: list[list[dict]] = []
         self.offered: list[list[str]] = []
+        self.tools: list[list[dict]] = []
 
     def will_say(self, *answers: Says | str) -> None:
         self.answers.extend(a if isinstance(a, Says) else Says(a) for a in answers)
@@ -109,6 +110,7 @@ class Script:
     async def reply(self, messages: list[dict], verbs: list[dict]):
         self.asked.append(messages)
         self.offered.append([v["function"]["name"] for v in verbs])
+        self.tools.append(verbs)
         answer = self.answers.pop(0) if self.answers else Says("Не знаю, що сказати.")
         for word in answer.text.split(" ") if answer.text else []:
             yield {"type": "delta", "text": word + " "}

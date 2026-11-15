@@ -287,14 +287,19 @@ class Wire:
         self.values: dict = {}
         self._sending: set[asyncio.Task] = set()
 
-    async def post(self, path: str, body: dict | None = None) -> httpx.Response:
+    async def post(self, path: str, body: dict | None = None,
+                   timeout: float | None = None) -> httpx.Response:
         """A call that outlives a brain restart: while the brain is away the
-        call waits and is made again, instead of ending the part."""
+        call waits and is made again, instead of ending the part.
+
+        A *timeout* bounds one call — a skill that hung; none is given where
+        the wait is the person's, which has no ceiling but their own."""
         said = False
         body = {"v": PROTOCOL, **(body or {})}
         while True:
             try:
-                return await self.client.post(f"{self.base}{path}", json=body)
+                return await self.client.post(f"{self.base}{path}", json=body,
+                                              timeout=timeout)
             except httpx.TransportError as exc:
                 if not said:
                     logger.warning("the brain is away (%s); waiting", exc)
