@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import socketserver
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -51,8 +52,8 @@ class World:
     def update(self, session: str, part: dict) -> None:
         self.emit("message.part.updated", {"sessionID": session, "part": part})
 
-    def say(self, session: str, text: str) -> None:
-        message = f"msg_{session}"
+    def say(self, session: str, text: str, message: str = "") -> None:
+        message = message or f"msg_{session}"
         self.emit("message.updated",
                   {"sessionID": session, "info": {"id": message, "role": "assistant"}})
         self.update(session, {"id": f"prt_{time.monotonic_ns()}", "messageID": message,
@@ -151,8 +152,24 @@ def _chore(world: World, session: str, text: str) -> None:
         world.say(session, "Записано." if answer == "once" else "Відмовлено.")
         world.idle(session)
     else:
-        world.say(session, "Зроблено.")
+        # The way a task talks: an aside first, the answer last.
+        world.say(session, "Дивлюсь.", f"msg_{session}_a")
+        world.say(session, "Зроблено.", f"msg_{session}_b")
         world.idle(session)
+
+
+class Server(ThreadingHTTPServer):
+    """A server that does not ask the resolver for its own name.
+
+    ``http.server`` calls ``socket.getfqdn`` on start; on a runner with no
+    resolver that waits for seconds — the whole suite was 16 minutes for
+    that reason on 15 November — and the server is not listening meanwhile.
+    """
+
+    def server_bind(self) -> None:
+        socketserver.TCPServer.server_bind(self)
+        self.server_name = "127.0.0.1"
+        self.server_port = self.server_address[1]
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -319,7 +336,7 @@ def main() -> None:
     parser.add_argument("--hostname", default="127.0.0.1")
     # ``serve`` comes before the flags from the hands: it is implied here.
     args, _unknown = parser.parse_known_args()
-    server = ThreadingHTTPServer((args.hostname, args.port), Handler)
+    server = Server((args.hostname, args.port), Handler)
     server.daemon_threads = True
     server.serve_forever()
 
