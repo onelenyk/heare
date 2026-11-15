@@ -26,11 +26,12 @@ import re
 import shutil
 import socket
 import subprocess
+import tempfile
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import TypedDict
+from typing import BinaryIO, TypedDict
 
 from heare import keys
 
@@ -84,8 +85,8 @@ _MODELS_TTL_S = 300.0
 _MODELS_CACHE: dict[str, tuple[float, list["ModelGroup"]]] = {}
 
 # A server that does not answer in this long is not the agent's problem to
-# hide: the card says so.
-_CHECK_S = 20.0
+# hide: the card says so. A loaded machine may take a moment to start one.
+_CHECK_S = 30.0
 
 
 class Runner(TypedDict):
@@ -375,26 +376,36 @@ def _probe(
 
 
 def _agent_check(binary: str, env: dict[str, str]) -> Check:
-    """Start the agent and ask it whether it is up: the smoke test."""
+    """Start the agent and ask it whether it is up: the smoke test.
+
+    The probe is local, so it never goes through a proxy the person may have
+    set for the browser — and what the agent said on its way out is kept: a
+    check that fails must say why, not just that it did.
+    """
     port = _free_port()
+    try:
+        err: BinaryIO | int = tempfile.TemporaryFile()
+    except OSError:
+        err = subprocess.DEVNULL
     try:
         proc = subprocess.Popen(
             [binary, "serve", "--port", str(port), "--hostname", "127.0.0.1"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL, stderr=err,
             env=env, start_new_session=True,
         )
     except OSError as exc:
         return {"name": "agent", "ok": False, "detail": f"could not start: {exc}"}
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
         deadline = time.monotonic() + _CHECK_S
         while time.monotonic() < deadline:
             if proc.poll() is not None:
                 return {"name": "agent", "ok": False,
-                        "detail": f"exited with {proc.returncode}"}
+                        "detail": f"exited with {proc.returncode}{_said(err)}"}
             try:
                 request = urllib.request.Request(
                     f"http://127.0.0.1:{port}/global/health")
-                with urllib.request.urlopen(request, timeout=2) as response:
+                with opener.open(request, timeout=2) as response:
                     answer = json.loads(response.read().decode() or "{}")
                 if isinstance(answer, dict) and answer.get("healthy"):
                     version = answer.get("version") or "?"
@@ -403,9 +414,23 @@ def _agent_check(binary: str, env: dict[str, str]) -> Check:
             except (urllib.error.URLError, OSError, ValueError):
                 time.sleep(0.2)
         return {"name": "agent", "ok": False,
-                "detail": f"no answer in {int(_CHECK_S)} s"}
+                "detail": f"no answer in {int(_CHECK_S)} s{_said(err)}"}
     finally:
         _stop(proc)
+
+
+def _said(err: BinaryIO | int) -> str:
+    """The last words a failed start left behind, if any."""
+    if isinstance(err, int):
+        return ""
+    try:
+        err.seek(0)
+        text = err.read().decode("utf-8", "replace").strip()
+    except (OSError, ValueError):
+        return ""
+    if not text:
+        return ""
+    return ": " + " ".join(text.splitlines()[-2:])[:200]
 
 
 def _stop(proc: subprocess.Popen[bytes]) -> None:
