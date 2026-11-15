@@ -12,6 +12,7 @@ import asyncio
 import logging
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -49,13 +50,13 @@ def _sysctl(name: str) -> int | None:
         return None
 
 
-# The counts a Mac adds up itself when it says how much memory is left: the
-# unused pages, the ones a running program may still touch, and the two
-# kinds of cache it would hand back the moment somebody asks. Pages that are
-# free and nothing else are a few hundred megabytes on any Mac that has been
-# up for a while, which reads as "no memory left" on the page.
-MAC_AVAILABLE = ("vm.page_free_count", "vm.page_inactive_count",
-                 "vm.page_purgeable_count", "vm.page_speculative_count")
+# What a Mac counts when it says how much memory is left: pages nobody has
+# touched, pages a program has but could lose, and the cache it would hand
+# back the moment somebody asks. Untouched pages alone are a few hundred
+# megabytes on any Mac that has been up for a while, which reads as "no
+# memory left" on the page. ``vm_stat`` says these; sysctl exposes only the
+# first one and no inactive count at all.
+MAC_PAGES = ("Pages free", "Pages inactive", "Pages speculative")
 
 
 def _linux_memory() -> tuple[int | None, int | None]:
@@ -69,13 +70,33 @@ def _linux_memory() -> tuple[int | None, int | None]:
         return None, None
 
 
+def _mac_pages() -> tuple[dict[str, int], int | None]:
+    """The counts ``vm_stat`` prints, and the page size it prints them in."""
+    try:
+        answer = subprocess.run(["vm_stat"], capture_output=True, text=True,
+                                timeout=2, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return {}, None
+    if answer.returncode != 0:
+        return {}, None
+    counts: dict[str, int] = {}
+    page = None
+    for line in answer.stdout.splitlines():
+        key, _, rest = line.partition(":")
+        rest = rest.strip()
+        if page is None:
+            match = re.search(r"page size of (\d+) bytes", rest)
+            page = int(match.group(1)) if match else None
+        digits = rest.rstrip(".").replace(".", "")
+        if key.strip() and digits.isdigit():
+            counts[key.strip()] = int(digits)
+    return counts, page
+
+
 def _mac_memory() -> tuple[int | None, int | None]:
     total = _sysctl("hw.memsize")
-    pages = sum(_sysctl(name) or 0 for name in MAC_AVAILABLE)
-    try:
-        page = os.sysconf("SC_PAGE_SIZE")
-    except (OSError, ValueError):
-        page = None
+    counts, page = _mac_pages()
+    pages = sum(counts.get(name, 0) for name in MAC_PAGES)
     if not pages or not page:
         return None, total
     return pages * page, total
