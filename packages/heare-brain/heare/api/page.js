@@ -1247,6 +1247,19 @@ function machinesBehind(u) {
     return line;
   });
 }
+/* The brain asks GitHub once a day, so the page may know an older release
+   than the one that is out: asking again must always be one press, and a
+   machine behind is a reason to ask, not a reason to hide the button. */
+function checkAgain() {
+  const ask = el("button", "mini", tr("Check for updates…"));
+  ask.type = "button";
+  ask.onclick = () => {
+    ask.disabled = true;
+    api("update/check", {method: "POST"}).then(drawUpdate)
+      .catch(() => { ask.disabled = false; });
+  };
+  return ask;
+}
 function drawUpdate(u) {
   updateState = u;
   const box = $("update");
@@ -1254,7 +1267,8 @@ function drawUpdate(u) {
   const behind = u && u.state === "current" ? machinesBehind(u) : [];
   if (behind.length) {
     box.hidden = false; box.classList.remove("bad");
-    box.replaceChildren(el("b", "", tr("heare {v} is out", {v: u.latest})), ...behind);
+    box.replaceChildren(el("b", "", tr("heare {v} is out", {v: u.latest})), ...behind,
+                        checkAgain());
     return;
   }
   if (!u || !["idle", "available", "downloading", "backing_up", "installing", "updated", "failed"].includes(u.state)) {
