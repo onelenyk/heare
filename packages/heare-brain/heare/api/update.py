@@ -158,7 +158,10 @@ class Updates:
                 release = answer.json()
         except (httpx.HTTPError, ValueError) as exc:
             logger.warning("could not ask for a newer heare: %s", exc)
-            return self._set(checked=time.time(), error=_("could not ask about a new version"))
+            # Said, not hidden: a check that fails while the state stays
+            # «idle» shows nothing at all, and nobody can tell why.
+            return self._set(state="failed", checked=time.time(),
+                             error=_("could not ask about a new version"))
         release = release if isinstance(release, dict) else {}
         found = read_release(release, self.current, self.arch)
         self._release = found

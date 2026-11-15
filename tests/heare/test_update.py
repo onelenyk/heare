@@ -155,7 +155,9 @@ async def test_a_brain_the_app_did_not_start_sends_to_the_release_page(tmp_path,
 async def test_a_feed_that_does_not_answer_is_said_and_nothing_breaks(tmp_path):
     updates = Updates(_Settings("http://127.0.0.1:9/latest"), "0.1.0", _home(tmp_path))
     checked = await updates.check()
-    assert checked["error"] and checked["state"] == "idle"
+    # «failed», not «idle»: a check that was tried and did not answer must
+    # look different from one that never ran, or the page shows nothing.
+    assert checked["error"] and checked["state"] == "failed"
 
 
 def test_the_feed_is_githubs_unless_the_settings_name_another(tmp_path):
