@@ -17,6 +17,7 @@ fi
 # four keys are touched.
 python - <<'PY'
 import json
+import re
 from pathlib import Path
 
 from heare.config import Settings
@@ -31,6 +32,11 @@ settings.set("update_check", False)
 # and not knocking in from outside: the trusted list is what a folder in
 # the parts directory means. Kept, not replaced — a part the owner adds
 # later stays trusted.
+#
+# An image before the machine had a name trusted `native-hands@<container
+# id>`, and a container's id is new on every deploy: those keys piled up in
+# the list and the brain showed each one as a machine nobody owns. They are
+# dropped; every other key in the list belongs to a real machine and stays.
 name = Path(settings.machine_name_file).read_text(encoding="utf-8").strip()
 trusted = Path(settings.parts_file)
 known = []
@@ -39,6 +45,8 @@ if trusted.exists():
         known = list(json.loads(trusted.read_text(encoding="utf-8")))
     except (OSError, ValueError):
         known = []
+ephemeral = re.compile(r"^(?:native-hands|sources)@[0-9a-f]{12}$")
+known = [pid for pid in known if not ephemeral.match(str(pid))]
 for pid in (f"native-hands@{name}",):
     if pid not in known:
         known.append(pid)

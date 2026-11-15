@@ -187,3 +187,18 @@ async def test_a_part_forgotten_while_it_waits_is_answered_at_once(tmp_path, mon
     registry.forget("voice@mac")
     assert await asyncio.wait_for(waiting, timeout=1.0) == "forgotten"
     assert "voice@mac" not in registry.known
+
+
+def test_a_manifest_with_no_host_is_the_brain_s_own_name(tmp_path):
+    """In a container the raw host name is a new id on every deploy; a
+    manifest read under it made a machine nobody owns, one per deploy."""
+    folder = tmp_path / "parts" / "native-hands"
+    folder.mkdir(parents=True)
+    (folder / "heare.json").write_text(json.dumps(
+        {"channel": "native-hands", "forms": ["executor"]}), encoding="utf-8")
+    registry, _, _ = _registry(tmp_path)
+    registry.load(tmp_path / "parts", "0lens")
+
+    assert "native-hands@0lens" in registry.known
+    assert registry.known["native-hands@0lens"]["host"] == "0lens"
+    assert registry.known["native-hands@0lens"]["state"] == "away"

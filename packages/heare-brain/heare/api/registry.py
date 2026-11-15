@@ -127,8 +127,15 @@ class Registry:
         if self._on_present is not None:
             self._on_present(pid, True)
 
-    def load(self, parts_dir: Path) -> None:
-        """Know every part with a manifest before it knocks: away, trusted."""
+    def load(self, parts_dir: Path, host: str = "") -> None:
+        """Know every part with a manifest before it knocks: away, trusted.
+
+        A manifest is written for a part, not for a machine, and carries no
+        host of its own: *host* — the brain's own name — stands in. The
+        machine's raw host name is the last resort and the wrong one in a
+        container, where it is a new id on every deploy and every id became
+        a machine nobody owns.
+        """
         try:
             files = sorted(parts_dir.glob("*/heare.json"))
         except OSError:
@@ -142,10 +149,10 @@ class Registry:
             if not isinstance(manifest, dict) or not manifest.get("channel"):
                 continue
             channel = str(manifest["channel"])
-            host = str(manifest.get("host") or socket.gethostname())
-            self.attach(str(manifest.get("key") or f"{channel}@{host}"), channel,
+            local = str(manifest.get("host") or host or socket.gethostname())
+            self.attach(str(manifest.get("key") or f"{channel}@{local}"), channel,
                         list(manifest.get("forms") or []),
-                        str(manifest.get("about") or ""), host, "away",
+                        str(manifest.get("about") or ""), local, "away",
                         list(manifest.get("ui") or []))
 
     def one_on(self, channel: str) -> tuple[str, dict] | None:

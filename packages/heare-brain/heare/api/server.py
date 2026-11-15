@@ -745,7 +745,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         on_executor if make_executor is not None else None,
         on_no_executor=_drop_executor,
         on_present=_present)
-    registry.load(Path(settings.parts_dir))
+    registry.load(Path(settings.parts_dir), settings.host)
 
     def machines_view() -> list[dict]:
         """The machines as the page sees them: reports, parts, and keys."""
