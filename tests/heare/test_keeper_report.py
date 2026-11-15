@@ -103,3 +103,29 @@ async def test_a_report_refused_for_its_key_says_the_machine_is_forgotten(
         assert told == [_("the brain no longer knows this machine — pair it again")]
     else:
         assert told == [], "a brain that is merely unwell is waited out"
+
+
+def test_a_mac_counts_the_memory_it_would_give_back(monkeypatch):
+    """Free pages alone read as "no memory left" on a Mac that has been up
+    for a while; the counts the system itself adds up are the true answer."""
+    counts = {"hw.memsize": 16 * 1024 ** 3,
+              "vm.page_free_count": 20_000,
+              "vm.page_inactive_count": 500_000,
+              "vm.page_purgeable_count": 30_000,
+              "vm.page_speculative_count": 100_000}
+    monkeypatch.setattr(report, "_sysctl", counts.get)
+    monkeypatch.setattr(report.os, "sysconf", lambda name: 16_384)
+
+    free, total = report._mac_memory()
+    assert total == counts["hw.memsize"]
+    assert free == (20_000 + 500_000 + 30_000 + 100_000) * 16_384
+    assert free > counts["vm.page_free_count"] * 16_384 * 10
+
+
+def test_a_mac_that_will_not_count_its_pages_says_nothing_about_memory(monkeypatch):
+    monkeypatch.setattr(report, "_sysctl",
+                        lambda name: 16 * 1024 ** 3 if name == "hw.memsize" else None)
+    monkeypatch.setattr(report.os, "sysconf", lambda name: 16_384)
+
+    free, total = report._mac_memory()
+    assert free is None and total == 16 * 1024 ** 3

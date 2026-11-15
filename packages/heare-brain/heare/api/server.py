@@ -26,7 +26,6 @@ import os
 import re
 import secrets
 import signal
-import socket
 import subprocess
 import time
 from importlib import metadata
@@ -948,9 +947,15 @@ def build(core: Core, settings: Any, vitals: Any = None,
         The keeper on that machine is not reached — the brain cannot knock.
         It learns when its next report is refused and parks the parts.
         """
-        pid = f"machine@{request.match_info['name']}"
+        name = request.match_info["name"]
+        pid = f"machine@{name}"
+        # A part that knocked under this machine's host name before it had a
+        # machine of its own (a container's first start) is this machine's
+        # too: forgetting the machine forgets it.
         for part_pid in [one for one, entry in registry.known.items()
-                         if entry.get("machine") == pid]:
+                         if entry.get("machine") == pid
+                         or (not one.startswith("window@")
+                             and one.split("@", 1)[-1] == name)]:
             registry.forget(part_pid)
             auth.revoke(part_tokens, part_pid)
             lent.forget(part_pid)
@@ -983,7 +988,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         # A browser cannot name its machine; a window is called what it was
         # paired as, never after the brain's host.
         host = str(data.get("host") or (who.split("@", 1)[1] if window
-                                        else socket.gethostname()))
+                                        else settings.host))
         pid = who if window else str(data.get("key") or f"{channel}@{host}")
         machine = who if str(who or "").startswith("machine@") else None
         # A part back on its own key after the brain restarted is still its

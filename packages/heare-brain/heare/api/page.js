@@ -3300,12 +3300,37 @@ async function loadMachines() {
   } catch (_) {}
 }
 
+/* A host name is not a name: "MBP-M4--Nazar.lan" is three words a person
+   says, not a DNS label. An alias, when one was given, wins over both. */
+function machineTitle(machine) {
+  const raw = String(machine.alias || machine.name || "");
+  const said = raw.replace(/\.(local|lan|home|internal|localdomain)$/i, "")
+    .replace(/--+/g, " · ").replace(/-/g, " ").replace(/\s+/g, " ").trim();
+  return said || raw;
+}
+
+const gib = bytes => (Number(bytes) / 1e9).toFixed(1);
+/* What is gone of what there is, as one thin bar and two numbers: a disk
+   that is nearly full and a Mac with no RAM free both read in a glance. */
+function machineMeter(label, left, whole) {
+  if (!(Number(whole) > 0) || !(Number(left) >= 0)) return null;
+  const row = el("div", "mmeter");
+  const bar = el("span", "mbar"), fill = el("i");
+  const used = Math.min(1, Math.max(0, (whole - left) / whole));
+  fill.style.width = Math.round(used * 100) + "%";
+  if (used >= 0.9) row.classList.add("full");
+  bar.append(fill);
+  row.append(el("span", "mlabel", label), bar,
+             el("span", "mvalue", `${gib(left)} / ${gib(whole)} GB`));
+  return row;
+}
+
 /* The machine's own line: who it is, whether it is here, and the three
    things one may do to it — name it, forget it, update it. */
 function machineTop(machine) {
   const top = el("div", "mtop");
   top.append(el("span", "mdot" + (machine.state === "online" ? " on" : "")));
-  const name = el("b", "mname", machine.alias || machine.name);
+  const name = el("b", "mname", machineTitle(machine));
   if (machine.brain) name.append(el("span", "mbrain", tr("brain")));
   name.title = machine.pid;
   top.append(name, el("span", "mstate", machine.state === "online" ? tr("online") : tr("away")));
@@ -3368,22 +3393,27 @@ function machineTop(machine) {
 function machineCard(machine) {
   const card = el("div", "mcard");
   card.append(machineTop(machine));
-  const free = machine.disk_free != null ? `${(machine.disk_free / 1e9).toFixed(1)} GB ${tr("free")}` : "";
-  const ram = machine.mem_total && machine.mem_free != null
-    ? `RAM ${(machine.mem_free / 1e9).toFixed(1)}/${(machine.mem_total / 1e9).toFixed(0)} GB ${tr("free")}`
-    : "";
-  const seen = machine.seen
-    ? `${tr("last seen")} ${new Date(machine.seen * 1000).toLocaleTimeString(LOCALE, {hour: "2-digit", minute: "2-digit"})}`
-    : "";
-  const load = machine.load && machine.load.length ? `${tr("load")} ${machine.load[0]}` : "";
   const parts = (machine.parts || []).length;
-  const line = [machine.version ? "v" + machine.version : "", machine.platform,
-                parts ? tr("parts: {n}", {n: parts}) : "", load].filter(Boolean).join(" · ");
-  if (line) {
-    const meta = el("div", "mmeta", line);
-    meta.title = [free, ram, seen].filter(Boolean).join(" · ");
-    meta.onclick = () => { meta.title = [free, ram, seen].filter(Boolean).join(" · "); toast(meta.title); };
-    card.append(meta);
+  const system = [machine.platform, machine.arch].filter(Boolean).join(" ");
+  const load = machine.load && machine.load.length
+    ? `${tr("load")} ${Number(machine.load[0]).toFixed(1)}` : "";
+  const line = [machine.version ? "v" + machine.version : "", system,
+                parts ? trn(parts, "{n} part", "{n} parts") : "", load]
+    .filter(Boolean).join(" · ");
+  if (line) card.append(el("div", "mmeta", line));
+  // A machine that is here says what it has left; one that is not says when
+  // it was last heard, which is the only true thing there is to say.
+  const meters = machine.reported
+    ? [machineMeter(tr("memory"), machine.mem_free, machine.mem_total),
+       machineMeter(tr("disk"), machine.disk_free, machine.disk_total)].filter(Boolean) : [];
+  if (meters.length) {
+    const box = el("div", "mmeters");
+    box.append(...meters);
+    card.append(box);
+  } else if (machine.seen) {
+    card.append(el("div", "mmeta", `${tr("last seen")} ${
+      new Date(machine.seen * 1000).toLocaleString(LOCALE,
+        {day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"})}`));
   }
   const unwell = (machine.parts || []).filter(p => p.state === "unwell" && p.why);
   if (unwell.length) {
@@ -3449,6 +3479,8 @@ function machineRow(machine, part, entries) {
   if (entries.length > 1) row.append(el("span", "pin", "×" + entries.length));
   const entry = entries[0] && entries[0][1];
   const head = entry && (entry.ui || []).find(c => c.head && c.kind === "label");
+  // What a part says it sees is the part's own words, and some of them are
+  // a whole weather report: the row shows it cut, the title in full.
   const now = entry && entry.state === "approved" && head ? tr(String(truth(entry, head) ?? "")) : "";
   const label = pending ? PART_STATE.pending
     : bad && part.why ? tr("error")
@@ -3456,7 +3488,11 @@ function machineRow(machine, part, entries) {
     : starting ? tr("starting")
     : stopping ? tr("stopping")
     : now || (part.on ? tr("on") : tr("off"));
-  const state = el("span", "state" + ((bad && part.why) || cannot ? " why" : ""), label);
+  const state = el("span", "state" + (bad && part.why ? " why" : ""));
+  // The text sits in its own box: a flex container clips instead of
+  // ellipsizing, and a weather report would run over the switch.
+  state.append(el("span", "said", label));
+  if (label) state.title = label;
   if (working && !pending && !bad && !cannot) state.prepend(el("i", "spin"));
   row.append(state);
 

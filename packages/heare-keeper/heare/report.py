@@ -49,29 +49,45 @@ def _sysctl(name: str) -> int | None:
         return None
 
 
-def _memory() -> tuple[int | None, int | None]:
-    """Free and total RAM, in bytes; None where the machine will not say.
+# The counts a Mac adds up itself when it says how much memory is left: the
+# unused pages, the ones a running program may still touch, and the two
+# kinds of cache it would hand back the moment somebody asks. Pages that are
+# free and nothing else are a few hundred megabytes on any Mac that has been
+# up for a while, which reads as "no memory left" on the page.
+MAC_AVAILABLE = ("vm.page_free_count", "vm.page_inactive_count",
+                 "vm.page_purgeable_count", "vm.page_speculative_count")
 
-    Linux answers in ``/proc/meminfo``; a Mac in two sysctls, and has no
-    ``SC_AVPHYS_PAGES`` to ask for the free half.
-    """
-    if sys.platform.startswith("linux"):
-        try:
-            info = {}
-            for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines():
-                key, _, rest = line.partition(":")
-                info[key] = int(rest.split()[0]) * 1024
-            return info.get("MemAvailable"), info.get("MemTotal")
-        except (OSError, ValueError, IndexError):
-            return None, None
+
+def _linux_memory() -> tuple[int | None, int | None]:
+    try:
+        info = {}
+        for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines():
+            key, _, rest = line.partition(":")
+            info[key] = int(rest.split()[0]) * 1024
+        return info.get("MemAvailable"), info.get("MemTotal")
+    except (OSError, ValueError, IndexError):
+        return None, None
+
+
+def _mac_memory() -> tuple[int | None, int | None]:
     total = _sysctl("hw.memsize")
-    pages = _sysctl("vm.page_free_count")
+    pages = sum(_sysctl(name) or 0 for name in MAC_AVAILABLE)
     try:
         page = os.sysconf("SC_PAGE_SIZE")
     except (OSError, ValueError):
         page = None
-    free = pages * page if pages is not None and page else None
-    return free, total
+    if not pages or not page:
+        return None, total
+    return pages * page, total
+
+
+def _memory() -> tuple[int | None, int | None]:
+    """Available and total RAM, in bytes; None where the machine will not say.
+
+    Linux answers in ``/proc/meminfo``; a Mac in four sysctls, and has no
+    ``SC_AVPHYS_PAGES`` to ask for the free half.
+    """
+    return _linux_memory() if sys.platform.startswith("linux") else _mac_memory()
 
 
 def describe(folder: Path) -> dict:

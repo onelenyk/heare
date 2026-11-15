@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-15 01:37+0200\n"
+"POT-Creation-Date: 2026-11-15 02:46+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -1922,13 +1922,13 @@ msgstr ""
 msgid "forget this machine? its parts stop being trusted"
 msgstr ""
 
-msgid "free"
+msgid "load"
+msgstr ""
+
+msgid "disk"
 msgstr ""
 
 msgid "last seen"
-msgstr ""
-
-msgid "load"
 msgstr ""
 
 msgid "a part did not start"
@@ -2006,6 +2006,12 @@ msgstr[1] ""
 #, python-brace-format
 msgid "All imported: {n} note read."
 msgid_plural "All imported: {n} notes read."
+msgstr[0] ""
+msgstr[1] ""
+
+#, python-brace-format
+msgid "{n} part"
+msgid_plural "{n} parts"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -3080,5 +3086,8 @@ msgstr ""
 #~ msgstr ""
 
 #~ msgid "Forget this machine and pair it again?"
+#~ msgstr ""
+
+#~ msgid "free"
 #~ msgstr ""
 

@@ -156,6 +156,13 @@ button { cursor:pointer; }
 #bodies .mbrain { flex:none; margin-left:4px; padding:1px 5px; border-radius:999px; background:var(--accent); color:var(--accent-ink); font:600 8px/1.5 var(--sans); }
 #bodies .mstate { margin-left:auto; color:var(--soft); font:9px var(--mono); white-space:nowrap; }
 #bodies .mmeta { margin-top:1px; color:var(--soft); font:8.5px var(--mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#bodies .mmeters { display:grid; gap:3px; margin:5px 0 1px; }
+#bodies .mmeter { display:flex; align-items:center; gap:6px; min-width:0; }
+#bodies .mlabel { flex:none; width:52px; color:var(--soft); font:8.5px var(--mono); text-transform:lowercase; }
+#bodies .mbar { flex:1; min-width:24px; height:3px; border-radius:999px; background:var(--card-2); overflow:hidden; }
+#bodies .mbar i { display:block; height:100%; border-radius:999px; background:var(--accent); }
+#bodies .mmeter.full .mbar i { background:var(--bad); }
+#bodies .mvalue { flex:none; color:var(--soft); font:8.5px var(--mono); white-space:nowrap; }
 #bodies .mactions { display:flex; gap:2px; flex:none; margin-left:4px; opacity:0; transition:opacity .12s; }
 #bodies .mtop:hover .mactions, #bodies .mtop:focus-within .mactions { opacity:1; }
 @media (hover: none) { #bodies .mactions { opacity:1; } }
@@ -167,7 +174,8 @@ button { cursor:pointer; }
 #bodies .mrow .mdot { width:5px; height:5px; }
 #bodies .mrow .name { font-size:10.5px; font-weight:500; color:var(--ink); white-space:nowrap; }
 #bodies .mrow .pin { font:9px var(--mono); color:var(--soft); }
-#bodies .mrow .state { display:inline-flex; align-items:center; gap:5px; margin-left:auto; min-width:0; color:var(--soft); font:9px var(--mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#bodies .mrow .state { display:inline-flex; align-items:center; gap:5px; margin-left:auto; min-width:0; max-width:52%; color:var(--soft); font:9px var(--mono); white-space:nowrap; }
+#bodies .mrow .state .said { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 #bodies .mrow .state.why, #bodies .mrow .state.bad { color:var(--bad); }
 #bodies .malert { display:flex; flex-direction:column; gap:5px; margin:7px 2px 9px; padding:8px 9px; border:1px solid color-mix(in srgb, var(--bad) 45%, var(--line)); border-radius:10px; background:color-mix(in srgb, var(--bad) 8%, transparent); font:10.5px/1.4 var(--sans); }
 #bodies .malert > b { color:var(--bad); font:600 10.5px var(--sans); }

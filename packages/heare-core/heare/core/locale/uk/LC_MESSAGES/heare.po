@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-15 01:37+0200\n"
+"POT-Creation-Date: 2026-11-15 02:46+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -1922,14 +1922,14 @@ msgstr "забути"
 msgid "forget this machine? its parts stop being trusted"
 msgstr "забути цю машину? її частини більше не довірятимуться"
 
-msgid "free"
-msgstr "вільно"
+msgid "load"
+msgstr "навантаження"
+
+msgid "disk"
+msgstr "Диск"
 
 msgid "last seen"
 msgstr "востаннє чули"
-
-msgid "load"
-msgstr "навантаження"
 
 msgid "a part did not start"
 msgstr "Частина не запустилася"
@@ -2016,6 +2016,13 @@ msgid_plural "All imported: {n} notes read."
 msgstr[0] "Усе імпортовано: прочитано {n} нотатку."
 msgstr[1] "Усе імпортовано: прочитано {n} нотатки."
 msgstr[2] "Усе імпортовано: прочитано {n} нотаток."
+
+#, python-brace-format
+msgid "{n} part"
+msgid_plural "{n} parts"
+msgstr[0] "{n} частина"
+msgstr[1] "{n} частини"
+msgstr[2] "{n} частин"
 
 msgid "Nothing to show."
 msgstr "Нема чого показати."
@@ -3086,4 +3093,7 @@ msgstr "я перестав чути {s} секунд тому — схоже, �
 
 #~ msgid "Forget this machine and pair it again?"
 #~ msgstr "Забути цю машину й спарувати знову?"
+
+#~ msgid "free"
+#~ msgstr "вільно"
 
