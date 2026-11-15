@@ -39,6 +39,24 @@ $("pairform").addEventListener("submit", async ev => {
     $("pairerror").textContent = tr("the brain does not answer");
   }
 });
+$("code-request").onclick = async () => {
+  const button = $("code-request"), note = $("code-request-note");
+  button.disabled = true;
+  note.textContent = "";
+  try {
+    const answer = await fetch("/api/code-request", {
+      method: "POST", credentials: "same-origin",
+      headers: {"Content-Type": "application/json"},
+    });
+    note.textContent = answer.ok
+      ? tr("the code is in Telegram — it lives five minutes")
+      : answer.status === 429
+        ? tr("a code was just sent — wait a minute")
+        : tr("no Telegram chat is set up — use heare-brain code in the terminal");
+  } catch {
+    note.textContent = tr("the brain does not answer");
+  } finally { button.disabled = false; }
+};
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 
 const NOW = {idle: tr("waiting"), hearing: tr("listening to you"), thinking: tr("thinking"), speaking: tr("speaking")};

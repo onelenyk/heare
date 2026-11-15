@@ -193,6 +193,27 @@ class Slow:
         return True
 
 
+class Hourly:
+    """A few codes an hour for the whole brain, whoever asks for them.
+
+    The request door is open to any browser that can reach the brain, and a
+    Telegram chat is somebody's phone: ten messages an hour is the most a
+    stranger with a script can put on it.
+    """
+
+    def __init__(self, limit: int = 10) -> None:
+        self._limit = limit
+        self._taken: list[float] = []
+
+    def allow(self, now: float | None = None) -> bool:
+        now = time.time() if now is None else now
+        self._taken = [t for t in self._taken if now - t < 3600.0]
+        if len(self._taken) >= self._limit:
+            return False
+        self._taken.append(now)
+        return True
+
+
 class Screen:
     """The page as a channel. What is typed there is a message; a reply
     is sent as events, piece by piece, to whoever is watching."""
@@ -436,7 +457,8 @@ def build(core: Core, settings: Any, vitals: Any = None,
 
     @web.middleware
     async def guard(request: web.Request, handler):
-        if request.path in ("/api/pair", "/health"):
+        if request.path in ("/api/pair", "/api/code-request", "/health"):
+            # The doors a browser with no key yet may knock on.
             return await handler(request)
         if not (request.path.startswith("/api/")
                 or request.path.startswith("/screens/")):
@@ -476,6 +498,8 @@ def build(core: Core, settings: Any, vitals: Any = None,
 
     code_path = Path(settings.pair_codes_file)
     pace = Slow()
+    asking = Slow(limit=2)
+    an_hour = Hourly()
     minted_at: dict[str, float] = {}
 
     async def health(request: web.Request) -> web.Response:
@@ -538,6 +562,21 @@ def build(core: Core, settings: Any, vitals: Any = None,
             "code": code,
             "ttl": int(codes.TTL_S),
         })
+
+    async def code_request(request: web.Request) -> web.Response:
+        """A page that is not paired yet asks the phone for a code.
+
+        The code is never in this answer: it goes to the chat the owner reads,
+        so asking for one proves nothing and guessing one gains nothing.
+        """
+        if not asking.allow(request.remote or "?"):
+            raise web.HTTPTooManyRequests(text="too fast")
+        if not an_hour.allow():
+            raise web.HTTPTooManyRequests(text="too many codes this hour")
+        code = codes.make(code_path)
+        if not await asyncio.to_thread(notify.carry, code, settings):
+            raise web.HTTPConflict(text="telegram is not set up")
+        return web.json_response({"sent": True, "ttl": int(codes.TTL_S)})
 
     async def body(request: web.Request) -> dict:
         try:
@@ -1880,6 +1919,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.get("/fonts/{name:[a-z-]+}.woff2", font),
         web.post("/api/pair", pair),
         web.post("/api/pair-code", pair_code),
+        web.post("/api/code-request", code_request),
         web.post("/api/message", message),
         web.get("/health", health),
         web.post("/api/parts", register),

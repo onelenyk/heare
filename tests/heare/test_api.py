@@ -1201,8 +1201,9 @@ async def test_every_route_is_decided_for_a_remote_window(tmp_path):
         if not (canonical.startswith("/api/")
                 or canonical.startswith("/screens/")):
             continue  # the page and its fonts are public by design
-        if (method, canonical) == ("POST", "/api/pair"):
-            continue  # the one door a stranger may knock on
+        if (method, canonical) in (("POST", "/api/pair"),
+                                   ("POST", "/api/code-request")):
+            continue  # the two doors a stranger may knock on
         if _may_reach_remote(method, canonical):
             continue
         if (method, canonical) not in LOCAL_ONLY:
@@ -1342,6 +1343,46 @@ async def test_the_page_mints_a_code_that_pairs_a_window_once(tmp_path):
     again = await client.post(
         "/api/pair", json={"code": given["code"], "kind": "window", "name": "phone"})
     assert again.status == 401
+    await _close(room, client)
+
+
+async def test_a_page_without_a_key_asks_the_phone_for_a_code(tmp_path, monkeypatch):
+    room, client, auth, settings = await _open(tmp_path)
+    carried: list[str] = []
+    monkeypatch.setattr(
+        api_server.notify, "carry",
+        lambda code, settings=None, send=None: carried.append(code) or True)
+
+    answer = await client.post("/api/code-request")
+
+    assert answer.status == 200
+    given = await answer.json()
+    assert given == {"sent": True, "ttl": 300}
+    # The code went to the chat; the page that asked for it never sees it.
+    assert len(carried) == 1 and carried[0] not in json.dumps(given)
+    await _close(room, client)
+
+
+async def test_no_code_is_minted_when_there_is_no_chat_to_send_it_to(
+        tmp_path, monkeypatch):
+    room, client, auth, settings = await _open(tmp_path)
+    monkeypatch.setattr(
+        api_server.notify, "carry",
+        lambda code, settings=None, send=None: False)
+
+    assert (await client.post("/api/code-request")).status == 409
+    await _close(room, client)
+
+
+async def test_asking_a_third_time_in_a_minute_is_refused(tmp_path, monkeypatch):
+    room, client, auth, settings = await _open(tmp_path)
+    monkeypatch.setattr(
+        api_server.notify, "carry",
+        lambda code, settings=None, send=None: True)
+
+    assert (await client.post("/api/code-request")).status == 200
+    assert (await client.post("/api/code-request")).status == 200
+    assert (await client.post("/api/code-request")).status == 429
     await _close(room, client)
 
 

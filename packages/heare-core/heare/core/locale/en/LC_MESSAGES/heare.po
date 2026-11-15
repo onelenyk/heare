@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-15 13:40+0200\n"
+"POT-Creation-Date: 2026-11-15 15:35+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -729,6 +729,12 @@ msgstr ""
 msgid "Connect"
 msgstr ""
 
+msgid "No code yet? Ask the brain to send one to Telegram."
+msgstr ""
+
+msgid "Send a code to Telegram"
+msgstr ""
+
 msgid "browser"
 msgstr ""
 
@@ -739,6 +745,15 @@ msgid "the code is wrong or expired — take a new one: heare-brain code"
 msgstr ""
 
 msgid "the brain does not answer"
+msgstr ""
+
+msgid "the code is in Telegram — it lives five minutes"
+msgstr ""
+
+msgid "a code was just sent — wait a minute"
+msgstr ""
+
+msgid "no Telegram chat is set up — use heare-brain code in the terminal"
 msgstr ""
 
 msgid "waiting"
@@ -2682,17 +2697,7 @@ msgstr ""
 msgid "Forgot {n}."
 msgstr ""
 
-#, python-brace-format
-msgid "Several parts answer to that: {parts}. Which?"
-msgstr ""
-
 msgid "Work"
-msgstr ""
-
-msgid "Internet"
-msgstr ""
-
-msgid "Last request"
 msgstr ""
 
 msgid "something"
@@ -3096,5 +3101,14 @@ msgstr ""
 #~ msgstr ""
 
 #~ msgid "free"
+#~ msgstr ""
+
+#~ msgid "Several parts answer to that: {parts}. Which?"
+#~ msgstr ""
+
+#~ msgid "Internet"
+#~ msgstr ""
+
+#~ msgid "Last request"
 #~ msgstr ""
 

@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-15 13:40+0200\n"
+"POT-Creation-Date: 2026-11-15 15:35+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -729,6 +729,12 @@ msgstr "8 символів"
 msgid "Connect"
 msgstr "Підключити"
 
+msgid "No code yet? Ask the brain to send one to Telegram."
+msgstr "Коду ще нема? Попроси мозок надіслати його в Telegram."
+
+msgid "Send a code to Telegram"
+msgstr "Надіслати код у Telegram"
+
 msgid "browser"
 msgstr "браузер"
 
@@ -740,6 +746,15 @@ msgstr "код невірний або прострочений — візьми
 
 msgid "the brain does not answer"
 msgstr "мозок не відповідає"
+
+msgid "the code is in Telegram — it lives five minutes"
+msgstr "код уже в Telegram — він живе п’ять хвилин"
+
+msgid "a code was just sent — wait a minute"
+msgstr "код щойно надіслано — зачекай хвилину"
+
+msgid "no Telegram chat is set up — use heare-brain code in the terminal"
+msgstr "чат у Telegram не налаштований — візьми код у терміналі: heare-brain code"
 
 msgid "waiting"
 msgstr "чекає"
@@ -2691,18 +2706,8 @@ msgstr "Відхилено."
 msgid "Forgot {n}."
 msgstr "Забув {n}."
 
-#, python-brace-format
-msgid "Several parts answer to that: {parts}. Which?"
-msgstr "Таких частин кілька: {parts}. Яку?"
-
 msgid "Work"
 msgstr "Справа"
-
-msgid "Internet"
-msgstr "Інтернет"
-
-msgid "Last request"
-msgstr "Останній запит"
 
 msgid "something"
 msgstr "щось"
@@ -3103,4 +3108,13 @@ msgstr "я перестав чути {s} секунд тому — схоже, �
 
 #~ msgid "free"
 #~ msgstr "вільно"
+
+#~ msgid "Several parts answer to that: {parts}. Which?"
+#~ msgstr "Таких частин кілька: {parts}. Яку?"
+
+#~ msgid "Internet"
+#~ msgstr "Інтернет"
+
+#~ msgid "Last request"
+#~ msgstr "Останній запит"
 
