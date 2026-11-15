@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-15 02:46+0200\n"
+"POT-Creation-Date: 2026-11-15 13:40+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -520,6 +520,13 @@ msgstr "файл у копії пошкоджений: {name}"
 
 msgid "the file is damaged or not a zip"
 msgstr "файл пошкоджений або це не zip"
+
+#, python-brace-format
+msgid "{minutes} min, once. ⚙ → Devices on the brain's page."
+msgstr "{minutes} хв, один раз. ⚙ → Пристрої на сторінці мозку."
+
+msgid "heare: entry code"
+msgstr "heare: код входу"
 
 msgid "Chats"
 msgstr "Розмови"

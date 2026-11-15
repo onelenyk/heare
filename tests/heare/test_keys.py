@@ -45,6 +45,8 @@ def test_sources_names_every_key():
     assert set(keys.NAMES) == {
         "DEEPSEEK_API_KEY", "GROQ_API_KEY", "ANTHROPIC_API_KEY",
         "OPENROUTER_API_KEY", "OPENCODE_API_KEY", "ZAI_API_KEY",
+        # The bot that carries an entry code to the person's phone.
+        "TELEGRAM_BOT_TOKEN",
     }
 
 

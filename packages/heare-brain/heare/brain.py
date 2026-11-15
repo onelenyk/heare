@@ -29,6 +29,7 @@ from heare.core.i18n import _
 from heare.prompt import budget, persona
 from heare.tools.ports import Bodies
 from heare.api import backup
+from heare.api import notify
 from heare.api import pair as codes
 from heare.config import HOME, Settings
 from heare.core import Core
@@ -381,7 +382,12 @@ def main() -> int:
                 "starts next time — restart heare").format(made=made))
         return 0
     if args.command == "code":
-        print(codes.make(Path(Settings().pair_codes_file)))
+        settings = Settings()
+        made = codes.make(Path(settings.pair_codes_file))
+        print(made)
+        # Where the person is, not where the code was made: the same code also
+        # goes to their phone, so the browser can be opened on either.
+        notify.carry(made, settings)
         return 0
     if args.command == "review":
         print(asyncio.run(Brain().review_now()))

@@ -1366,6 +1366,29 @@ async def test_a_pairing_code_is_minted_once_every_two_seconds(tmp_path):
     await _close(room, client)
 
 
+async def test_a_minted_code_also_goes_to_the_phone(tmp_path, monkeypatch):
+    room, client, auth, settings = await _open(tmp_path)
+    carried: list[str] = []
+    monkeypatch.setattr(
+        api_server.notify, "carry",
+        lambda code, settings=None, send=None: carried.append(code) or True)
+
+    given = await (await client.post("/api/pair-code", headers=auth)).json()
+
+    assert carried == [given["code"]]
+    await _close(room, client)
+
+
+async def test_a_failed_telegram_send_still_mints_the_code(tmp_path, monkeypatch):
+    room, client, auth, settings = await _open(tmp_path)
+    monkeypatch.setattr(
+        api_server.notify, "carry",
+        lambda code, settings=None, send=None: False)
+
+    assert (await client.post("/api/pair-code", headers=auth)).status == 200
+    await _close(room, client)
+
+
 async def test_a_machine_key_knocks_for_its_part_and_the_part_gets_its_own(tmp_path):
     manifest = tmp_path / "parts" / "voice"
     manifest.mkdir(parents=True)

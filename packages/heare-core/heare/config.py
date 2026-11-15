@@ -98,6 +98,10 @@ DEFAULTS = {
     # Whether the brain asks once a day for a newer heare, and where.
     "update_check": True,
     "update_feed": "https://api.github.com/repos/onelenyk/heare/releases/latest",
+    # Where an entry code is also sent: a chat the person already reads. Empty
+    # means nowhere, and the code lives only where it was minted.
+    "telegram_chat_id": "",
+    "telegram_thread_id": "",
     # Whether a Linux machine takes a published release by itself, instead
     # of waiting for the owner's «Update» on the pult. Off by default: a
     # server that follows the repository is a choice, not a surprise.

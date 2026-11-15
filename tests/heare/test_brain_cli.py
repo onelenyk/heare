@@ -6,7 +6,7 @@ import json
 import sys
 
 from heare import brain
-from heare.api import auth
+from heare.api import auth, notify
 from heare.config import Settings
 
 
@@ -104,3 +104,24 @@ def test_unpair_without_a_name_or_pid_changes_nothing(
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "unpair:" in captured.err
+
+
+def test_a_code_is_printed_and_also_carried_to_the_phone(
+        tmp_path, monkeypatch, capsys):
+    """`heare-brain code` still prints: a terminal is one way in, not the only."""
+    carried: list[str] = []
+    monkeypatch.setattr(
+        notify, "carry",
+        lambda code, settings=None, send=None: carried.append(code) or True)
+    settings = Settings(path=tmp_path / "config.toml",
+                        pair_codes_file=tmp_path / "pair_codes.json")
+    monkeypatch.setattr(brain, "Settings", lambda: settings)
+    monkeypatch.setattr(brain.layout, "settle", lambda *a, **k: None)
+    monkeypatch.setattr(brain.logs, "setup", lambda *a, **k: None)
+    monkeypatch.setattr(sys, "argv", ["heare-brain", "code"])
+
+    assert brain.main() == 0
+
+    printed = capsys.readouterr().out.strip()
+    assert len(printed) == 8
+    assert carried == [printed]

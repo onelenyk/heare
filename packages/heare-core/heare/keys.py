@@ -27,6 +27,8 @@ NAMES = (
     "OPENROUTER_API_KEY",
     "OPENCODE_API_KEY",
     "ZAI_API_KEY",
+    # Where an entry code is posted from: a bot, not a person's phone.
+    "TELEGRAM_BOT_TOKEN",
 )
 
 # The test backend keeps keys in the process only, so a test can tell

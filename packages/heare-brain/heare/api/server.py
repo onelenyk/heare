@@ -42,6 +42,7 @@ from heare.api.update import UpdateError, Updates
 from heare.core import PROTOCOL, Core, Event, Message
 from heare import words
 from heare.api import auth
+from heare.api import notify
 from heare.api import pair as codes
 from heare.api.grants import Grants
 from heare.api.heard import Recordings
@@ -528,8 +529,13 @@ def build(core: Core, settings: Any, vitals: Any = None,
         if now - minted_at.get(who, 0.0) < 2.0:
             raise web.HTTPTooManyRequests(text="too fast")
         minted_at[who] = now
+        code = codes.make(code_path)
+        # The next browser is often not beside the page that minted this: the
+        # code also goes to the person's phone. A failed send never refuses
+        # the mint — the page still shows it.
+        await asyncio.to_thread(notify.carry, code, settings)
         return web.json_response({
-            "code": codes.make(code_path),
+            "code": code,
             "ttl": int(codes.TTL_S),
         })
 
