@@ -3511,10 +3511,14 @@ function machineRow(machine, part, entries) {
   const wish = part.desired === true || part.desired === false ? part.desired : part.on;
   const bad = part.state === "unwell";
   const connected = entries.some(([, b]) => b.state === "approved");
-  const starting = wish === true && !connected;
+  // Moving is only a state while the machine is here to report it. A Mac
+  // that is shut or asleep showed «вмикається…» for hours on 16 November,
+  // because «wanted on, not connected» was true of every part at once.
+  const online = machine.state === "online";
+  const starting = online && wish === true && !connected;
   // The manifest can be gone while the process still holds its stream, so
   // the row keeps saying it is going until the registry lets go.
-  const stopping = wish === false && (connected || part.on);
+  const stopping = online && wish === false && (connected || part.on);
   const working = starting || stopping;
   if (pending || working) row.classList.add("pending");
   row.append(el("span", "mdot" + (pending || working || bad || cannot ? " warn" : part.on ? " on" : "")));
