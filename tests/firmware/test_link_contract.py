@@ -85,8 +85,11 @@ async def test_pair_knock_and_events_against_the_real_brain(tmp_path):
         assert state.THINK in seen
 
         response = await client.get("/api/events?kinds=phase", headers=part_headers)
-        first = json.loads((await asyncio.wait_for(
-            response.content.readline(), 2))[6:])
+        # The door says it opened with an SSE comment before the first event;
+        # a comment is not data, and the firmware's own reader skips it too.
+        while not (line := await asyncio.wait_for(response.content.readline(), 2)).startswith(b"data: "):
+            pass
+        first = json.loads(line[6:])
         assert first["kind"] == "phase"
 
         room.core.state.emit("said", channel="screen", text="secret words",
