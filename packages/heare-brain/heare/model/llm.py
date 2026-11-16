@@ -15,6 +15,7 @@ from typing import Any, AsyncIterator
 
 import httpx
 
+from heare.tokens import Cleaner
 from heare.wire import routed
 
 logger = logging.getLogger("heare.model.llm")
@@ -123,8 +124,23 @@ async def stream_chat_events(
             messages, cfg, tools=tools, client=client,
             temperature=temperature, timeout=timeout,
         )
+    # What a model writes on the content channel is shown and spoken, so a
+    # control token it invents there never reaches the person (16 November).
+    cleaner = Cleaner()
     async for event in stream:
+        if event["type"] == "delta":
+            safe = cleaner.feed(event["text"])
+            if safe:
+                yield {"type": "delta", "text": safe}
+            continue
+        # Before a call or a usage line: a held opener is text, not a token.
+        tail = cleaner.flush()
+        if tail:
+            yield {"type": "delta", "text": tail}
         yield event
+    tail = cleaner.flush()
+    if tail:
+        yield {"type": "delta", "text": tail}
 
 
 async def _openai_events(

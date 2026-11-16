@@ -21,6 +21,7 @@ from dataclasses import dataclass
 
 import httpx
 
+from heare.tokens import Cleaner
 from heare.wire import routed
 
 TIMEOUT_S = 20.0
@@ -50,8 +51,22 @@ class Talk:
             events = await self._anthropic(messages, verbs)
         else:
             events = await self._openai(messages, verbs)
+        # A model's control tokens belong to the wire, not to the words a
+        # part says (16 November 2026: the brain's reply carried them).
+        cleaner = Cleaner()
         for event in events:
+            if event["type"] == "delta":
+                safe = cleaner.feed(event["text"])
+                if safe:
+                    yield {"type": "delta", "text": safe}
+                continue
+            tail = cleaner.flush()
+            if tail:
+                yield {"type": "delta", "text": tail}
             yield event
+        tail = cleaner.flush()
+        if tail:
+            yield {"type": "delta", "text": tail}
 
     async def _openai(self, messages: list[dict], verbs: list[dict]) -> list[dict]:
         body: dict = {"model": self._wire.model, "messages": messages, "temperature": 0.2}

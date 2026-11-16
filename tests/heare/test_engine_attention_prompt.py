@@ -50,6 +50,20 @@ async def test_with_a_attention_the_prompt_says_what_presses(tmp_path):
     assert "зроби сайт" in text
 
 
+async def test_with_hands_the_prompt_says_to_delegate():
+    text = await persona.prompt(hands=True)
+    assert "call delegate" in text
+
+
+async def test_with_no_hands_the_prompt_does_not_offer_delegation():
+    """A tool that is not in the list cannot be called: the model wrote the
+    call into its words instead (15 November 2026)."""
+    text = await persona.prompt(hands=False)
+    assert "call delegate" not in text
+    assert "No hands are connected" in text
+    assert "never write a tool call" in text
+
+
 async def test_without_a_mood_the_prompt_is_as_before():
     text = await persona.prompt()
     assert "inside you" not in text

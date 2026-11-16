@@ -107,7 +107,8 @@ def now_block(around: Mapping[str | tuple[str, str], object], now: float) -> str
 async def prompt(around: Mapping[str | tuple[str, str], object] | None = None,
                  parts: Mapping[str, dict] | None = None, *,
                  identity: Path | None = None,
-                 mood: Callable[[], str] | None = None) -> str:
+                 mood: Callable[[], str] | None = None,
+                 hands: bool = True) -> str:
     """Read again on every turn: a saved rule counts from the next reply."""
     try:
         rules = RULES.read_text(encoding="utf-8").strip()
@@ -132,10 +133,19 @@ async def prompt(around: Mapping[str | tuple[str, str], object] | None = None,
     # about the screen (27 October). The person's word is theirs, so the
     # example follows the language they speak.
     screen = "screen" if _english() else "екран"
+    # A tool that is not in the list cannot be called, and a model told to
+    # call one anyway writes the call into its words — the person saw exactly
+    # that on 15 November, when the Mac was updating and no hands were there.
+    acts = (
+        "To read a body, call read_body; to change one, and for real work with "
+        "files, code and programs, call delegate."
+        if hands else
+        "To read a body, call read_body. No hands are connected now: for work "
+        "with files, code or programs say plainly that there are none, and never "
+        "write a tool call into your words."
+    )
     said.append(
-        "Your body is listed below under «My body». To read a body, call "
-        "read_body; to change one, and for real work with files, code and "
-        "programs, call delegate. The page is the chat in the browser, not the "
+        "Your body is listed below under «My body». " + acts + " The page is the chat in the browser, not the "
         "Mac's screen; what you show becomes a card in that chat, and the "
         "words stay short and are still spoken. When a word could mean more than one "
         f"of your bodies — «{screen}» may be the canvas, the panel's OLED or the "

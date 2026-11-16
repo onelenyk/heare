@@ -69,6 +69,50 @@ async def test_deltas_yielded_in_order_and_concatenate():
 
 
 @pytest.mark.asyncio
+async def test_a_control_token_never_reaches_the_caller():
+    """The model wrote a tool call as text when it had no such tool: that
+    markup was shown in the chat (16 November 2026)."""
+    body = _sse(
+        _delta_line(content="Дивлюсь"),
+        _delta_line(content='<|DSLM|> calls <|DSLM|> invoke name="delegate"'),
+        "[DONE]",
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=body)
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        chunks = await _collect(
+            stream_chat([{"role": "user", "content": "hi"}], CFG, client=client)
+        )
+
+    said = "".join(chunks)
+    assert said == 'Дивлюсь calls  invoke name="delegate"'
+    assert "<|" not in said
+
+
+@pytest.mark.asyncio
+async def test_a_token_split_across_two_pieces_is_still_removed():
+    body = _sse(
+        _delta_line(content="Дивлюсь <|DS"),
+        _delta_line(content="LM|> далі"),
+        "[DONE]",
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=body)
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        chunks = await _collect(
+            stream_chat([{"role": "user", "content": "hi"}], CFG, client=client)
+        )
+
+    assert "".join(chunks) == "Дивлюсь  далі"
+
+
+@pytest.mark.asyncio
 async def test_done_terminates_cleanly():
     body = _sse(
         _delta_line(content="only"),

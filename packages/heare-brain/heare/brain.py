@@ -166,7 +166,8 @@ class Brain:
             prompt=lambda: persona.prompt(
                 self.core.state.around, self.bodies.parts() if self.bodies else None,
                 identity=self.settings.identity_file,
-                mood=lambda: self.engine.mood()),
+                mood=lambda: self.engine.mood(),
+                hands=bool(self.core.executors)),
             names=names, judge=lambda: persona.JUDGE,
             words=lambda: for_language(self.settings.language),
             fit=partial(budget.fit, limit=int(self.settings.context_tokens)),
