@@ -503,8 +503,20 @@ def build(core: Core, settings: Any, vitals: Any = None,
     minted_at: dict[str, float] = {}
 
     async def health(request: web.Request) -> web.Response:
-        """For the server's watchdog: alive, and nothing more, for anyone."""
-        return web.json_response({"ok": True})
+        """For the server's watchdog: alive — and what it last knew about a
+        newer release.
+
+        The update check went silent on 15 November and nothing outside the
+        page could say why: the state lives behind a cookie. A version, a
+        state word and a reason are not secrets, and without them a broken
+        check looks exactly like a release that does not exist.
+        """
+        known = updates.state
+        return web.json_response({
+            "ok": True,
+            "version": build_info["version"],
+            "update": {name: known.get(name) for name in ("state", "latest", "checked", "error")},
+        })
 
     async def pair(request: web.Request) -> web.Response:
         """A machine or a window with a one-time code takes a key of its own."""

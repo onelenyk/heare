@@ -1027,10 +1027,16 @@ async def test_a_pairing_code_gives_a_window_the_person_s_powers(tmp_path):
     await _close(room, client)
 
 
-async def test_health_is_open_and_says_nothing_else(tmp_path):
+async def test_health_is_open_and_says_nothing_private(tmp_path):
+    """Alive, what version, and what the last release check knew — a check
+    that went silent looked exactly like a release that does not exist."""
     room, client, auth, settings = await _open(tmp_path)
     answer = await client.get("/health")
-    assert answer.status == 200 and await answer.json() == {"ok": True}
+    said = await answer.json()
+    assert answer.status == 200 and said["ok"] is True
+    assert re.fullmatch(r"\d+\.\d+\.\d+", said["version"])
+    assert set(said["update"]) == {"state", "latest", "checked", "error"}
+    assert not {"token", "machines", "parts"} & set(said)
     await _close(room, client)
 
 
