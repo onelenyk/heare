@@ -48,7 +48,10 @@ EXIT_BRAIN_ERROR = 4
 EXIT_REJECTED = 5
 # The brain writes to a quiet stream every 5 s (HEARTBEAT_S in the door);
 # three missed beats and the stream is taken for dead and opened again.
-SILENT_S = 15.0
+# Longer than the door's heartbeat by a lot: Cloudflare can hold a quiet
+# stream for a while, and a part that gives up in fifteen seconds re-knocks
+# all day — which the pult showed as «вмикається…» on 16 November 2026.
+SILENT_S = 45.0
 # When this process began: the same on every knock it makes, so a knock with
 # another is a part that started again.
 STARTED = time.time()

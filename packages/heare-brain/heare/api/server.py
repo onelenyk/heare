@@ -66,6 +66,8 @@ _NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,60}")
 # How often a quiet stream is written to. A closed page is only noticed when
 # a write to it fails, so this is also how long it takes to show it left.
 HEARTBEAT_S = 5.0
+# What makes a heartbeat big enough for a buffering proxy to flush it.
+HEARTBEAT_PAD = 240
 CONTEXT_TASKS = 10  # how many handed-over tasks the Context page keeps showing
 
 # A body that only shows what is happening may ask for these and nothing
@@ -1338,7 +1340,12 @@ def build(core: Core, settings: Any, vitals: Any = None,
                     if seen is not None:
                         await response.write(_sse(seen))
                 except TimeoutError:
-                    await response.write(b": still here\n\n")
+                    # Padded on purpose: Cloudflare in front of the door
+                    # holds a few bytes of a quiet stream until its buffer
+                    # fills, so an eleven-byte comment arrived too late and a
+                    # part dropped the stream every fifteen seconds (16
+                    # November 2026). A comment is all it is — no event.
+                    await response.write(b": still here" + b"." * HEARTBEAT_PAD + b"\n\n")
         except (ConnectionResetError, asyncio.CancelledError):
             pass
         finally:
