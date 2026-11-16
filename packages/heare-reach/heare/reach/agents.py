@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -232,17 +233,33 @@ def _adopt_home(machine: Path) -> None:
     target = machine / "opencode"
     for name in _AGENT_FOLDERS:
         old = machine / name
-        if not old.is_dir() or (target / name).exists():
+        if not old.is_dir():
             continue
         # Only ours: the config, data, state and cache of opencode, and the
         # home the git identity was written into.
         if not ((old / "opencode").is_dir() or (old / ".gitconfig").exists()):
             continue
+        # A folder of the same name may already be there from an older
+        # version's own layout (0.9.24 kept its home in the same place), so
+        # this merges rather than skips: only what is missing is moved, and
+        # what is there wins.
+        moved = 0
         try:
-            target.mkdir(parents=True, exist_ok=True)
-            old.rename(target / name)
+            for src in sorted(old.rglob("*")):
+                if src.is_dir():
+                    continue
+                dst = target / name / src.relative_to(old)
+                if dst.exists():
+                    continue
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                src.replace(dst)
+                moved += 1
+            shutil.rmtree(old, ignore_errors=True)
         except OSError:
             logger.warning("could not move %s into the agent's home", old)
+        else:
+            if moved:
+                logger.info("moved %d files from %s into the agent's home", moved, old)
 
 
 def _opencode_env(home: Path, patch: dict | None = None,

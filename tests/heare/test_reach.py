@@ -373,6 +373,23 @@ def test_a_home_that_landed_one_level_up_is_adopted(tmp_path):
     assert Path(env["XDG_DATA_HOME"]) == machine / "opencode" / "data"
 
 
+def test_adopting_a_home_merges_with_one_that_is_already_there(tmp_path):
+    """0.9.24 kept its own home in the same folder, so the adoption must
+    merge: what is missing is moved, what is there wins, nothing is lost."""
+    machine = tmp_path / "machine"
+    (machine / "data" / "opencode").mkdir(parents=True)
+    (machine / "data" / "opencode" / "old.db").write_text("old", encoding="utf-8")
+    (machine / "opencode" / "data" / "opencode").mkdir(parents=True)
+    (machine / "opencode" / "data" / "opencode" / "auth.json").write_text("{}", encoding="utf-8")
+
+    agents._opencode_env(machine, mode="careful")
+
+    here = machine / "opencode" / "data" / "opencode"
+    assert (here / "auth.json").exists()
+    assert (here / "old.db").exists()
+    assert not (machine / "data").exists()
+
+
 def test_installed_is_built_from_the_core_table(monkeypatch):
     monkeypatch.setattr(agents.runner, "detect", lambda: [
         {"type": "opencode", "binary": "opencode", "path": "/x/opencode"},
