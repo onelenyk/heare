@@ -11,10 +11,14 @@ if [ ! -f /home/heare/.heare/machine/machine_name ]; then
     printf '%s' "${HEARE_MACHINE_NAME:-heare}" > /home/heare/.heare/machine/machine_name
 fi
 
-# The container's port, the whole role here, and no update check of its own:
-# the image is the update (Coolify pulls the new tag; the keeper does not
-# install into itself). The settings file is the person's, so only these
-# four keys are touched.
+# The container's port and the whole role here. The settings file is the
+# person's, so only these keys are touched.
+#
+# The release check stays ON: this brain never installs into itself (the
+# image is the update — Coolify pulls the new tag, and HEARE_NO_SELF_UPDATE
+# keeps the keeper out of it), but it is the one place that knows which
+# release is out, and the machines ask it. Turning the check off on 15
+# November is why no machine was ever offered 0.9.26.
 python - <<'PY'
 import json
 import re
@@ -26,7 +30,7 @@ settings = Settings()
 settings.set("api_host", "0.0.0.0")
 settings.set("api_port", 9790)
 settings.set("role", "all")
-settings.set("update_check", False)
+settings.set("update_check", True)
 
 # The parts in this image are the machine's own, carried here by the image
 # and not knocking in from outside: the trusted list is what a folder in

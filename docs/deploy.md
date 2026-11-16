@@ -150,7 +150,9 @@ git push origin main v0.9.22
 - **brain** (порт 9790), **keeper**, **native-hands**;
 - supervisord як PID 1 (brain, потім keeper), логи в stdout;
 - non-root uid 1000, том `/home/heare/.heare`, `HEALTHCHECK` на `/health`;
-- `HEARE_NO_SELF_UPDATE=1`, `update_check=false` — оновлення тільки образом;
+- `HEARE_NO_SELF_UPDATE=1` — контейнер не ставить оновлення в себе, образ і є
+  оновленням; перевірку релізу ввімкнено (`update_check=true`), бо саме вона
+  каже машинам, що вийшла нова версія;
 - entrypoint: `api_host=0.0.0.0`, `api_port=9790`, `role=all`, стале ім'я
   машини (`HEARE_MACHINE_NAME`, типово `heare`), trusted-список для
   вбудованих частин.
