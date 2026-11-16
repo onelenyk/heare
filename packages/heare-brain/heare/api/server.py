@@ -1277,9 +1277,19 @@ def build(core: Core, settings: Any, vitals: Any = None,
 
     async def events(request: web.Request) -> web.StreamResponse:
         response = web.StreamResponse(headers={
-            "Content-Type": "text/event-stream", "Cache-Control": "no-cache",
+            "Content-Type": "text/event-stream",
+            # A proxy that buffers holds the heartbeats until its buffer
+            # fills; a part that hears nothing for fifteen seconds drops the
+            # stream, re-knocks, and the pult says «вмикається…» again. That
+            # is what the Mac's five parts did every fifteen seconds on
+            # 15–16 November 2026. These two headers ask it not to.
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
         })
         await response.prepare(request)
+        # Said at once, so a buffering proxy has something to flush and the
+        # caller knows the door opened even when nothing has happened yet.
+        await response.write(b": opened\n\n")
         reader = core.state.subscribe()
         who = request.get("part") or request.get("window")
         if who is not None:
