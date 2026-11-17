@@ -62,6 +62,23 @@ def test_the_wish_and_the_truth_are_both_visible(tmp_path):
     assert part["desired"] is False, "the person's wish is kept apart"
 
 
+def test_a_browser_page_does_not_make_a_machine_online(tmp_path):
+    """The app was closed, the tab was open, and every part still said
+    «вмикається…»: a page is a part, not the machine (17 November 2026)."""
+    machines = Machines(tmp_path / "machines.json")
+    page = {"window@Chrome-abcd": {
+        "state": "approved", "machine": "machine@mac", "channel": "web",
+        "name": "page", "host": "mac", "version": "0.9.29"}}
+
+    machine = machines.view(page, now=100.0)[0]
+    assert machine["state"] == "away"
+
+    kept = machines.view({**page, "voice@mac": {
+        "state": "approved", "machine": "machine@mac", "channel": "voice",
+        "name": "Voice", "host": "mac"}}, now=100.0)[0]
+    assert kept["state"] == "online", "a part the keeper runs is the machine"
+
+
 def test_a_report_survives_a_restart(tmp_path):
     path = tmp_path / "machines.json"
     machines = Machines(path)

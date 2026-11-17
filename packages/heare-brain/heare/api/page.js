@@ -2000,6 +2000,10 @@ function withTransitions(map) {
     body.stopping = want === false;
   }
   for (const machine of machineList) {
+    // A machine that is not here cannot be starting anything: the voice card
+    // sat on «вмикається…» all day while the app was closed (17 November
+    // 2026), because the wish outlives the machine.
+    if (machine.state !== "online") continue;
     for (const part of machine.parts || []) {
       if (part.desired !== true || part.why_not || part.state === "unwell") continue;
       // The registry can still hold an away entry for a moment; only a

@@ -192,6 +192,9 @@ def test_a_machine_switch_says_what_it_is_doing():
     assert "function withTransitions" in SCRIPT
     assert "body.stopping = want === false;" in SCRIPT
     assert "all[`starting@${machine.name}-${part.name}`]" in SCRIPT
+    # Only a machine that is here can be starting a part: a closed app left
+    # the voice card on «вмикається…» for a day (17 November 2026).
+    assert 'if (machine.state !== "online") continue;' in SCRIPT
     assert 'b.starting ? tr("starting") : b.stopping ? tr("stopping")' in SCRIPT
     assert ".pcard.stopping" in STYLE
     assert 'sw.checked = wish' in machine

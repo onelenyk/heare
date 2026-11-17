@@ -233,8 +233,13 @@ class Machines:
             part["online"] = True
             part["pids"] = (part.get("pids") or []) + [pid]
             machine["version"] = machine["version"] or _text(entry.get("version"), 40)
-            if machine["state"] != "online":
-                machine["state"] = "online" if entry.get("state") == "approved" else machine["state"]
+            # A page in a browser is a part of this machine, but it is not
+            # the machine: with the app closed and the tab open, the Mac
+            # looked online and every part said «вмикається…» (17 November
+            # 2026). Only a part the keeper runs is evidence of a machine.
+            if (machine["state"] != "online" and entry.get("state") == "approved"
+                    and not pid.startswith("window@")):
+                machine["state"] = "online"
 
         for machine in machines.values():
             wanted = dict(machine.get("desired") or {})
