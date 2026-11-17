@@ -70,8 +70,7 @@ def test_a_browser_page_does_not_make_a_machine_online(tmp_path):
         "state": "approved", "machine": "machine@mac", "channel": "web",
         "name": "page", "host": "mac", "version": "0.9.29"}}
 
-    machine = machines.view(page, now=100.0)[0]
-    assert machine["state"] == "away"
+    assert machines.view(page, now=100.0) == [], "a page is not a machine"
 
     kept = machines.view({**page, "voice@mac": {
         "state": "approved", "machine": "machine@mac", "channel": "voice",
