@@ -53,8 +53,13 @@ async def _payloads(stream, *, want: int | None = None, wait: float = 0.4) -> li
         except TimeoutError:
             break
         for line in chunk.decode().splitlines():
-            if line.startswith("data: "):
-                got.append(json.loads(line[6:]))
+            if not line.startswith("data: "):
+                continue
+            event = json.loads(line[6:])
+            # A tick is the wire's keep-alive, not a status event: it is the
+            # one thing every stream carries, whatever it asked for.
+            if event.get("kind") != "tick":
+                got.append(event)
     return got
 
 
