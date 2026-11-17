@@ -3532,6 +3532,7 @@ function machineRow(machine, part, entries) {
   const label = pending ? PART_STATE.pending
     : bad && part.why ? tr("error")
     : cannot ? cannot
+    : !online ? tr("away")
     : starting ? tr("starting")
     : stopping ? tr("stopping")
     : now || (part.on ? tr("on") : tr("off"));

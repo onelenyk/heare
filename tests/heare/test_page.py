@@ -183,6 +183,9 @@ def test_a_machine_switch_says_what_it_is_doing():
     # Moving is only true while the machine is here to report it: an asleep
     # Mac said «вмикається…» for hours (16 November 2026).
     assert "const online = machine.state === \"online\";" in machine
+    # A closed app is not a part that is turning on: the row says the machine
+    # is away, not that the voice is starting (17 November 2026).
+    assert ': !online ? tr("away")' in machine
     assert 'const starting = online && wish === true && !connected;' in machine
     assert 'const stopping = online && wish === false && (connected || part.on);' in machine
     assert 'state.prepend(el("i", "spin"))' in machine
